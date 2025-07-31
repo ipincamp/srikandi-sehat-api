@@ -32,6 +32,8 @@ func ConnectDB() {
 	log.Println("Running Migrations")
 	err = DB.AutoMigrate(
 		&models.User{},
+		&models.Role{},
+		&models.Permission{},
 		// &models.AnotherModel{},
 	)
 	if err != nil {

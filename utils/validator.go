@@ -5,19 +5,20 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-type ErrorResponse struct {
+var validate = validator.New()
+
+type ValidationError struct {
 	FailedField string `json:"failed_field"`
 	Tag         string `json:"tag"`
 	Value       string `json:"value"`
 }
 
-func ValidateStruct(payload interface{}) []*ErrorResponse {
-	var errors []*ErrorResponse
-	validate := validator.New()
+func ValidateStruct(payload interface{}) []*ValidationError {
+	var errors []*ValidationError
 	err := validate.Struct(payload)
 	if err != nil {
 		for _, err := range err.(validator.ValidationErrors) {
-			var element ErrorResponse
+			var element ValidationError
 			element.FailedField = err.StructNamespace()
 			element.Tag = err.Tag()
 			element.Value = err.Param()
@@ -27,14 +28,17 @@ func ValidateStruct(payload interface{}) []*ErrorResponse {
 	return errors
 }
 
-// Wrapper for validation handler
 func ParseAndValidate(c *fiber.Ctx, payload interface{}) error {
 	if err := c.BodyParser(payload); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Cannot parse JSON"})
+		return ErrorResponse(c, fiber.StatusBadRequest, "Cannot parse JSON")
 	}
 
-	if errors := ValidateStruct(payload); errors != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"errors": errors})
+	if errors := ValidateStruct(payload); len(errors) > 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  false,
+			"message": "Validation failed",
+			"data":    errors,
+		})
 	}
 	return nil
 }

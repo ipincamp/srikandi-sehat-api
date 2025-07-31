@@ -2,10 +2,11 @@ package handlers
 
 import (
 	"errors"
+	"ipincamp/srikandi-sehat/config"
 	"ipincamp/srikandi-sehat/database"
 	"ipincamp/srikandi-sehat/models"
 	"ipincamp/srikandi-sehat/utils"
-	"os"
+	"strconv"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -36,11 +37,20 @@ func checkPasswordHash(password, hash string) bool {
 }
 
 func generateJWT(user models.User) (string, error) {
-	secretKey := os.Getenv("JWT_SECRET")
-	claims := jwt.MapClaims{
-		"usr": user.UUID,
-		"exp": time.Now().Add(time.Hour * 72).Unix(), // Token valid for 72 hours
+	secretKey := config.Get("JWT_SECRET")
+
+	// Take expiration time from config, default to 24 hours if not set
+	expHoursStr := config.Get("JWT_EXPIRATION_HOURS")
+	expHours, err := strconv.Atoi(expHoursStr)
+	if err != nil {
+		expHours = 24 // Default
 	}
+
+	claims := jwt.MapClaims{
+		"uid": user.UUID,
+		"exp": time.Now().Add(time.Hour * time.Duration(expHours)).Unix(),
+	}
+
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(secretKey))
 }
@@ -53,7 +63,7 @@ func Register(c *fiber.Ctx) error {
 
 	hashedPassword, err := hashPassword(input.Password)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Could not hash password"})
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Could not hash password")
 	}
 
 	user := models.User{
@@ -64,10 +74,17 @@ func Register(c *fiber.Ctx) error {
 
 	result := database.DB.Create(&user)
 	if result.Error != nil {
-		return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "Email already exists"})
+		return utils.ErrorResponse(c, fiber.StatusConflict, "Email already exists")
 	}
 
-	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"message": "User registered successfully", "user": user})
+	userData := fiber.Map{
+		"id":         user.UUID,
+		"name":       user.Name,
+		"email":      user.Email,
+		"created_at": user.CreatedAt,
+	}
+
+	return utils.SuccessResponse(c, fiber.StatusCreated, "User registered successfully", userData)
 }
 
 func Login(c *fiber.Ctx) error {
@@ -77,47 +94,32 @@ func Login(c *fiber.Ctx) error {
 	}
 
 	var user models.User
-	// Find the user by email
 	result := database.DB.First(&user, "email = ?", input.Email)
 
-	// If user not found
-	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
+	if errors.Is(result.Error, gorm.ErrRecordNotFound) || !checkPasswordHash(input.Password, user.Password) {
+		return utils.ErrorResponse(c, fiber.StatusUnauthorized, "Invalid credentials")
 	}
 
-	// Check password
-	if !checkPasswordHash(input.Password, user.Password) {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Invalid credentials"})
-	}
-
-	// Generate JWT Token
 	token, err := generateJWT(user)
 	if err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Could not generate token"})
+		return utils.ErrorResponse(c, fiber.StatusInternalServerError, "Could not generate token")
 	}
 
-	return c.JSON(fiber.Map{"token": token})
+	return utils.SuccessResponse(c, fiber.StatusOK, "Login successful", fiber.Map{"token": token})
 }
 
 func Profile(c *fiber.Ctx) error {
-	// Take user UUID from context set by middleware
-	userUUID := c.Locals("usr").(string)
-
+	userUUID := c.Locals("uid").(string)
 	var user models.User
-	// Find the user by UUID
-	result := database.DB.First(&user, "uuid = ?", userUUID)
+	result := database.DB.Select("uuid", "name", "email", "created_at", "updated_at").First(&user, "uuid = ?", userUUID)
 
 	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "User not found"})
+		return utils.ErrorResponse(c, fiber.StatusNotFound, "User not found")
 	}
 
-	// Return user data (User struct already excludes password with `json:"-"`)
-	return c.JSON(user)
+	return utils.SuccessResponse(c, fiber.StatusOK, "Profile fetched successfully", user)
 }
 
 func Logout(c *fiber.Ctx) error {
-	// In a stateless JWT architecture, logout is handled by the client by removing the token.
-	// This endpoint is more of a formalities and can be extended
-	// to add the token to a blocklist if needed.
-	return c.JSON(fiber.Map{"message": "Successfully logged out"})
+	return utils.SuccessResponse(c, fiber.StatusOK, "Successfully logged out", nil)
 }

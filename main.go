@@ -3,7 +3,7 @@ package main
 import (
 	"ipincamp/srikandi-sehat/config"
 	"ipincamp/srikandi-sehat/database"
-	"ipincamp/srikandi-sehat/routes"
+	"ipincamp/srikandi-sehat/src/routes"
 	"log"
 
 	"github.com/gofiber/fiber/v2"
@@ -17,7 +17,7 @@ func main() {
 
 	app := fiber.New()
 	app.Use(cors.New(cors.Config{
-		AllowOrigins: "*",
+		AllowOrigins: config.Get("CORS_ALLOWED_ORIGINS"),
 		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
 		AllowMethods: "GET, POST, PUT, DELETE, PATCH",
 	}))

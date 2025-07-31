@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"ipincamp/srikandi-sehat/config"
-	"ipincamp/srikandi-sehat/utils"
+	"ipincamp/srikandi-sehat/src/utils"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
@@ -14,12 +14,12 @@ import (
 func AuthMiddleware(c *fiber.Ctx) error {
 	authHeader := c.Get("Authorization")
 	if authHeader == "" {
-		return utils.ErrorResponse(c, fiber.StatusUnauthorized, "Missing authorization header")
+		return utils.SendError(c, fiber.StatusUnauthorized, "Missing authorization header")
 	}
 
 	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 	if tokenString == authHeader {
-		return utils.ErrorResponse(c, fiber.StatusUnauthorized, "Invalid token format, 'Bearer ' prefix missing")
+		return utils.SendError(c, fiber.StatusUnauthorized, "Invalid token format, 'Bearer ' prefix missing")
 	}
 
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
@@ -30,19 +30,19 @@ func AuthMiddleware(c *fiber.Ctx) error {
 	})
 
 	if err != nil || !token.Valid {
-		return utils.ErrorResponse(c, fiber.StatusUnauthorized, "Invalid or expired token")
+		return utils.SendError(c, fiber.StatusUnauthorized, "Invalid or expired token")
 	}
 
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return utils.ErrorResponse(c, fiber.StatusUnauthorized, "Invalid token claims")
+		return utils.SendError(c, fiber.StatusUnauthorized, "Invalid token claims")
 	}
 
 	userUUID, ok := claims["usr"].(string)
 	if !ok {
-		return utils.ErrorResponse(c, fiber.StatusUnauthorized, "Invalid user identifier in token")
+		return utils.SendError(c, fiber.StatusUnauthorized, "Invalid user identifier in token")
 	}
 
-	c.Locals("usr", userUUID)
+	c.Locals("user_id", userUUID)
 	return c.Next()
 }

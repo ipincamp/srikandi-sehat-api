@@ -30,7 +30,7 @@ func ValidateStruct(payload interface{}) []*ValidationError {
 
 func ParseAndValidate(c *fiber.Ctx, payload interface{}) error {
 	if err := c.BodyParser(payload); err != nil {
-		return ErrorResponse(c, fiber.StatusBadRequest, "Cannot parse JSON")
+		return SendError(c, fiber.StatusBadRequest, "Cannot parse JSON")
 	}
 
 	if errors := ValidateStruct(payload); len(errors) > 0 {

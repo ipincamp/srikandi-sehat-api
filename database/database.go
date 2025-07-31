@@ -3,7 +3,7 @@ package database
 import (
 	"fmt"
 	"ipincamp/srikandi-sehat/config"
-	"ipincamp/srikandi-sehat/models"
+	"ipincamp/srikandi-sehat/src/models"
 	"log"
 
 	"gorm.io/driver/mysql"

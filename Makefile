@@ -2,7 +2,7 @@ include .env
 export
 
 
-DB_URL="mysql://${DB_USER}:${DB_PASS}@tcp(${DB_HOST}:${DB_PORT})/${DB_NAME}?multiStatements=true"
+DB_URL=mysql://${DB_USER}:${DB_PASS}@tcp(${DB_HOST}:${DB_PORT})/${DB_NAME}?multiStatements=true
 
 # Perintah untuk membuat file migrasi baru
 # Contoh: make migrate-create name=create_users_table

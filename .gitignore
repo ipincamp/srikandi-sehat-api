@@ -3,3 +3,6 @@
 
 # Build output
 srikandi-sehat
+
+# Debugging files
+__debug*

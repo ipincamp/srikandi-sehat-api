@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"ipincamp/srikandi-sehat/config"
 	"ipincamp/srikandi-sehat/src/models"
+	"ipincamp/srikandi-sehat/src/models/region"
 	"log"
 
 	"gorm.io/driver/mysql"
@@ -35,6 +36,11 @@ func ConnectDB() {
 		&models.Role{},
 		&models.Permission{},
 		&models.InvalidToken{},
+		&region.Classification{},
+		&region.Province{},
+		&region.Regency{},
+		&region.District{},
+		&region.Village{},
 		// &models.AnotherModel{},
 	)
 	if err != nil {

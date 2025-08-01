@@ -4,7 +4,6 @@ import (
 	"regexp"
 
 	"github.com/go-playground/validator/v10"
-	"github.com/gofiber/fiber/v2"
 )
 
 var validate *validator.Validate
@@ -42,19 +41,4 @@ func ValidateStruct(payload interface{}) []*ValidationError {
 		}
 	}
 	return errors
-}
-
-func ParseAndValidate(c *fiber.Ctx, payload interface{}) error {
-	if err := c.BodyParser(payload); err != nil {
-		return SendError(c, fiber.StatusBadRequest, "Cannot parse JSON")
-	}
-
-	if errors := ValidateStruct(payload); len(errors) > 0 {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  false,
-			"message": "Validation failed",
-			"errors":  errors,
-		})
-	}
-	return nil
 }

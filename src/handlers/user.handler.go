@@ -30,8 +30,16 @@ func UpdateDetails(c *fiber.Ctx) error {
 	userUUID := c.Locals("user_id").(string)
 
 	input := new(dto.UpdateDetailsRequest)
-	if err := utils.ParseAndValidate(c, input); err != nil {
-		return err
+	if err := c.BodyParser(input); err != nil {
+		return utils.SendError(c, fiber.StatusBadRequest, "Cannot parse JSON")
+	}
+
+	if errors := utils.ValidateStruct(input); len(errors) > 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  false,
+			"message": "Validation failed",
+			"errors":  errors,
+		})
 	}
 
 	var user models.User
@@ -51,8 +59,16 @@ func ChangePassword(c *fiber.Ctx) error {
 	userUUID := c.Locals("user_id").(string)
 
 	input := new(dto.ChangePasswordRequest)
-	if err := utils.ParseAndValidate(c, input); err != nil {
-		return err
+	if err := c.BodyParser(input); err != nil {
+		return utils.SendError(c, fiber.StatusBadRequest, "Cannot parse JSON")
+	}
+
+	if errors := utils.ValidateStruct(input); len(errors) > 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  false,
+			"message": "Validation failed",
+			"errors":  errors,
+		})
 	}
 
 	var user models.User

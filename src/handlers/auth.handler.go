@@ -83,20 +83,6 @@ func Login(c *fiber.Ctx) error {
 	return utils.SendSuccess(c, fiber.StatusOK, "Login successful", responseData)
 }
 
-func Profile(c *fiber.Ctx) error {
-	userUUID := c.Locals("user_id").(string)
-	var user models.User
-	result := database.DB.Preload("Roles.Permissions").Preload("Permissions").First(&user, "uuid = ?", userUUID)
-
-	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		return utils.SendError(c, fiber.StatusNotFound, "User not found")
-	}
-
-	responseData := dto.AuthResponseJson(user)
-
-	return utils.SendSuccess(c, fiber.StatusOK, "Profile fetched successfully", responseData)
-}
-
 func Logout(c *fiber.Ctx) error {
 	return utils.SendSuccess(c, fiber.StatusOK, "Successfully logged out", nil)
 }

@@ -19,6 +19,12 @@ func Register(c *fiber.Ctx) error {
 		return err
 	}
 
+	var existingUser models.User
+	err := database.DB.First(&existingUser, "email = ?", input.Email).Error
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return utils.SendError(c, fiber.StatusConflict, "Email has already been taken")
+	}
+
 	hashedPassword, _ := utils.HashPassword(input.Password)
 
 	user := models.User{
@@ -34,7 +40,7 @@ func Register(c *fiber.Ctx) error {
 
 	if err := tx.Create(&user).Error; err != nil {
 		tx.Rollback()
-		return utils.SendError(c, fiber.StatusConflict, "Email already exists")
+		return utils.SendError(c, fiber.StatusConflict, "Failed to create user")
 	}
 
 	var defaultRole models.Role

@@ -4,6 +4,7 @@ import (
 	"ipincamp/srikandi-sehat/config"
 	"ipincamp/srikandi-sehat/database"
 	"ipincamp/srikandi-sehat/src/routes"
+	"ipincamp/srikandi-sehat/src/utils"
 	"log"
 
 	"github.com/gofiber/fiber/v2"
@@ -14,6 +15,7 @@ import (
 func main() {
 	config.LoadConfig()
 	database.ConnectDB()
+	utils.SetupValidator()
 
 	app := fiber.New()
 	app.Use(cors.New(cors.Config{

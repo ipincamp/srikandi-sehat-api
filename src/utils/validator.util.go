@@ -1,14 +1,30 @@
 package utils
 
 import (
+	"regexp"
+
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
 )
 
-var validate = validator.New()
+var validate *validator.Validate
+
+func SetupValidator() {
+	validate = validator.New()
+	validate.RegisterValidation("password_strength", ValidatePasswordStrength)
+}
+
+func ValidatePasswordStrength(fl validator.FieldLevel) bool {
+	password := fl.Field().String()
+	hasUpper, _ := regexp.MatchString(`[A-Z]`, password)
+	hasLower, _ := regexp.MatchString(`[a-z]`, password)
+	hasNumber, _ := regexp.MatchString(`[0-9]`, password)
+	hasSymbol, _ := regexp.MatchString(`[\W_]`, password)
+	return hasUpper && hasLower && hasNumber && hasSymbol
+}
 
 type ValidationError struct {
-	FailedField string `json:"failed_field"`
+	FailedField string `json:"field"`
 	Tag         string `json:"tag"`
 	Value       string `json:"value"`
 }
@@ -19,7 +35,7 @@ func ValidateStruct(payload interface{}) []*ValidationError {
 	if err != nil {
 		for _, err := range err.(validator.ValidationErrors) {
 			var element ValidationError
-			element.FailedField = err.StructNamespace()
+			element.FailedField = err.Field()
 			element.Tag = err.Tag()
 			element.Value = err.Param()
 			errors = append(errors, &element)
@@ -37,7 +53,7 @@ func ParseAndValidate(c *fiber.Ctx, payload interface{}) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  false,
 			"message": "Validation failed",
-			"data":    errors,
+			"errors":  errors,
 		})
 	}
 	return nil

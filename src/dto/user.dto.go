@@ -7,7 +7,7 @@ type UpdateDetailsRequest struct {
 }
 
 type ChangePasswordRequest struct {
-	OldPassword     string `json:"old_password" validate:"required"`
-	NewPassword     string `json:"new_password" validate:"required,min=8"`
-	ConfirmPassword string `json:"new_password_confirmation" validate:"required,eqfield=NewPassword"`
+	OldPassword             string `json:"old_password" validate:"required"`
+	NewPassword             string `json:"new_password" validate:"required,min=8,password_strength"`
+	NewPasswordConfirmation string `json:"new_password_confirmation" validate:"required,eqfield=NewPassword"`
 }

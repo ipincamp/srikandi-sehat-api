@@ -80,7 +80,7 @@ func ChangePassword(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusBadRequest, "Old password does not match")
 	}
 
-	if input.NewPassword != input.ConfirmPassword {
+	if input.NewPassword != input.NewPasswordConfirmation {
 		return utils.SendError(c, fiber.StatusBadRequest, "New password and confirmation do not match")
 	}
 

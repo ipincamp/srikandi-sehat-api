@@ -3,14 +3,31 @@ package utils
 import (
 	"regexp"
 
+	"github.com/go-playground/locales/en"
+	ut "github.com/go-playground/universal-translator"
 	"github.com/go-playground/validator/v10"
+	en_translations "github.com/go-playground/validator/v10/translations/en"
 )
 
 var validate *validator.Validate
+var trans ut.Translator
 
 func SetupValidator() {
 	validate = validator.New()
+
+	english := en.New()
+	uni := ut.New(english, english)
+	trans, _ = uni.GetTranslator("en")
+
+	en_translations.RegisterDefaultTranslations(validate, trans)
+
 	validate.RegisterValidation("password_strength", ValidatePasswordStrength)
+	validate.RegisterTranslation("password_strength", trans, func(ut ut.Translator) error {
+		return ut.Add("password_strength", "The {0} field must contain at least one uppercase letter, lowercase letter, number, and symbol.", true)
+	}, func(ut ut.Translator, fe validator.FieldError) string {
+		t, _ := ut.T("password_strength", fe.Field())
+		return t
+	})
 }
 
 func ValidatePasswordStrength(fl validator.FieldLevel) bool {
@@ -23,9 +40,10 @@ func ValidatePasswordStrength(fl validator.FieldLevel) bool {
 }
 
 type ValidationError struct {
-	FailedField string `json:"field"`
-	Tag         string `json:"tag"`
-	Value       string `json:"value"`
+	Field   string `json:"field"`
+	Tag     string `json:"tag"`
+	Value   string `json:"value"`
+	Message string `json:"message"`
 }
 
 func ValidateStruct(payload interface{}) []*ValidationError {
@@ -34,9 +52,10 @@ func ValidateStruct(payload interface{}) []*ValidationError {
 	if err != nil {
 		for _, err := range err.(validator.ValidationErrors) {
 			var element ValidationError
-			element.FailedField = err.Field()
+			element.Field = err.Field()
 			element.Tag = err.Tag()
 			element.Value = err.Param()
+			element.Message = err.Translate(trans)
 			errors = append(errors, &element)
 		}
 	}

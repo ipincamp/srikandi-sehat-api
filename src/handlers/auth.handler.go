@@ -9,7 +9,11 @@ import (
 	"ipincamp/srikandi-sehat/src/utils"
 	"log"
 
+	"strings"
+	"time"
+
 	"github.com/gofiber/fiber/v2"
+	"github.com/golang-jwt/jwt/v5"
 	"gorm.io/gorm"
 )
 
@@ -106,5 +110,37 @@ func Login(c *fiber.Ctx) error {
 }
 
 func Logout(c *fiber.Ctx) error {
-	return utils.SendSuccess(c, fiber.StatusOK, "Successfully logged out", nil)
+	authHeader := c.Get("Authorization")
+	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+
+	if tokenString == "" {
+		return utils.SendError(c, fiber.StatusUnauthorized, "JWT token not found or invalid format")
+	}
+
+	token, _, err := new(jwt.Parser).ParseUnverified(tokenString, jwt.MapClaims{})
+	if err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to parse token")
+	}
+
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Invalid token claims")
+	}
+
+	exp, ok := claims["exp"].(float64)
+	if !ok {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Invalid expiration time in token")
+	}
+	expiresAt := time.Unix(int64(exp), 0)
+
+	invalidToken := models.InvalidToken{
+		Token:     tokenString,
+		ExpiresAt: expiresAt,
+	}
+
+	if err := database.DB.Create(&invalidToken).Error; err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to logout")
+	}
+
+	return utils.SendSuccess(c, fiber.StatusOK, "Logout successful", nil)
 }

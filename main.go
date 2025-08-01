@@ -3,19 +3,39 @@ package main
 import (
 	"ipincamp/srikandi-sehat/config"
 	"ipincamp/srikandi-sehat/database"
+	"ipincamp/srikandi-sehat/src/models"
 	"ipincamp/srikandi-sehat/src/routes"
 	"ipincamp/srikandi-sehat/src/utils"
 	"log"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 )
 
+func cleanupExpiredTokens() {
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		log.Println("Running expired token cleanup...")
+		now := time.Now()
+		result := database.DB.Where("expires_at < ?", now).Delete(&models.InvalidToken{})
+		if result.Error != nil {
+			log.Printf("Failed to clean up expired tokens: %v", result.Error)
+		} else {
+			log.Printf("%d expired tokens have been deleted.", result.RowsAffected)
+		}
+	}
+}
+
 func main() {
 	config.LoadConfig()
 	database.ConnectDB()
 	utils.SetupValidator()
+
+	go cleanupExpiredTokens()
 
 	app := fiber.New()
 	app.Use(cors.New(cors.Config{

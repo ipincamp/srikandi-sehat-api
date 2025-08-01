@@ -34,6 +34,7 @@ func ConnectDB() {
 		&models.User{},
 		&models.Role{},
 		&models.Permission{},
+		&models.InvalidToken{},
 		// &models.AnotherModel{},
 	)
 	if err != nil {

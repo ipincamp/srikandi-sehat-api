@@ -1,14 +1,18 @@
 package middleware
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
 	"ipincamp/srikandi-sehat/config"
+	"ipincamp/srikandi-sehat/database"
+	"ipincamp/srikandi-sehat/src/models"
 	"ipincamp/srikandi-sehat/src/utils"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
+	"gorm.io/gorm"
 )
 
 func AuthMiddleware(c *fiber.Ctx) error {
@@ -20,6 +24,12 @@ func AuthMiddleware(c *fiber.Ctx) error {
 	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 	if tokenString == authHeader {
 		return utils.SendError(c, fiber.StatusUnauthorized, "Invalid token format, 'Bearer ' prefix missing")
+	}
+
+	var invalidToken models.InvalidToken
+	err := database.DB.First(&invalidToken, "token = ?", tokenString).Error
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return utils.SendError(c, fiber.StatusUnauthorized, "Token has been invalidated")
 	}
 
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {

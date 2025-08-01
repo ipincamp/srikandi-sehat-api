@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"ipincamp/srikandi-sehat/database"
+	"ipincamp/srikandi-sehat/src/constants"
 	"ipincamp/srikandi-sehat/src/dto"
 	"ipincamp/srikandi-sehat/src/models"
 	"ipincamp/srikandi-sehat/src/utils"
@@ -77,4 +78,39 @@ func ChangePassword(c *fiber.Ctx) error {
 	}
 
 	return utils.SendSuccess(c, fiber.StatusOK, "Password changed successfully", nil)
+}
+
+func GetAllUsers(c *fiber.Ctx) error {
+	var users []models.User
+
+	adminUserIDs := database.DB.Table("user_roles").
+		Select("user_roles.user_id").
+		Joins("join roles on user_roles.role_id = roles.id").
+		Where("roles.name = ?", string(constants.AdminRole))
+
+	database.DB.Preload("Roles").
+		Where("id NOT IN (?)", adminUserIDs).
+		Find(&users)
+
+	var responseData []dto.UserResponse
+	for _, user := range users {
+		responseData = append(responseData, dto.AuthResponseJson(user))
+	}
+
+	return utils.SendSuccess(c, fiber.StatusOK, "Users fetched successfully", responseData)
+}
+
+func GetUserByID(c *fiber.Ctx) error {
+	userUUID := c.Params("id")
+
+	var user models.User
+	result := database.DB.Preload("Roles").First(&user, "uuid = ?", userUUID)
+
+	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		return utils.SendError(c, fiber.StatusNotFound, "User not found")
+	}
+
+	responseData := dto.AuthResponseJson(user)
+
+	return utils.SendSuccess(c, fiber.StatusOK, "User fetched successfully", responseData)
 }

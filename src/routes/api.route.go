@@ -26,4 +26,11 @@ func SetupRoutes(app *fiber.App) {
 	admin := api.Group("/admin", middleware.AuthMiddleware, middleware.AdminMiddleware)
 	admin.Get("/users", handlers.GetAllUsers)
 	admin.Get("/users/:id", handlers.GetUserByID)
+
+	// Region routes
+	region := api.Group("/regions")
+	region.Get("/provinces", handlers.GetAllProvinces)
+	region.Get("/regencies", handlers.GetRegenciesByProvince)
+	region.Get("/districts", handlers.GetDistrictsByRegency)
+	region.Get("/villages", handlers.GetVillagesByDistrict)
 }

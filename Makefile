@@ -7,4 +7,4 @@ app-build:
 	@go build .
 
 db-seed:
-	@go run seeders/seeder.go
+	@go run database/seeders/main.go

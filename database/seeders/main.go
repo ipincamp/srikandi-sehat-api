@@ -3,7 +3,10 @@ package main
 import (
 	"ipincamp/srikandi-sehat/config"
 	"ipincamp/srikandi-sehat/database"
+	"ipincamp/srikandi-sehat/database/seeders/seed"
 	"log"
+
+	"gorm.io/gorm"
 )
 
 func main() {
@@ -32,4 +35,21 @@ func main() {
 	}
 
 	log.Println("All seeding processes completed successfully!")
+}
+
+func SeedAll(db *gorm.DB) error {
+	if err := seed.SeedRoles(db); err != nil {
+		return err
+	}
+	if err := seed.SeedPermissions(db); err != nil {
+		return err
+	}
+	if err := seed.SeedUsers(db); err != nil {
+		return err
+	}
+	if err := seed.SeedRegions(db); err != nil {
+		return err
+	}
+
+	return nil
 }

@@ -1,6 +1,7 @@
-package main
+package seed
 
 import (
+	"errors"
 	"ipincamp/srikandi-sehat/config"
 	"ipincamp/srikandi-sehat/src/constants"
 	"ipincamp/srikandi-sehat/src/models"
@@ -20,13 +21,13 @@ func SeedUsers(tx *gorm.DB) error {
 
 	usersToSeed := []UserSeed{
 		{
-			Name:     "Admin Name",
+			Name:     "Akun Administrator",
 			Email:    config.Get("ADMIN_EMAIL"),
 			Password: config.Get("USER_PASSWORD"),
 			RoleName: constants.AdminRole,
 		},
 		{
-			Name:     "User Name",
+			Name:     "Akun Pengguna",
 			Email:    config.Get("USER_EMAIL"),
 			Password: config.Get("USER_PASSWORD"),
 			RoleName: constants.UserRole,
@@ -37,6 +38,17 @@ func SeedUsers(tx *gorm.DB) error {
 		if userData.Email == "" || userData.Password == "" {
 			log.Printf("Skipping seeder for role %s: email or password not set in .env", userData.RoleName)
 			continue
+		}
+
+		var existingUser models.User
+		err := tx.Where("email = ?", userData.Email).First(&existingUser).Error
+
+		if err == nil {
+			continue
+		}
+
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
 		}
 
 		hashedPassword, err := utils.HashPassword(userData.Password)
@@ -55,17 +67,15 @@ func SeedUsers(tx *gorm.DB) error {
 			Password: hashedPassword,
 		}
 
-		var existingUser models.User
-		if err := tx.FirstOrCreate(&existingUser, models.User{Email: user.Email}, &user).Error; err != nil {
+		if err := tx.Create(&user).Error; err != nil {
 			return err
 		}
 
-		if err := tx.Model(&existingUser).Association("Roles").Replace(&role); err != nil {
+		if err := tx.Model(&user).Association("Roles").Replace(&role); err != nil {
 			return err
 		}
-
-		log.Printf("User '%s' with role '%s' successfully seeded.", existingUser.Email, role.Name)
 	}
 
+	log.Println("User seeder completed successfully.")
 	return nil
 }

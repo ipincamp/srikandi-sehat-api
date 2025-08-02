@@ -15,6 +15,7 @@ type User struct {
 	Password    string        `gorm:"type:varchar(255);not null" json:"-"`
 	Roles       []*Role       `gorm:"many2many:user_roles;" json:"roles,omitempty"`
 	Permissions []*Permission `gorm:"many2many:user_permissions;" json:"permissions,omitempty"`
+	Profile     Profile       `gorm:"foreignKey:UserID"`
 	CreatedAt   time.Time     `json:"created_at"`
 	UpdatedAt   time.Time     `json:"updated_at"`
 }

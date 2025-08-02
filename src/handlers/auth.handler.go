@@ -73,7 +73,7 @@ func Register(c *fiber.Ctx) error {
 
 	database.DB.Preload("Roles").First(&user, user.ID)
 
-	responseData := dto.AuthResponseJson(user)
+	responseData := dto.UserResponseJson(user)
 
 	return utils.SendSuccess(c, fiber.StatusCreated, "User registered successfully", responseData)
 }
@@ -93,7 +93,7 @@ func Login(c *fiber.Ctx) error {
 	}
 
 	var user models.User
-	result := database.DB.Preload("Roles.Permissions").Preload("Permissions").First(&user, "email = ?", input.Email)
+	result := database.DB.Preload("Roles").Preload("Profile").First(&user, "email = ?", input.Email)
 
 	if errors.Is(result.Error, gorm.ErrRecordNotFound) || !utils.CheckPasswordHash(input.Password, user.Password) {
 		return utils.SendError(c, fiber.StatusUnauthorized, "Invalid credentials")
@@ -104,7 +104,7 @@ func Login(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Could not generate token")
 	}
 
-	responseData := dto.AuthResponseJson(user, token)
+	responseData := dto.UserResponseJson(user, token)
 
 	return utils.SendSuccess(c, fiber.StatusOK, "Login successful", responseData)
 }

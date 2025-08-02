@@ -6,30 +6,35 @@ import (
 	"ipincamp/srikandi-sehat/src/constants"
 	"ipincamp/srikandi-sehat/src/dto"
 	"ipincamp/srikandi-sehat/src/models"
+	"ipincamp/srikandi-sehat/src/models/region"
 	"ipincamp/srikandi-sehat/src/utils"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 )
 
-func Profile(c *fiber.Ctx) error {
+func GetMyProfile(c *fiber.Ctx) error {
 	userUUID := c.Locals("user_id").(string)
-	var user models.User
-	result := database.DB.Preload("Roles.Permissions").Preload("Permissions").First(&user, "uuid = ?", userUUID)
 
-	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+	var user models.User
+	err := database.DB.Preload("Roles").Preload("Profile").First(&user, "uuid = ?", userUUID).Error
+	if err != nil {
 		return utils.SendError(c, fiber.StatusNotFound, "User not found")
 	}
 
-	responseData := dto.AuthResponseJson(user)
+	if user.Profile.ID == 0 {
+		return utils.SendError(c, fiber.StatusNotFound, "Your profile has not been created yet. Please update your profile first.")
+	}
 
+	responseData := dto.UserResponseJson(user)
 	return utils.SendSuccess(c, fiber.StatusOK, "Profile fetched successfully", responseData)
 }
 
-func UpdateDetails(c *fiber.Ctx) error {
+func UpdateOrCreateProfile(c *fiber.Ctx) error {
 	userUUID := c.Locals("user_id").(string)
 
-	input := new(dto.UpdateDetailsRequest)
+	input := new(dto.UpdateProfileRequest)
 	if err := c.BodyParser(input); err != nil {
 		return utils.SendError(c, fiber.StatusBadRequest, "Cannot parse JSON")
 	}
@@ -42,46 +47,86 @@ func UpdateDetails(c *fiber.Ctx) error {
 		})
 	}
 
+	tx := database.DB.Begin()
+	if tx.Error != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to start transaction")
+	}
+	defer tx.Rollback()
+
 	var user models.User
-	if err := database.DB.First(&user, "uuid = ?", userUUID).Error; err != nil {
+	if err := tx.First(&user, "uuid = ?", userUUID).Error; err != nil {
 		return utils.SendError(c, fiber.StatusNotFound, "User not found")
 	}
 
-	if err := database.DB.Model(&user).Updates(input).Error; err != nil {
-		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to update user details")
+	if input.Name != "" {
+		if err := tx.Model(&user).Update("name", input.Name).Error; err != nil {
+			return utils.SendError(c, fiber.StatusInternalServerError, "Failed to update user name")
+		}
 	}
 
-	responseData := dto.AuthResponseJson(user)
-	return utils.SendSuccess(c, fiber.StatusOK, "Profile details updated successfully", responseData)
+	dob, _ := time.Parse("2006-01-02", input.DateOfBirth)
+
+	var village region.Village
+	if err := tx.First(&village, "code = ?", input.VillageCode).Error; err != nil {
+		return utils.SendError(c, fiber.StatusNotFound, "Village code not found")
+	}
+
+	profileData := models.Profile{
+		UserID:              user.ID,
+		PhoneNumber:         input.PhoneNumber,
+		DateOfBirth:         &dob,
+		HeightCM:            input.HeightCM,
+		WeightKG:            input.WeightKG,
+		AddressStreet:       input.AddressStreet,
+		VillageID:           &village.ID,
+		LastEducation:       input.LastEducation,
+		ParentLastEducation: input.ParentLastEducation,
+		ParentLastJob:       input.ParentLastJob,
+		InternetAccess:      input.InternetAccess,
+		MenarcheAge:         input.MenarcheAge,
+	}
+
+	var existingProfile models.Profile
+	err := tx.Where(models.Profile{UserID: user.ID}).
+		Assign(profileData).
+		FirstOrCreate(&existingProfile).Error
+
+	if err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to save profile")
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to commit transaction")
+	}
+
+	return utils.SendSuccess(c, fiber.StatusOK, "Profile updated successfully", nil)
 }
 
-func ChangePassword(c *fiber.Ctx) error {
+func ChangeMyPassword(c *fiber.Ctx) error {
 	userUUID := c.Locals("user_id").(string)
 
 	input := new(dto.ChangePasswordRequest)
 	if err := c.BodyParser(input); err != nil {
 		return utils.SendError(c, fiber.StatusBadRequest, "Cannot parse JSON")
 	}
-
-	if errors := utils.ValidateStruct(input); len(errors) > 0 {
+	if validationErrors := utils.ValidateStruct(input); len(validationErrors) > 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  false,
 			"message": "Validation failed",
-			"errors":  errors,
+			"errors":  validationErrors,
 		})
 	}
 
 	var user models.User
 	if err := database.DB.First(&user, "uuid = ?", userUUID).Error; err != nil {
-		return utils.SendError(c, fiber.StatusNotFound, "User not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return utils.SendError(c, fiber.StatusNotFound, "User not found")
+		}
+		return utils.SendError(c, fiber.StatusInternalServerError, "Database error")
 	}
 
 	if !utils.CheckPasswordHash(input.OldPassword, user.Password) {
 		return utils.SendError(c, fiber.StatusBadRequest, "Old password does not match")
-	}
-
-	if input.NewPassword != input.NewPasswordConfirmation {
-		return utils.SendError(c, fiber.StatusBadRequest, "New password and confirmation do not match")
 	}
 
 	newHashedPassword, err := utils.HashPassword(input.NewPassword)
@@ -110,7 +155,7 @@ func GetAllUsers(c *fiber.Ctx) error {
 
 	var responseData []dto.UserResponse
 	for _, user := range users {
-		responseData = append(responseData, dto.AuthResponseJson(user))
+		responseData = append(responseData, dto.UserResponseJson(user))
 	}
 
 	return utils.SendSuccess(c, fiber.StatusOK, "Users fetched successfully", responseData)
@@ -126,7 +171,7 @@ func GetUserByID(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusNotFound, "User not found")
 	}
 
-	responseData := dto.AuthResponseJson(user)
+	responseData := dto.UserResponseJson(user)
 
 	return utils.SendSuccess(c, fiber.StatusOK, "User fetched successfully", responseData)
 }

@@ -18,9 +18,9 @@ func SetupRoutes(app *fiber.App) {
 
 	// User routes
 	user := api.Group("/me", middleware.AuthMiddleware)
-	user.Get("/", handlers.Profile)
-	user.Patch("/details", handlers.UpdateDetails)
-	user.Patch("/password", handlers.ChangePassword)
+	user.Get("/", handlers.GetMyProfile)
+	user.Put("/details", handlers.UpdateOrCreateProfile)
+	user.Patch("/password", handlers.ChangeMyPassword)
 
 	// Admin routes
 	admin := api.Group("/admin", middleware.AuthMiddleware, middleware.AdminMiddleware)

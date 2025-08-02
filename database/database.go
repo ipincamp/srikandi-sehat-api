@@ -41,6 +41,7 @@ func ConnectDB() {
 		&region.Regency{},
 		&region.District{},
 		&region.Village{},
+		&models.Profile{},
 		// &models.AnotherModel{},
 	)
 	if err != nil {

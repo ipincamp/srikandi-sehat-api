@@ -123,18 +123,6 @@ Menggunakan JSON Web Tokens (JWT) untuk autentikasi yang aman. Password disimpan
 
     Mengautentikasi user dan mengembalikan JWT.
 
-- `GET /api/user/profile` (Terproteksi)
-
-    Mengambil detail profil user yang sedang login.
-
-- `PATCH /api/user/profile/details` (Terproteksi)
-
-    Memperbarui nama atau email user.
-
-- `PATCH /api/user/profile/password` (Terproteksi)
-
-    Mengubah password setelah verifikasi password lama.
-
 - `POST /api/user/logout` (Terproteksi)
 
     Membatalkan token JWT saat ini.
@@ -142,19 +130,19 @@ Menggunakan JSON Web Tokens (JWT) untuk autentikasi yang aman. Password disimpan
 ### Fitur 2: Manajemen Profil Pengguna
 Pengguna yang sudah login dapat mengelola data personal mereka.
 
-- `GET /api/user/me` (Terproteksi)
+- `GET /api/me` (Terproteksi)
 
-    Deskripsi: Mengambil detail profil lengkap dari user yang sedang login.
+    Mengambil detail profil lengkap dari user yang sedang login.
 
-- `PUT /api/user/me/details` (Terproteksi)
+- `PUT /api/me/details` (Terproteksi)
 
-    Deskripsi: Membuat atau memperbarui profil pengguna secara keseluruhan. Juga bisa digunakan untuk mengubah nama.
+    Membuat atau memperbarui profil pengguna secara keseluruhan. Juga bisa digunakan untuk mengubah nama.
 
     Body: Semua field UpdateProfileRequest (lihat `dto/user.dto.go`).
 
-- `PATCH /api/user/me/password` (Terproteksi)
+- `PATCH /api/me/password` (Terproteksi)
 
-    Deskripsi: Mengubah password user.
+    Mengubah password user.
 
     Body: `old_password`, `new_password`, `new_password_confirmation`.
 
@@ -166,7 +154,33 @@ Terdapat dua level hak akses utama: **Admin** dan **User**. Endpoint tertentu ha
 
 - `GET /api/admin/users` (Hanya Admin)
 
-    Mengambil daftar semua user, kecuali admin lain.
+    Mengambil daftar semua user (kecuali admin lain) dengan sistem paginasi.
+
+    > Query Params
+
+    - page (opsional, default: 1): Nomor halaman yang ingin ditampilkan.
+
+    - limit (opsional, default: 10): Jumlah data per halaman.
+
+    > Contoh Response
+
+    ```json
+    {
+        "status": true,
+        "message": "Users fetched successfully",
+        "data": {
+            "data": [ /* ... daftar user ... */ ],
+            "meta": {
+                "limit": 10,
+                "total_rows": 50,
+                "total_pages": 5,
+                "current_page": 1,
+                "previous_page": null,
+                "next_page": 2
+            }
+        }
+    }
+    ```
 
 - `GET /api/admin/users/:id` (Hanya Admin)
 

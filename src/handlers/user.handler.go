@@ -149,16 +149,23 @@ func GetAllUsers(c *fiber.Ctx) error {
 		Joins("join roles on user_roles.role_id = roles.id").
 		Where("roles.name = ?", string(constants.AdminRole))
 
-	database.DB.Preload("Roles").
-		Where("id NOT IN (?)", adminUserIDs).
-		Find(&users)
+	query := database.DB.Preload("Roles").Where("id NOT IN (?)", adminUserIDs)
+
+	pagination, paginateScope := utils.GeneratePagination(c, query, &models.User{})
+
+	query.Scopes(paginateScope).Find(&users)
 
 	var responseData []dto.UserResponse
 	for _, user := range users {
 		responseData = append(responseData, dto.UserResponseJson(user))
 	}
 
-	return utils.SendSuccess(c, fiber.StatusOK, "Users fetched successfully", responseData)
+	paginatedResponse := fiber.Map{
+		"data": responseData,
+		"meta": pagination,
+	}
+
+	return utils.SendSuccess(c, fiber.StatusOK, "Users fetched successfully", paginatedResponse)
 }
 
 func GetUserByID(c *fiber.Ctx) error {

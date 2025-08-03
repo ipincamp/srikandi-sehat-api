@@ -51,16 +51,23 @@ func Login(c *fiber.Ctx) error {
 	}
 
 	var user models.User
-	result := database.DB.Preload("Roles").Preload("Profile").First(&user, "email = ?", input.Email)
+	err := database.DB.Preload("Roles").Preload("Profile").First(&user, "email = ?", input.Email).Error
+
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return utils.SendError(c, fiber.StatusUnauthorized, "Invalid credentials")
+	}
+	if err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Database query error")
+	}
 
 	match, err := utils.CheckPasswordHash(input.Password, user.Password)
-	if errors.Is(result.Error, gorm.ErrRecordNotFound) || err != nil || !match {
+	if err != nil || !match {
 		return utils.SendError(c, fiber.StatusUnauthorized, "Invalid credentials")
 	}
 
 	token, err := utils.GenerateJWT(user)
 	if err != nil {
-		return utils.SendError(c, fiber.StatusInternalServerError, "Could not generate token")
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to generate JWT token")
 	}
 
 	responseData := dto.UserResponseJson(user, token)

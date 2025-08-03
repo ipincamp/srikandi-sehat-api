@@ -117,7 +117,7 @@ Menggunakan JSON Web Tokens (JWT) untuk autentikasi yang aman. Password disimpan
 
 - `POST /api/auth/register`
 
-    Mendaftarkan user baru dan secara otomatis memberinya role "User".
+    Menerima permintaan pendaftaran dan menaruhnya di antrian untuk diproses di background. Response `202 Accepted` dengan pesan bahwa akun sedang diproses.
 
 - `POST /api/auth/login`
 
@@ -158,9 +158,9 @@ Terdapat dua level hak akses utama: **Admin** dan **User**. Endpoint tertentu ha
 
     > Query Params
 
-    - page (opsional, default: 1): Nomor halaman yang ingin ditampilkan.
+    - `page` (opsional, default: 1): Nomor halaman yang ingin ditampilkan.
 
-    - limit (opsional, default: 10): Jumlah data per halaman.
+    - `limit` (opsional, default: 10): Jumlah data per halaman.
 
     > Contoh Response
 

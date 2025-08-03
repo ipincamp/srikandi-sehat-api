@@ -17,17 +17,7 @@ import (
 )
 
 func Register(c *fiber.Ctx) error {
-	input := new(dto.RegisterRequest)
-	if err := c.BodyParser(input); err != nil {
-		return utils.SendError(c, fiber.StatusBadRequest, "Cannot parse JSON")
-	}
-	if validationErrors := utils.ValidateStruct(input); len(validationErrors) > 0 {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  false,
-			"message": "Validation failed",
-			"errors":  validationErrors,
-		})
-	}
+	input := c.Locals("request").(*dto.RegisterRequest)
 
 	job := workers.Job{
 		RegistrationData: *input,
@@ -38,17 +28,7 @@ func Register(c *fiber.Ctx) error {
 }
 
 func Login(c *fiber.Ctx) error {
-	input := new(dto.LoginRequest)
-	if err := c.BodyParser(input); err != nil {
-		return utils.SendError(c, fiber.StatusBadRequest, "Cannot parse JSON")
-	}
-	if validationErrors := utils.ValidateStruct(input); len(validationErrors) > 0 {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  false,
-			"message": "Validation failed",
-			"errors":  validationErrors,
-		})
-	}
+	input := c.Locals("request").(*dto.LoginRequest)
 
 	var user models.User
 	err := database.DB.Preload("Roles").Preload("Profile").First(&user, "email = ?", input.Email).Error

@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"ipincamp/srikandi-sehat/src/dto"
 	"ipincamp/srikandi-sehat/src/handlers"
 	"ipincamp/srikandi-sehat/src/middleware"
 
@@ -12,15 +13,15 @@ func SetupRoutes(app *fiber.App) {
 
 	// Auth routes
 	auth := api.Group("/auth")
-	auth.Post("/register", handlers.Register)
-	auth.Post("/login", handlers.Login)
+	auth.Post("/register", middleware.Validate[dto.RegisterRequest], handlers.Register)
+	auth.Post("/login", middleware.Validate[dto.LoginRequest], handlers.Login)
 	auth.Post("/logout", middleware.AuthMiddleware, handlers.Logout)
 
 	// User routes
 	user := api.Group("/me", middleware.AuthMiddleware)
 	user.Get("/", handlers.GetMyProfile)
-	user.Put("/details", handlers.UpdateOrCreateProfile)
-	user.Patch("/password", handlers.ChangeMyPassword)
+	user.Put("/details", middleware.Validate[dto.UpdateProfileRequest], handlers.UpdateOrCreateProfile)
+	user.Patch("/password", middleware.Validate[dto.ChangePasswordRequest], handlers.ChangeMyPassword)
 
 	// Admin routes
 	admin := api.Group("/admin", middleware.AuthMiddleware, middleware.AdminMiddleware)

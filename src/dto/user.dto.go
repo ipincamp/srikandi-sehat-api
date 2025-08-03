@@ -1,25 +1,28 @@
 package dto
 
 import (
+	"fmt"
 	"ipincamp/srikandi-sehat/src/constants"
 	"ipincamp/srikandi-sehat/src/models"
+	"math"
+	"strings"
 	"time"
 )
 
 // Request Body
 type UpdateProfileRequest struct {
 	Name                string                   `json:"name" validate:"omitempty,min=3"`
-	PhoneNumber         string                   `json:"phone_number" validate:"required,min=10,max=15"`
-	DateOfBirth         string                   `json:"date_of_birth" validate:"required,datetime=2006-01-02"`
-	HeightCM            uint                     `json:"height_cm" validate:"required,gte=100,lte=250"`
-	WeightKG            float32                  `json:"weight_kg" validate:"required,gte=30,lte=200"`
+	PhoneNumber         string                   `json:"phone" validate:"required,min=10,max=15"`
+	VillageCode         string                   `json:"address_code" validate:"required,len=10"`
 	AddressStreet       string                   `json:"address_street" validate:"required"`
-	VillageCode         string                   `json:"village_code" validate:"required,len=10"`
-	LastEducation       constants.EducationLevel `json:"last_education" validate:"required,oneof='Tidak Sekolah' SD SMP SMA Diploma S1 S2 S3"`
-	ParentLastEducation constants.EducationLevel `json:"parent_last_education" validate:"required,oneof='Tidak Sekolah' SD SMP SMA Diploma S1 S2 S3"`
-	ParentLastJob       string                   `json:"parent_last_job" validate:"required"`
-	InternetAccess      constants.InternetAccess `json:"internet_access" validate:"required,oneof=WiFi Seluler"`
-	MenarcheAge         uint                     `json:"menarche_age" validate:"required,gte=8,lte=20"`
+	DateOfBirth         string                   `json:"birthdate" validate:"required,datetime=2006-01-02"`
+	HeightCM            uint                     `json:"tb_cm" validate:"required,gte=100,lte=250"`
+	WeightKG            float32                  `json:"bb_kg" validate:"required,gte=30,lte=200"`
+	LastEducation       constants.EducationLevel `json:"edu_now" validate:"required,oneof='Tidak Sekolah' SD SMP SMA Diploma S1 S2 S3"`
+	ParentLastEducation constants.EducationLevel `json:"edu_parent" validate:"required,oneof='Tidak Sekolah' SD SMP SMA Diploma S1 S2 S3"`
+	ParentLastJob       string                   `json:"job_parent" validate:"required"`
+	InternetAccess      constants.InternetAccess `json:"inet_access" validate:"required,oneof=WiFi Seluler"`
+	MenarcheAge         uint                     `json:"first_haid" validate:"required,gte=8,lte=20"`
 }
 
 type ChangePasswordRequest struct {
@@ -30,10 +33,18 @@ type ChangePasswordRequest struct {
 
 // Response Body
 type ProfileResponse struct {
-	PhoneNumber string     `json:"phone_number"`
-	DateOfBirth *time.Time `json:"date_of_birth"`
-	HeightCM    uint       `json:"height_cm"`
-	WeightKG    float32    `json:"weight_kg"`
+	PhoneNumber         string                   `json:"phone"`
+	DateOfBirth         *time.Time               `json:"birthdate"`
+	HeightCM            uint                     `json:"tb_cm"`
+	WeightKG            float32                  `json:"bb_kg"`
+	Bmi                 float32                  `json:"bmi,omitempty"`
+	LastEducation       constants.EducationLevel `json:"edu_now"`
+	ParentLastEducation constants.EducationLevel `json:"edu_parent"`
+	ParentLastJob       string                   `json:"job_parent"`
+	InternetAccess      constants.InternetAccess `json:"inet_access"`
+	MenarcheAge         uint                     `json:"first_haid"`
+	Address             string                   `json:"address"`
+	UpdatedAt           *time.Time               `json:"updated_at,omitempty"`
 }
 
 type UserResponse struct {
@@ -42,7 +53,7 @@ type UserResponse struct {
 	Email             string           `json:"email"`
 	Role              string           `json:"role,omitempty"`
 	Token             string           `json:"token,omitempty"`
-	IsProfileComplete bool             `json:"is_profile_complete"`
+	IsProfileComplete bool             `json:"profile_complete"`
 	Profile           *ProfileResponse `json:"profile,omitempty"`
 	CreatedAt         time.Time        `json:"created_at"`
 }
@@ -57,11 +68,28 @@ func UserResponseJson(user models.User, token ...string) UserResponse {
 	isProfileComplete := user.Profile.ID > 0
 	var profileData *ProfileResponse
 	if isProfileComplete {
+		address := buildFullAddress(user.Profile)
+
+		var bmi float32
+		if user.Profile.HeightCM > 0 {
+			heightInMeters := float32(user.Profile.HeightCM) / 100
+			bmi = user.Profile.WeightKG / (heightInMeters * heightInMeters)
+			bmi = float32(math.Round(float64(bmi)*100) / 100)
+		}
+
 		profileData = &ProfileResponse{
-			PhoneNumber: user.Profile.PhoneNumber,
-			DateOfBirth: user.Profile.DateOfBirth,
-			HeightCM:    user.Profile.HeightCM,
-			WeightKG:    user.Profile.WeightKG,
+			PhoneNumber:         user.Profile.PhoneNumber,
+			DateOfBirth:         user.Profile.DateOfBirth,
+			HeightCM:            user.Profile.HeightCM,
+			WeightKG:            user.Profile.WeightKG,
+			Bmi:                 bmi,
+			LastEducation:       user.Profile.LastEducation,
+			ParentLastEducation: user.Profile.ParentLastEducation,
+			ParentLastJob:       user.Profile.ParentLastJob,
+			InternetAccess:      user.Profile.InternetAccess,
+			MenarcheAge:         user.Profile.MenarcheAge,
+			Address:             address,
+			UpdatedAt:           &user.Profile.UpdatedAt,
 		}
 	}
 
@@ -80,4 +108,37 @@ func UserResponseJson(user models.User, token ...string) UserResponse {
 	}
 
 	return response
+}
+
+func buildFullAddress(profile models.Profile) string {
+	addressParts := []string{profile.AddressStreet}
+
+	if profile.Village.ID > 0 {
+		classification := profile.Village.Classification.Name
+		if strings.EqualFold(classification, string(constants.RuralClassification)) {
+			classification = "DESA"
+		} else if strings.EqualFold(classification, string(constants.UrbanClassification)) {
+			classification = "KOTA"
+		}
+		village := profile.Village.Name
+
+		addressParts = append(addressParts, fmt.Sprintf("(%s) %s", strings.ToUpper(classification), strings.ToUpper(village)))
+
+		if profile.Village.District.ID > 0 {
+			district := profile.Village.District.Name
+			addressParts = append(addressParts, fmt.Sprintf("KECAMATAN %s", strings.ToUpper(district)))
+
+			if profile.Village.District.Regency.ID > 0 {
+				regency := profile.Village.District.Regency.Name
+				addressParts = append(addressParts, fmt.Sprintf("KABUPATEN %s", strings.ToUpper(regency)))
+
+				if profile.Village.District.Regency.Province.ID > 0 {
+					province := profile.Village.District.Regency.Province.Name
+					addressParts = append(addressParts, fmt.Sprintf("PROVINSI %s", strings.ToUpper(province)))
+				}
+			}
+		}
+	}
+
+	return strings.Join(addressParts, ", ")
 }

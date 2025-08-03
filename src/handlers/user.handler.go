@@ -18,9 +18,18 @@ func GetMyProfile(c *fiber.Ctx) error {
 	userUUID := c.Locals("user_id").(string)
 
 	var user models.User
-	err := database.DB.Preload("Roles").Preload("Profile").First(&user, "uuid = ?", userUUID).Error
+
+	err := database.DB.
+		Preload("Roles").
+		Preload("Profile.Village.Classification").
+		Preload("Profile.Village.District.Regency.Province").
+		First(&user, "uuid = ?", userUUID).Error
+
 	if err != nil {
-		return utils.SendError(c, fiber.StatusNotFound, "User not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return utils.SendError(c, fiber.StatusNotFound, "User not found")
+		}
+		return utils.SendError(c, fiber.StatusInternalServerError, "Database error")
 	}
 
 	if user.Profile.ID == 0 {
@@ -34,17 +43,7 @@ func GetMyProfile(c *fiber.Ctx) error {
 func UpdateOrCreateProfile(c *fiber.Ctx) error {
 	userUUID := c.Locals("user_id").(string)
 
-	input := new(dto.UpdateProfileRequest)
-	if err := c.BodyParser(input); err != nil {
-		return utils.SendError(c, fiber.StatusBadRequest, "Cannot parse JSON")
-	}
-	if validationErrors := utils.ValidateStruct(input); len(validationErrors) > 0 {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  false,
-			"message": "Validation failed",
-			"errors":  validationErrors,
-		})
-	}
+	input := c.Locals("request").(*dto.UpdateProfileRequest)
 
 	tx := database.DB.Begin()
 	if tx.Error != nil {
@@ -104,17 +103,7 @@ func UpdateOrCreateProfile(c *fiber.Ctx) error {
 func ChangeMyPassword(c *fiber.Ctx) error {
 	userUUID := c.Locals("user_id").(string)
 
-	input := new(dto.ChangePasswordRequest)
-	if err := c.BodyParser(input); err != nil {
-		return utils.SendError(c, fiber.StatusBadRequest, "Cannot parse JSON")
-	}
-	if validationErrors := utils.ValidateStruct(input); len(validationErrors) > 0 {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  false,
-			"message": "Validation failed",
-			"errors":  validationErrors,
-		})
-	}
+	input := c.Locals("request").(*dto.ChangePasswordRequest)
 
 	var user models.User
 	if err := database.DB.First(&user, "uuid = ?", userUUID).Error; err != nil {

@@ -6,6 +6,7 @@ import (
 	"ipincamp/srikandi-sehat/src/models"
 	"ipincamp/srikandi-sehat/src/routes"
 	"ipincamp/srikandi-sehat/src/utils"
+	"ipincamp/srikandi-sehat/src/workers"
 	"log"
 	"time"
 
@@ -34,10 +35,16 @@ func main() {
 	config.LoadConfig()
 	database.ConnectDB()
 	utils.SetupValidator()
+	utils.InitializeBloomFilter()
+	utils.InitializeRoleCache()
 
+	workers.StartWorkerPool()
 	go cleanupExpiredTokens()
 
-	app := fiber.New()
+	app := fiber.New(fiber.Config{
+		Prefork:      true,
+		ServerHeader: "SrikandiSehat",
+	})
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: config.Get("CORS_ALLOWED_ORIGINS"),
 		AllowHeaders: "Origin, Content-Type, Accept, Authorization",

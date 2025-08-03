@@ -38,12 +38,11 @@ func UpdateOrCreateProfile(c *fiber.Ctx) error {
 	if err := c.BodyParser(input); err != nil {
 		return utils.SendError(c, fiber.StatusBadRequest, "Cannot parse JSON")
 	}
-
-	if errors := utils.ValidateStruct(input); len(errors) > 0 {
+	if validationErrors := utils.ValidateStruct(input); len(validationErrors) > 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  false,
 			"message": "Validation failed",
-			"errors":  errors,
+			"errors":  validationErrors,
 		})
 	}
 
@@ -125,8 +124,12 @@ func ChangeMyPassword(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Database error")
 	}
 
-	if !utils.CheckPasswordHash(input.OldPassword, user.Password) {
-		return utils.SendError(c, fiber.StatusBadRequest, "Old password does not match")
+	match, err := utils.CheckPasswordHash(input.OldPassword, user.Password)
+	if err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to verify old password")
+	}
+	if !match {
+		return utils.SendError(c, fiber.StatusUnauthorized, "Old password is incorrect")
 	}
 
 	newHashedPassword, err := utils.HashPassword(input.NewPassword)

@@ -1,10 +1,10 @@
-.PHONY: app-debug app-build db-seed
+.PHONY: debug build seeding
 
-app-debug:
+debug:
 	@go run .
 
-app-build:
+build:
 	@go build .
 
-db-seed:
+seeding:
 	@go run database/seeders/main.go

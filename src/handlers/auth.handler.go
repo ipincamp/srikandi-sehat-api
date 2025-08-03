@@ -3,11 +3,10 @@ package handlers
 import (
 	"errors"
 	"ipincamp/srikandi-sehat/database"
-	"ipincamp/srikandi-sehat/src/constants"
 	"ipincamp/srikandi-sehat/src/dto"
 	"ipincamp/srikandi-sehat/src/models"
 	"ipincamp/srikandi-sehat/src/utils"
-	"log"
+	"ipincamp/srikandi-sehat/src/workers"
 
 	"strings"
 	"time"
@@ -22,60 +21,20 @@ func Register(c *fiber.Ctx) error {
 	if err := c.BodyParser(input); err != nil {
 		return utils.SendError(c, fiber.StatusBadRequest, "Cannot parse JSON")
 	}
-
-	if errors := utils.ValidateStruct(input); len(errors) > 0 {
+	if validationErrors := utils.ValidateStruct(input); len(validationErrors) > 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  false,
 			"message": "Validation failed",
-			"errors":  errors,
+			"errors":  validationErrors,
 		})
 	}
 
-	var existingUser models.User
-	err := database.DB.First(&existingUser, "email = ?", input.Email).Error
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return utils.SendError(c, fiber.StatusConflict, "Email has already been taken")
+	job := workers.Job{
+		RegistrationData: *input,
 	}
+	workers.JobQueue <- job
 
-	hashedPassword, _ := utils.HashPassword(input.Password)
-
-	user := models.User{
-		Name:     input.Name,
-		Email:    input.Email,
-		Password: hashedPassword,
-	}
-
-	tx := database.DB.Begin()
-	if tx.Error != nil {
-		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to start transaction")
-	}
-
-	if err := tx.Create(&user).Error; err != nil {
-		tx.Rollback()
-		return utils.SendError(c, fiber.StatusConflict, "Failed to create user")
-	}
-
-	var defaultRole models.Role
-	if err := tx.First(&defaultRole, "name = ?", string(constants.UserRole)).Error; err != nil {
-		tx.Rollback()
-		log.Printf("CRITICAL: Default role '%s' not found. Please run the seeder.", constants.UserRole)
-		return utils.SendError(c, fiber.StatusInternalServerError, "Server configuration error: default role not found")
-	}
-
-	if err := tx.Model(&user).Association("Roles").Append(&defaultRole); err != nil {
-		tx.Rollback()
-		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to assign role to user")
-	}
-
-	if err := tx.Commit().Error; err != nil {
-		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to commit transaction")
-	}
-
-	database.DB.Preload("Roles").First(&user, user.ID)
-
-	responseData := dto.UserResponseJson(user)
-
-	return utils.SendSuccess(c, fiber.StatusCreated, "User registered successfully", responseData)
+	return utils.SendSuccess(c, fiber.StatusAccepted, "Your account is being processed. Please try logging in after a while.", nil)
 }
 
 func Login(c *fiber.Ctx) error {
@@ -83,25 +42,32 @@ func Login(c *fiber.Ctx) error {
 	if err := c.BodyParser(input); err != nil {
 		return utils.SendError(c, fiber.StatusBadRequest, "Cannot parse JSON")
 	}
-
-	if errors := utils.ValidateStruct(input); len(errors) > 0 {
+	if validationErrors := utils.ValidateStruct(input); len(validationErrors) > 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  false,
 			"message": "Validation failed",
-			"errors":  errors,
+			"errors":  validationErrors,
 		})
 	}
 
 	var user models.User
-	result := database.DB.Preload("Roles").Preload("Profile").First(&user, "email = ?", input.Email)
+	err := database.DB.Preload("Roles").Preload("Profile").First(&user, "email = ?", input.Email).Error
 
-	if errors.Is(result.Error, gorm.ErrRecordNotFound) || !utils.CheckPasswordHash(input.Password, user.Password) {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return utils.SendError(c, fiber.StatusUnauthorized, "Invalid credentials")
+	}
+	if err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Database query error")
+	}
+
+	match, err := utils.CheckPasswordHash(input.Password, user.Password)
+	if err != nil || !match {
 		return utils.SendError(c, fiber.StatusUnauthorized, "Invalid credentials")
 	}
 
 	token, err := utils.GenerateJWT(user)
 	if err != nil {
-		return utils.SendError(c, fiber.StatusInternalServerError, "Could not generate token")
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to generate JWT token")
 	}
 
 	responseData := dto.UserResponseJson(user, token)

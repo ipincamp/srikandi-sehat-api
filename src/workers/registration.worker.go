@@ -1,8 +1,10 @@
 package workers
 
 import (
+	"errors"
 	"ipincamp/srikandi-sehat/database"
 	"ipincamp/srikandi-sehat/src/constants"
+	"ipincamp/srikandi-sehat/src/dto"
 	"ipincamp/srikandi-sehat/src/models"
 	"ipincamp/srikandi-sehat/src/utils"
 	"log"
@@ -12,15 +14,15 @@ import (
 )
 
 type Job struct {
-	User          models.User
-	PlainPassword string
+	RegistrationData dto.RegisterRequest
 }
 
 var JobQueue chan Job
 
 func StartWorkerPool() {
 	numWorkers := runtime.NumCPU()
-	JobQueue = make(chan Job, 1000)
+	queueSize := 5000
+	JobQueue = make(chan Job, queueSize)
 
 	for w := 1; w <= numWorkers; w++ {
 		go worker(w, JobQueue)
@@ -31,35 +33,49 @@ func StartWorkerPool() {
 
 func worker(id int, jobs <-chan Job) {
 	for job := range jobs {
-		log.Printf("Worker %d: starting process for user %s", id, job.User.Email)
+		data := job.RegistrationData
 
-		hashedPassword, err := utils.HashPassword(job.PlainPassword)
-		if err != nil {
-			log.Printf("ERROR (Worker %d): Failed to hash password for user %s: %v", id, job.User.Email, err)
+		var existingUser models.User
+		err := database.DB.First(&existingUser, "email = ?", data.Email).Error
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Printf("Worker %d: Registration failed for %s. Email is already registered.", id, data.Email)
 			continue
 		}
 
-		var defaultRole models.Role
-		if err := database.DB.First(&defaultRole, "name = ?", string(constants.UserRole)).Error; err != nil {
-			log.Printf("CRITICAL (Worker %d): Default role '%s' not found for user %s", id, constants.UserRole, job.User.Email)
+		hashedPassword, err := utils.HashPassword(data.Password)
+		if err != nil {
+			log.Printf("ERROR (Worker %d): Failed to hash password for %s: %v", id, data.Email, err)
 			continue
+		}
+
+		user := models.User{
+			Name:     data.Name,
+			Email:    data.Email,
+			Password: hashedPassword,
 		}
 
 		err = database.DB.Transaction(func(tx *gorm.DB) error {
-			if err := tx.Model(&job.User).Updates(models.User{Password: hashedPassword, Status: constants.StatusActive}).Error; err != nil {
+			if err := tx.Create(&user).Error; err != nil {
 				return err
 			}
-			if err := tx.Model(&job.User).Association("Roles").Append(&defaultRole); err != nil {
+
+			defaultRole, err := utils.GetRoleByName(string(constants.UserRole))
+			if err != nil {
+				return err
+			}
+
+			if err := tx.Model(&user).Association("Roles").Append(&defaultRole); err != nil {
 				return err
 			}
 			return nil
 		})
 
 		if err != nil {
-			log.Printf("ERROR (Worker %d): Failed to update user %s after hashing: %v", id, job.User.Email, err)
+			log.Printf("ERROR (Worker %d): Failed to create user %s in database: %v", id, data.Email, err)
 		} else {
-			utils.AddEmailToFilter(job.User.Email)
-			log.Printf("Worker %d: Process for user %s completed.", id, job.User.Email)
+			utils.AddEmailToFilter(user.Email)
+			log.Printf("Worker %d: User %s has been created and activated.", id, user.Email)
+			// TODO: Send email notification to user
 		}
 	}
 }

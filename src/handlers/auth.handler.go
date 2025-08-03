@@ -3,19 +3,16 @@ package handlers
 import (
 	"errors"
 	"ipincamp/srikandi-sehat/database"
-	"ipincamp/srikandi-sehat/src/constants"
 	"ipincamp/srikandi-sehat/src/dto"
 	"ipincamp/srikandi-sehat/src/models"
 	"ipincamp/srikandi-sehat/src/utils"
 	"ipincamp/srikandi-sehat/src/workers"
-	"log"
 
 	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -32,34 +29,8 @@ func Register(c *fiber.Ctx) error {
 		})
 	}
 
-	var existingUser models.User
-	err := database.DB.First(&existingUser, "email = ?", input.Email).Error
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return utils.SendError(c, fiber.StatusConflict, "Email has already been taken")
-	}
-
-	if utils.CheckEmailExists(input.Email) {
-		var existingUser models.User
-		if !errors.Is(database.DB.First(&existingUser, "email = ?", input.Email).Error, gorm.ErrRecordNotFound) {
-			log.Printf("Email %s already exists", input.Email)
-			return utils.SendError(c, fiber.StatusConflict, "Email has already been taken")
-		}
-	}
-
-	user := models.User{
-		Name:     input.Name,
-		Email:    input.Email,
-		Password: uuid.New().String(),
-		Status:   constants.StatusProcessing,
-	}
-
-	if err := database.DB.Create(&user).Error; err != nil {
-		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to create user")
-	}
-
 	job := workers.Job{
-		User:          user,
-		PlainPassword: input.Password,
+		RegistrationData: *input,
 	}
 	workers.JobQueue <- job
 

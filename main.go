@@ -36,9 +36,9 @@ func main() {
 	database.ConnectDB()
 	utils.SetupValidator()
 	utils.InitializeBloomFilter()
+	utils.InitializeRoleCache()
 
 	workers.StartWorkerPool()
-
 	go cleanupExpiredTokens()
 
 	app := fiber.New(fiber.Config{

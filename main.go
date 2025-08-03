@@ -37,6 +37,7 @@ func main() {
 	utils.SetupValidator()
 	utils.InitializeBloomFilter()
 	utils.InitializeRoleCache()
+	utils.InitializeBlocklistCache()
 
 	workers.StartWorkerPool()
 	go cleanupExpiredTokens()

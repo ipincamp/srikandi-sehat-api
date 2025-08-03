@@ -35,3 +35,4 @@ database/*bin
 # Debugging files
 __debug*
 srikandi-sehat
+*.js

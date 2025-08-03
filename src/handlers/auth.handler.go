@@ -65,19 +65,23 @@ func Logout(c *fiber.Ctx) error {
 
 	token, _, err := new(jwt.Parser).ParseUnverified(tokenString, jwt.MapClaims{})
 	if err != nil {
-		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to parse token")
+		return utils.SendError(c, fiber.StatusBadRequest, "Malformed token")
 	}
 
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return utils.SendError(c, fiber.StatusInternalServerError, "Invalid token claims")
+		return utils.SendError(c, fiber.StatusBadRequest, "Invalid token claims")
 	}
 
 	exp, ok := claims["exp"].(float64)
 	if !ok {
-		return utils.SendError(c, fiber.StatusInternalServerError, "Invalid expiration time in token")
+		return utils.SendError(c, fiber.StatusBadRequest, "Invalid expiration time in token")
 	}
 	expiresAt := time.Unix(int64(exp), 0)
+
+	if time.Now().After(expiresAt) {
+		return utils.SendSuccess(c, fiber.StatusOK, "Token already expired", nil)
+	}
 
 	invalidToken := models.InvalidToken{
 		Token:     tokenString,
@@ -85,8 +89,15 @@ func Logout(c *fiber.Ctx) error {
 	}
 
 	if err := database.DB.Create(&invalidToken).Error; err != nil {
-		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to logout")
+		if strings.Contains(err.Error(), "Duplicate entry") {
+			// Token is already blocklisted
+		} else {
+			return utils.SendError(c, fiber.StatusInternalServerError, "Failed to invalidate token")
+		}
 	}
+
+	remainingDuration := time.Until(expiresAt)
+	utils.AddToBlocklistCache(tokenString, remainingDuration)
 
 	return utils.SendSuccess(c, fiber.StatusOK, "Logout successful", nil)
 }

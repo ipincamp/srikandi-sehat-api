@@ -7,6 +7,7 @@ import (
 	"ipincamp/srikandi-sehat/src/dto"
 	"ipincamp/srikandi-sehat/src/models"
 	"ipincamp/srikandi-sehat/src/utils"
+	"ipincamp/srikandi-sehat/src/workers"
 	"log"
 
 	"strings"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -22,12 +24,11 @@ func Register(c *fiber.Ctx) error {
 	if err := c.BodyParser(input); err != nil {
 		return utils.SendError(c, fiber.StatusBadRequest, "Cannot parse JSON")
 	}
-
-	if errors := utils.ValidateStruct(input); len(errors) > 0 {
+	if validationErrors := utils.ValidateStruct(input); len(validationErrors) > 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  false,
 			"message": "Validation failed",
-			"errors":  errors,
+			"errors":  validationErrors,
 		})
 	}
 
@@ -37,45 +38,32 @@ func Register(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusConflict, "Email has already been taken")
 	}
 
-	hashedPassword, _ := utils.HashPassword(input.Password)
+	if utils.CheckEmailExists(input.Email) {
+		var existingUser models.User
+		if !errors.Is(database.DB.First(&existingUser, "email = ?", input.Email).Error, gorm.ErrRecordNotFound) {
+			log.Printf("Email %s already exists", input.Email)
+			return utils.SendError(c, fiber.StatusConflict, "Email has already been taken")
+		}
+	}
 
 	user := models.User{
 		Name:     input.Name,
 		Email:    input.Email,
-		Password: hashedPassword,
+		Password: uuid.New().String(),
+		Status:   constants.StatusProcessing,
 	}
 
-	tx := database.DB.Begin()
-	if tx.Error != nil {
-		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to start transaction")
+	if err := database.DB.Create(&user).Error; err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to create user")
 	}
 
-	if err := tx.Create(&user).Error; err != nil {
-		tx.Rollback()
-		return utils.SendError(c, fiber.StatusConflict, "Failed to create user")
+	job := workers.Job{
+		User:          user,
+		PlainPassword: input.Password,
 	}
+	workers.JobQueue <- job
 
-	var defaultRole models.Role
-	if err := tx.First(&defaultRole, "name = ?", string(constants.UserRole)).Error; err != nil {
-		tx.Rollback()
-		log.Printf("CRITICAL: Default role '%s' not found. Please run the seeder.", constants.UserRole)
-		return utils.SendError(c, fiber.StatusInternalServerError, "Server configuration error: default role not found")
-	}
-
-	if err := tx.Model(&user).Association("Roles").Append(&defaultRole); err != nil {
-		tx.Rollback()
-		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to assign role to user")
-	}
-
-	if err := tx.Commit().Error; err != nil {
-		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to commit transaction")
-	}
-
-	database.DB.Preload("Roles").First(&user, user.ID)
-
-	responseData := dto.UserResponseJson(user)
-
-	return utils.SendSuccess(c, fiber.StatusCreated, "User registered successfully", responseData)
+	return utils.SendSuccess(c, fiber.StatusAccepted, "Your account is being processed. Please try logging in after a while.", nil)
 }
 
 func Login(c *fiber.Ctx) error {
@@ -83,19 +71,19 @@ func Login(c *fiber.Ctx) error {
 	if err := c.BodyParser(input); err != nil {
 		return utils.SendError(c, fiber.StatusBadRequest, "Cannot parse JSON")
 	}
-
-	if errors := utils.ValidateStruct(input); len(errors) > 0 {
+	if validationErrors := utils.ValidateStruct(input); len(validationErrors) > 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"status":  false,
 			"message": "Validation failed",
-			"errors":  errors,
+			"errors":  validationErrors,
 		})
 	}
 
 	var user models.User
 	result := database.DB.Preload("Roles").Preload("Profile").First(&user, "email = ?", input.Email)
 
-	if errors.Is(result.Error, gorm.ErrRecordNotFound) || !utils.CheckPasswordHash(input.Password, user.Password) {
+	match, err := utils.CheckPasswordHash(input.Password, user.Password)
+	if errors.Is(result.Error, gorm.ErrRecordNotFound) || err != nil || !match {
 		return utils.SendError(c, fiber.StatusUnauthorized, "Invalid credentials")
 	}
 

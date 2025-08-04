@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"ipincamp/srikandi-sehat/config"
 	"ipincamp/srikandi-sehat/database"
-	"ipincamp/srikandi-sehat/src/models"
 	"ipincamp/srikandi-sehat/src/routes"
 	"ipincamp/srikandi-sehat/src/utils"
 	"ipincamp/srikandi-sehat/src/workers"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -15,32 +18,18 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/logger"
 )
 
-func cleanupExpiredTokens() {
-	ticker := time.NewTicker(24 * time.Hour)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		log.Println("Running expired token cleanup...")
-		now := time.Now()
-		result := database.DB.Where("expires_at < ?", now).Delete(&models.InvalidToken{})
-		if result.Error != nil {
-			log.Printf("Failed to clean up expired tokens: %v", result.Error)
-		} else {
-			log.Printf("%d expired tokens have been deleted.", result.RowsAffected)
-		}
-	}
-}
-
 func main() {
 	config.LoadConfig()
 	database.ConnectDB()
 	utils.SetupValidator()
-	utils.InitializeBloomFilter()
+	utils.InitializeRegistrationFilter()
+	utils.InitializeFrequentLoginFilter()
+
 	utils.InitializeRoleCache()
 	utils.InitializeBlocklistCache()
 
 	workers.StartWorkerPool()
-	go cleanupExpiredTokens()
+	go utils.CleanupExpiredTokens()
 
 	app := fiber.New(fiber.Config{
 		Prefork:      true,
@@ -55,6 +44,25 @@ func main() {
 
 	routes.SetupRoutes(app)
 
-	port := config.Get("API_PORT")
-	log.Fatal(app.Listen("0.0.0.0:" + port))
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		port := config.Get("API_PORT")
+		if err := app.Listen("0.0.0.0:" + port); err != nil {
+			log.Fatalf("Failed to start server: %v", err)
+		}
+	}()
+
+	<-quit
+	log.Println("Shutting down server...")
+
+	utils.SaveAllBloomFilters()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := app.ShutdownWithContext(ctx); err != nil {
+		log.Fatalf("Failed to gracefully shutdown server: %v", err)
+	}
 }

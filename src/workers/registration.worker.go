@@ -73,7 +73,7 @@ func worker(id int, jobs <-chan Job) {
 		if err != nil {
 			log.Printf("ERROR (Worker %d): Failed to create user %s in database: %v", id, data.Email, err)
 		} else {
-			utils.AddEmailToFilter(user.Email)
+			utils.AddEmailToRegistrationFilter(user.Email)
 			log.Printf("Worker %d: User %s has been created and activated.", id, user.Email)
 			// TODO: Send email notification to user
 		}

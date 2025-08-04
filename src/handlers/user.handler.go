@@ -43,7 +43,7 @@ func GetMyProfile(c *fiber.Ctx) error {
 func UpdateOrCreateProfile(c *fiber.Ctx) error {
 	userUUID := c.Locals("user_id").(string)
 
-	input := c.Locals("request").(*dto.UpdateProfileRequest)
+	input := c.Locals("request_body").(*dto.UpdateProfileRequest)
 
 	tx := database.DB.Begin()
 	if tx.Error != nil {
@@ -103,7 +103,7 @@ func UpdateOrCreateProfile(c *fiber.Ctx) error {
 func ChangeMyPassword(c *fiber.Ctx) error {
 	userUUID := c.Locals("user_id").(string)
 
-	input := c.Locals("request").(*dto.ChangePasswordRequest)
+	input := c.Locals("request_body").(*dto.ChangePasswordRequest)
 
 	var user models.User
 	if err := database.DB.First(&user, "uuid = ?", userUUID).Error; err != nil {

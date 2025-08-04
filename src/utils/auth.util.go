@@ -2,7 +2,9 @@ package utils
 
 import (
 	"ipincamp/srikandi-sehat/config"
+	"ipincamp/srikandi-sehat/database"
 	"ipincamp/srikandi-sehat/src/models"
+	"log"
 	"strconv"
 	"time"
 
@@ -34,4 +36,20 @@ func GenerateJWT(user models.User) (string, error) {
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(secretKey))
+}
+
+func CleanupExpiredTokens() {
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		log.Println("Running expired token cleanup...")
+		now := time.Now()
+		result := database.DB.Where("expires_at < ?", now).Delete(&models.InvalidToken{})
+		if result.Error != nil {
+			log.Printf("Failed to clean up expired tokens: %v", result.Error)
+		} else {
+			log.Printf("%d expired tokens have been deleted.", result.RowsAffected)
+		}
+	}
 }

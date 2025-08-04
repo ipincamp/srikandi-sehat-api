@@ -17,7 +17,11 @@ import (
 )
 
 func Register(c *fiber.Ctx) error {
-	input := c.Locals("request").(*dto.RegisterRequest)
+	input := c.Locals("request_body").(*dto.RegisterRequest)
+
+	if utils.CheckEmailExistsInRegistrationFilter(input.Email) {
+		return utils.SendError(c, fiber.StatusUnprocessableEntity, "Email already registered")
+	}
 
 	job := workers.Job{
 		RegistrationData: *input,
@@ -28,7 +32,7 @@ func Register(c *fiber.Ctx) error {
 }
 
 func Login(c *fiber.Ctx) error {
-	input := c.Locals("request").(*dto.LoginRequest)
+	input := c.Locals("request_body").(*dto.LoginRequest)
 
 	var user models.User
 	err := database.DB.Preload("Roles").Preload("Profile").First(&user, "email = ?", input.Email).Error
@@ -50,6 +54,7 @@ func Login(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to generate JWT token")
 	}
 
+	go utils.AddUserToFrequentLoginFilter(user)
 	responseData := dto.UserResponseJson(user, token)
 
 	return utils.SendSuccess(c, fiber.StatusOK, "Login successful", responseData)

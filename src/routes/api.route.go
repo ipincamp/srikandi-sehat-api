@@ -13,15 +13,15 @@ func SetupRoutes(app *fiber.App) {
 
 	// Auth routes
 	auth := api.Group("/auth")
-	auth.Post("/register", middleware.Validate[dto.RegisterRequest], handlers.Register)
-	auth.Post("/login", middleware.Validate[dto.LoginRequest], handlers.Login)
+	auth.Post("/register", middleware.ValidateBody[dto.RegisterRequest], handlers.Register)
+	auth.Post("/login", middleware.ValidateBody[dto.LoginRequest], handlers.Login)
 	auth.Post("/logout", middleware.AuthMiddleware, handlers.Logout)
 
 	// User routes
 	user := api.Group("/me", middleware.AuthMiddleware)
 	user.Get("/", handlers.GetMyProfile)
-	user.Put("/details", middleware.Validate[dto.UpdateProfileRequest], handlers.UpdateOrCreateProfile)
-	user.Patch("/password", middleware.Validate[dto.ChangePasswordRequest], handlers.ChangeMyPassword)
+	user.Put("/details", middleware.ValidateBody[dto.UpdateProfileRequest], handlers.UpdateOrCreateProfile)
+	user.Patch("/password", middleware.ValidateBody[dto.ChangePasswordRequest], handlers.ChangeMyPassword)
 
 	// Admin routes
 	admin := api.Group("/admin", middleware.AuthMiddleware, middleware.AdminMiddleware)
@@ -31,7 +31,7 @@ func SetupRoutes(app *fiber.App) {
 	// Region routes
 	region := api.Group("/regions")
 	region.Get("/provinces", handlers.GetAllProvinces)
-	region.Get("/regencies", handlers.GetRegenciesByProvince)
-	region.Get("/districts", handlers.GetDistrictsByRegency)
-	region.Get("/villages", handlers.GetVillagesByDistrict)
+	region.Get("/regencies", middleware.ValidateQuery[dto.RegencyQuery], handlers.GetRegenciesByProvince)
+	region.Get("/districts", middleware.ValidateQuery[dto.DistrictQuery], handlers.GetDistrictsByRegency)
+	region.Get("/villages", middleware.ValidateQuery[dto.VillageQuery], handlers.GetVillagesByDistrict)
 }

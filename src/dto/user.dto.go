@@ -9,6 +9,13 @@ import (
 	"time"
 )
 
+// Request Query
+type UserQuery struct {
+	Classification string `query:"classification" validate:"omitempty,oneof='perkotaan' 'perdesaan'"`
+	Page           int    `query:"page" validate:"omitempty,numeric,min=1"`
+	Limit          int    `query:"limit" validate:"omitempty,numeric,min=1,max=100"`
+}
+
 // Request Body
 type UpdateProfileRequest struct {
 	Name                *string                   `json:"name" validate:"omitempty,min=3"`

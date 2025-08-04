@@ -9,7 +9,7 @@ import (
 type Profile struct {
 	ID                  uint                     `gorm:"primarykey"`
 	PhotoURL            string                   `gorm:"type:varchar(255)"`
-	PhoneNumber         string                   `gorm:"type:varchar(20);uniqueIndex"`
+	PhoneNumber         string                   `gorm:"type:varchar(20)"`
 	DateOfBirth         *time.Time               `gorm:"type:date"`
 	HeightCM            uint                     `gorm:"type:smallint"`
 	WeightKG            float32                  `gorm:"type:decimal(5,2)"`

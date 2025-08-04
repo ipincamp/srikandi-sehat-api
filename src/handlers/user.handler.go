@@ -42,7 +42,6 @@ func GetMyProfile(c *fiber.Ctx) error {
 
 func UpdateOrCreateProfile(c *fiber.Ctx) error {
 	userUUID := c.Locals("user_id").(string)
-
 	input := c.Locals("request_body").(*dto.UpdateProfileRequest)
 
 	tx := database.DB.Begin()
@@ -62,8 +61,7 @@ func UpdateOrCreateProfile(c *fiber.Ctx) error {
 		}
 	}
 
-	updateData := make(map[string]any)
-
+	updateData := make(map[string]interface{})
 	if input.PhoneNumber != nil {
 		updateData["phone_number"] = *input.PhoneNumber
 	}
@@ -90,12 +88,10 @@ func UpdateOrCreateProfile(c *fiber.Ctx) error {
 	}
 
 	if input.DateOfBirth != nil {
-		dob, err := time.Parse("2006-01-02", *input.DateOfBirth)
-		if err == nil {
+		if dob, err := time.Parse("2006-01-02", *input.DateOfBirth); err == nil {
 			updateData["date_of_birth"] = &dob
 		}
 	}
-
 	if input.VillageCode != nil {
 		var village region.Village
 		if err := tx.First(&village, "code = ?", *input.VillageCode).Error; err != nil {
@@ -105,13 +101,20 @@ func UpdateOrCreateProfile(c *fiber.Ctx) error {
 	}
 
 	var profile models.Profile
-	if err := tx.Where(models.Profile{UserID: user.ID}).FirstOrCreate(&profile).Error; err != nil {
-		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to find or create profile")
-	}
+	err := tx.Where(models.Profile{UserID: user.ID}).First(&profile).Error
 
-	if len(updateData) > 0 {
-		if err := tx.Model(&profile).Updates(updateData).Error; err != nil {
-			return utils.SendError(c, fiber.StatusInternalServerError, "Failed to update profile")
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		updateData["user_id"] = user.ID
+		if err := tx.Model(&models.Profile{}).Create(updateData).Error; err != nil {
+			return utils.SendError(c, fiber.StatusInternalServerError, "Failed to create profile")
+		}
+	} else if err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to find profile")
+	} else {
+		if len(updateData) > 0 {
+			if err := tx.Model(&profile).Updates(updateData).Error; err != nil {
+				return utils.SendError(c, fiber.StatusInternalServerError, "Failed to update profile")
+			}
 		}
 	}
 
@@ -156,6 +159,8 @@ func ChangeMyPassword(c *fiber.Ctx) error {
 }
 
 func GetAllUsers(c *fiber.Ctx) error {
+	queries := c.Locals("request_queries").(*dto.UserQuery)
+
 	var users []models.User
 
 	adminUserIDs := database.DB.Table("user_roles").
@@ -163,15 +168,37 @@ func GetAllUsers(c *fiber.Ctx) error {
 		Joins("join roles on user_roles.role_id = roles.id").
 		Where("roles.name = ?", string(constants.AdminRole))
 
-	query := database.DB.Preload("Roles").Where("id NOT IN (?)", adminUserIDs)
+	query := database.DB.Model(&models.User{}).
+		Joins("JOIN profiles ON users.id = profiles.user_id").
+		Joins("JOIN villages ON profiles.village_id = villages.id").
+		Joins("JOIN classifications ON villages.classification_id = classifications.id")
 
-	pagination, paginateScope := utils.GeneratePagination(c, query, &models.User{})
+	if queries.Classification != "" {
+		query = query.Where("classifications.name = ?", queries.Classification)
+	}
 
-	query.Scopes(paginateScope).Find(&users)
+	query = query.Where("users.id NOT IN (?)", adminUserIDs)
 
-	var responseData []dto.UserResponse
+	page := queries.Page
+	if page == 0 {
+		page = 1
+	}
+	limit := queries.Limit
+	if limit == 0 {
+		limit = 10
+	}
+
+	pagination, paginateScope := utils.GeneratePagination(page, limit, query, &models.User{})
+
+	query.Select("users.uuid, users.name, users.created_at").Scopes(paginateScope).Find(&users)
+
+	var responseData []fiber.Map
 	for _, user := range users {
-		responseData = append(responseData, dto.UserResponseJson(user))
+		responseData = append(responseData, fiber.Map{
+			"id":         user.UUID,
+			"name":       user.Name,
+			"created_at": user.CreatedAt,
+		})
 	}
 
 	paginatedResponse := fiber.Map{

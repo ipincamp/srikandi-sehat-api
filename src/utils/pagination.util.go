@@ -2,9 +2,7 @@ package utils
 
 import (
 	"math"
-	"strconv"
 
-	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 )
 
@@ -17,24 +15,14 @@ type Pagination struct {
 	NextPage     *int  `json:"next_page"`
 }
 
-func GeneratePagination(c *fiber.Ctx, db *gorm.DB, model interface{}) (Pagination, func(db *gorm.DB) *gorm.DB) {
-	page, _ := strconv.Atoi(c.Query("page", "1"))
-	limit, _ := strconv.Atoi(c.Query("limit", "10"))
-
-	if page <= 0 {
-		page = 1
-	}
-	if limit <= 0 {
-		limit = 10
-	}
-
+func GeneratePagination(page, limit int, db *gorm.DB, model interface{}) (Pagination, func(db *gorm.DB) *gorm.DB) {
 	var totalRows int64
 	db.Model(model).Count(&totalRows)
 
 	totalPages := int(math.Ceil(float64(totalRows) / float64(limit)))
 
 	var prevPage *int
-	if page > 1 {
+	if page > 1 && page <= totalPages {
 		p := page - 1
 		prevPage = &p
 	}

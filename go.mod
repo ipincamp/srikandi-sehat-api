@@ -4,6 +4,7 @@ go 1.24.5
 
 require (
 	github.com/alexedwards/argon2id v1.0.0
+	github.com/bits-and-blooms/bloom/v3 v3.7.0
 	github.com/go-playground/locales v0.14.1
 	github.com/go-playground/universal-translator v0.18.1
 	github.com/go-playground/validator/v10 v10.27.0
@@ -19,7 +20,6 @@ require (
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/andybalholm/brotli v1.1.0 // indirect
 	github.com/bits-and-blooms/bitset v1.10.0 // indirect
-	github.com/bits-and-blooms/bloom/v3 v3.7.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.9 // indirect
 	github.com/go-sql-driver/mysql v1.9.3 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect

@@ -11,18 +11,17 @@ import (
 
 // Request Body
 type UpdateProfileRequest struct {
-	Name                string                   `json:"name" validate:"omitempty,min=3"`
-	PhoneNumber         string                   `json:"phone" validate:"required,min=10,max=15"`
-	VillageCode         string                   `json:"address_code" validate:"required,len=10"`
-	AddressStreet       string                   `json:"address_street" validate:"required"`
-	DateOfBirth         string                   `json:"birthdate" validate:"required,datetime=2006-01-02"`
-	HeightCM            uint                     `json:"tb_cm" validate:"required,gte=100,lte=250"`
-	WeightKG            float32                  `json:"bb_kg" validate:"required,gte=30,lte=200"`
-	LastEducation       constants.EducationLevel `json:"edu_now" validate:"required,oneof='Tidak Sekolah' SD SMP SMA Diploma S1 S2 S3"`
-	ParentLastEducation constants.EducationLevel `json:"edu_parent" validate:"required,oneof='Tidak Sekolah' SD SMP SMA Diploma S1 S2 S3"`
-	ParentLastJob       string                   `json:"job_parent" validate:"required"`
-	InternetAccess      constants.InternetAccess `json:"inet_access" validate:"required,oneof=WiFi Seluler"`
-	MenarcheAge         uint                     `json:"first_haid" validate:"required,gte=8,lte=20"`
+	Name                *string                   `json:"name" validate:"omitempty,min=3"`
+	PhoneNumber         *string                   `json:"phone" validate:"omitempty,min=10,max=15"`
+	VillageCode         *string                   `json:"address_code" validate:"omitempty,len=10"`
+	DateOfBirth         *string                   `json:"birthdate" validate:"omitempty,datetime=2006-01-02"`
+	HeightCM            *uint                     `json:"tb_cm" validate:"omitempty,gte=100,lte=250"`
+	WeightKG            *float32                  `json:"bb_kg" validate:"omitempty,gte=30,lte=200"`
+	LastEducation       *constants.EducationLevel `json:"edu_now" validate:"omitempty,oneof='Tidak Sekolah' SD SMP SMA Diploma S1 S2 S3"`
+	ParentLastEducation *constants.EducationLevel `json:"edu_parent" validate:"omitempty,oneof='Tidak Sekolah' SD SMP SMA Diploma S1 S2 S3"`
+	ParentLastJob       *string                   `json:"job_parent" validate:"omitempty"`
+	InternetAccess      *constants.InternetAccess `json:"inet_access" validate:"omitempty,oneof=WiFi Seluler"`
+	MenarcheAge         *uint                     `json:"first_haid" validate:"omitempty,gte=8,lte=20"`
 }
 
 type ChangePasswordRequest struct {
@@ -71,7 +70,7 @@ func UserResponseJson(user models.User, token ...string) UserResponse {
 		address := buildFullAddress(user.Profile)
 
 		var bmi float32
-		if user.Profile.HeightCM > 0 {
+		if user.Profile.HeightCM > 0 && user.Profile.WeightKG > 0 {
 			heightInMeters := float32(user.Profile.HeightCM) / 100
 			bmi = user.Profile.WeightKG / (heightInMeters * heightInMeters)
 			bmi = float32(math.Round(float64(bmi)*100) / 100)
@@ -93,25 +92,36 @@ func UserResponseJson(user models.User, token ...string) UserResponse {
 		}
 	}
 
-	response := UserResponse{
-		ID:                user.UUID,
-		Name:              user.Name,
-		Email:             user.Email,
-		Role:              roleName,
-		IsProfileComplete: isProfileComplete,
-		Profile:           profileData,
-		CreatedAt:         user.CreatedAt,
-	}
-
+	var response UserResponse
 	if len(token) > 0 {
-		response.Token = token[0]
+		// Login request: only basic user info and token
+		response = UserResponse{
+			ID:                user.UUID,
+			Name:              user.Name,
+			Email:             user.Email,
+			Role:              roleName,
+			Token:             token[0],
+			IsProfileComplete: isProfileComplete,
+			CreatedAt:         user.CreatedAt,
+		}
+	} else {
+		// Get my profile request: load full profile data
+		response = UserResponse{
+			ID:                user.UUID,
+			Name:              user.Name,
+			Email:             user.Email,
+			Role:              roleName,
+			IsProfileComplete: isProfileComplete,
+			Profile:           profileData,
+			CreatedAt:         user.CreatedAt,
+		}
 	}
 
 	return response
 }
 
 func buildFullAddress(profile models.Profile) string {
-	addressParts := []string{profile.AddressStreet}
+	addressParts := []string{}
 
 	if profile.Village.ID > 0 {
 		classification := profile.Village.Classification.Name

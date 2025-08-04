@@ -13,7 +13,6 @@ type Profile struct {
 	DateOfBirth         *time.Time               `gorm:"type:date"`
 	HeightCM            uint                     `gorm:"type:smallint"`
 	WeightKG            float32                  `gorm:"type:decimal(5,2)"`
-	AddressStreet       string                   `gorm:"type:text"`
 	LastEducation       constants.EducationLevel `gorm:"type:enum('Tidak Sekolah', 'SD', 'SMP', 'SMA', 'Diploma', 'S1', 'S2', 'S3')"`
 	ParentLastEducation constants.EducationLevel `gorm:"type:enum('Tidak Sekolah', 'SD', 'SMP', 'SMA', 'Diploma', 'S1', 'S2', 'S3')"`
 	ParentLastJob       string                   `gorm:"type:varchar(100)"`

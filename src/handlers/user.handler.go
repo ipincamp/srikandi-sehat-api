@@ -56,41 +56,63 @@ func UpdateOrCreateProfile(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusNotFound, "User not found")
 	}
 
-	if input.Name != "" {
-		if err := tx.Model(&user).Update("name", input.Name).Error; err != nil {
+	if input.Name != nil {
+		if err := tx.Model(&user).Update("name", *input.Name).Error; err != nil {
 			return utils.SendError(c, fiber.StatusInternalServerError, "Failed to update user name")
 		}
 	}
 
-	dob, _ := time.Parse("2006-01-02", input.DateOfBirth)
+	updateData := make(map[string]any)
 
-	var village region.Village
-	if err := tx.First(&village, "code = ?", input.VillageCode).Error; err != nil {
-		return utils.SendError(c, fiber.StatusNotFound, "Village code not found")
+	if input.PhoneNumber != nil {
+		updateData["phone_number"] = *input.PhoneNumber
+	}
+	if input.HeightCM != nil {
+		updateData["height_cm"] = *input.HeightCM
+	}
+	if input.WeightKG != nil {
+		updateData["weight_kg"] = *input.WeightKG
+	}
+	if input.LastEducation != nil {
+		updateData["last_education"] = *input.LastEducation
+	}
+	if input.ParentLastEducation != nil {
+		updateData["parent_last_education"] = *input.ParentLastEducation
+	}
+	if input.ParentLastJob != nil {
+		updateData["parent_last_job"] = *input.ParentLastJob
+	}
+	if input.InternetAccess != nil {
+		updateData["internet_access"] = *input.InternetAccess
+	}
+	if input.MenarcheAge != nil {
+		updateData["menarche_age"] = *input.MenarcheAge
 	}
 
-	profileData := models.Profile{
-		UserID:              user.ID,
-		PhoneNumber:         input.PhoneNumber,
-		DateOfBirth:         &dob,
-		HeightCM:            input.HeightCM,
-		WeightKG:            input.WeightKG,
-		AddressStreet:       input.AddressStreet,
-		VillageID:           &village.ID,
-		LastEducation:       input.LastEducation,
-		ParentLastEducation: input.ParentLastEducation,
-		ParentLastJob:       input.ParentLastJob,
-		InternetAccess:      input.InternetAccess,
-		MenarcheAge:         input.MenarcheAge,
+	if input.DateOfBirth != nil {
+		dob, err := time.Parse("2006-01-02", *input.DateOfBirth)
+		if err == nil {
+			updateData["date_of_birth"] = &dob
+		}
 	}
 
-	var existingProfile models.Profile
-	err := tx.Where(models.Profile{UserID: user.ID}).
-		Assign(profileData).
-		FirstOrCreate(&existingProfile).Error
+	if input.VillageCode != nil {
+		var village region.Village
+		if err := tx.First(&village, "code = ?", *input.VillageCode).Error; err != nil {
+			return utils.SendError(c, fiber.StatusNotFound, "Village code not found")
+		}
+		updateData["village_id"] = &village.ID
+	}
 
-	if err != nil {
-		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to save profile")
+	var profile models.Profile
+	if err := tx.Where(models.Profile{UserID: user.ID}).FirstOrCreate(&profile).Error; err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to find or create profile")
+	}
+
+	if len(updateData) > 0 {
+		if err := tx.Model(&profile).Updates(updateData).Error; err != nil {
+			return utils.SendError(c, fiber.StatusInternalServerError, "Failed to update profile")
+		}
 	}
 
 	if err := tx.Commit().Error; err != nil {

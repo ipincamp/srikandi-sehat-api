@@ -16,7 +16,7 @@ var DB *gorm.DB
 
 func ConnectDB() {
 	var err error
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True",
 		config.Get("DB_USER"),
 		config.Get("DB_PASS"),
 		config.Get("DB_HOST"),
@@ -36,10 +36,23 @@ func ConnectDB() {
 
 	DB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{
 		Logger: newLogger,
+		NowFunc: func() time.Time {
+			return time.Now().Local()
+		},
 	})
 	if err != nil {
-		log.Fatal("[Database] Connection failed:", err)
+		log.Fatalf("[DB] Connection failed: %v", err)
 	}
 
-	log.Println("[Database] Connected to MySQL database")
+	sqlDB, err := DB.DB()
+	if err != nil {
+		log.Fatalf("[DB] Failed to get basic DB connection: %v", err)
+	}
+
+	_, err = sqlDB.Exec("SET time_zone = 'Asia/Jakarta'")
+	if err != nil {
+		log.Fatalf("[DB] Failed to set database timezone: %v", err)
+	}
+
+	log.Println("[DB] Connected to MySQL database")
 }

@@ -1,4 +1,4 @@
-.PHONY: migrate-create migrate-up migrate-down
+.PHONY: migrate-create migrate-up migrate-down db-seed
 
 migrate-create:
 	@$(eval timestamp := $(shell date +%Y%m%d%H%M%S))
@@ -40,3 +40,6 @@ migrate-up:
 
 migrate-down:
 	@go run cmd/migrate/main.go down
+
+db-seed:
+	@go run cmd/seed/main.go

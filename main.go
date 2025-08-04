@@ -19,12 +19,17 @@ import (
 )
 
 func main() {
+	jakartaTime, err := time.LoadLocation("Asia/Jakarta")
+	if err != nil {
+		log.Fatalf("[APP] Failed to load Jakarta timezone: %v", err)
+	}
+	time.Local = jakartaTime
 	config.LoadConfig()
 	database.ConnectDB()
+
 	utils.SetupValidator()
 	utils.InitializeRegistrationFilter()
 	utils.InitializeFrequentLoginFilter()
-
 	utils.InitializeRoleCache()
 	utils.InitializeBlocklistCache()
 
@@ -55,7 +60,7 @@ func main() {
 	}()
 
 	<-quit
-	log.Println("Shutting down server...")
+	log.Println("[APP] Shutting down server...")
 
 	utils.SaveAllBloomFilters()
 
@@ -63,6 +68,6 @@ func main() {
 	defer cancel()
 
 	if err := app.ShutdownWithContext(ctx); err != nil {
-		log.Fatalf("Failed to gracefully shutdown server: %v", err)
+		log.Fatalf("[APP] Failed to gracefully shutdown server: %v", err)
 	}
 }

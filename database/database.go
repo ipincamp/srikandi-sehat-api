@@ -3,8 +3,6 @@ package database
 import (
 	"fmt"
 	"ipincamp/srikandi-sehat/config"
-	"ipincamp/srikandi-sehat/src/models"
-	"ipincamp/srikandi-sehat/src/models/region"
 	"log"
 	"os"
 	"time"
@@ -40,26 +38,8 @@ func ConnectDB() {
 		Logger: newLogger,
 	})
 	if err != nil {
-		log.Fatal("Failed to connect to database:", err)
+		log.Fatal("[Database] Connection failed:", err)
 	}
 
-	log.Println("Database connection successfully opened")
-
-	log.Println("Running Migrations")
-	err = DB.AutoMigrate(
-		&models.User{},
-		&models.Role{},
-		&models.Permission{},
-		&models.InvalidToken{},
-		&region.Classification{},
-		&region.Province{},
-		&region.Regency{},
-		&region.District{},
-		&region.Village{},
-		&models.Profile{},
-		// &models.AnotherModel{},
-	)
-	if err != nil {
-		log.Fatal("Failed to migrate database:", err)
-	}
+	log.Println("[Database] Connected to MySQL database")
 }

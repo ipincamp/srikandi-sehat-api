@@ -45,3 +45,23 @@ func ValidateQuery[T any](c *fiber.Ctx) error {
 
 	return c.Next()
 }
+
+func ValidateParams[T any](c *fiber.Ctx) error {
+	params := new(T)
+
+	if err := c.ParamsParser(params); err != nil {
+		return utils.SendError(c, fiber.StatusBadRequest, "Invalid URL parameters")
+	}
+
+	if validationErrors := utils.ValidateStruct(params); len(validationErrors) > 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"status":  false,
+			"message": "Validation failed",
+			"errors":  validationErrors,
+		})
+	}
+
+	c.Locals("request_params", params)
+
+	return c.Next()
+}

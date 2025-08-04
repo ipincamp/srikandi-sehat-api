@@ -26,7 +26,7 @@ func SetupRoutes(app *fiber.App) {
 	// Admin routes
 	admin := api.Group("/admin", middleware.AuthMiddleware, middleware.AdminMiddleware)
 	admin.Get("/users", middleware.ValidateQuery[dto.UserQuery], handlers.GetAllUsers)
-	admin.Get("/users/:id", handlers.GetUserByID)
+	admin.Get("/users/:id", middleware.ValidateParams[dto.UserParam], handlers.GetUserByID)
 
 	// Region routes
 	region := api.Group("/regions")

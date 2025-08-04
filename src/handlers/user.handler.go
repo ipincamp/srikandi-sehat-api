@@ -55,41 +55,76 @@ func UpdateOrCreateProfile(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusNotFound, "User not found")
 	}
 
-	if input.Name != nil {
+	var profile models.Profile
+	err := tx.Where(models.Profile{UserID: user.ID}).First(&profile).Error
+
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		profile = models.Profile{
+			UserID:              user.ID,
+			PhoneNumber:         "",
+			HeightCM:            0,
+			WeightKG:            0,
+			LastEducation:       constants.EduNone,
+			ParentLastEducation: constants.EduNone,
+			ParentLastJob:       "",
+			InternetAccess:      constants.AccessCellular,
+			MenarcheAge:         0,
+			DateOfBirth:         nil,
+			VillageID:           nil,
+		}
+		if err := tx.Model(&models.Profile{}).Create(&profile).Error; err != nil {
+			return utils.SendError(c, fiber.StatusInternalServerError, "Failed to create profile")
+		}
+	}
+
+	updateData := make(map[string]interface{})
+
+	if input.Name != nil && *input.Name != user.Name {
 		if err := tx.Model(&user).Update("name", *input.Name).Error; err != nil {
 			return utils.SendError(c, fiber.StatusInternalServerError, "Failed to update user name")
 		}
 	}
 
-	updateData := make(map[string]interface{})
-	if input.PhoneNumber != nil {
+	if input.PhoneNumber != nil && *input.PhoneNumber != profile.PhoneNumber {
 		updateData["phone_number"] = *input.PhoneNumber
 	}
-	if input.HeightCM != nil {
+	if input.HeightCM != nil && *input.HeightCM != profile.HeightCM {
 		updateData["height_cm"] = *input.HeightCM
 	}
-	if input.WeightKG != nil {
+	if input.WeightKG != nil && *input.WeightKG != profile.WeightKG {
 		updateData["weight_kg"] = *input.WeightKG
 	}
-	if input.LastEducation != nil {
+	if input.LastEducation != nil && *input.LastEducation != profile.LastEducation {
 		updateData["last_education"] = *input.LastEducation
 	}
-	if input.ParentLastEducation != nil {
+	if input.ParentLastEducation != nil && *input.ParentLastEducation != profile.ParentLastEducation {
 		updateData["parent_last_education"] = *input.ParentLastEducation
 	}
-	if input.ParentLastJob != nil {
+	if input.ParentLastJob != nil && *input.ParentLastJob != profile.ParentLastJob {
 		updateData["parent_last_job"] = *input.ParentLastJob
 	}
-	if input.InternetAccess != nil {
+	if input.InternetAccess != nil && *input.InternetAccess != profile.InternetAccess {
 		updateData["internet_access"] = *input.InternetAccess
 	}
-	if input.MenarcheAge != nil {
+	if input.MenarcheAge != nil && *input.MenarcheAge != profile.MenarcheAge {
 		updateData["menarche_age"] = *input.MenarcheAge
 	}
 
 	if input.DateOfBirth != nil {
-		if dob, err := time.Parse("2006-01-02", *input.DateOfBirth); err == nil {
-			updateData["date_of_birth"] = &dob
+		dob, err := time.Parse("2006-01-02", *input.DateOfBirth)
+		if err == nil {
+			loc, locErr := time.LoadLocation("Asia/Jakarta")
+			if locErr == nil {
+				dob = dob.In(loc)
+			}
+			var currentDOBStr string
+			if profile.DateOfBirth != nil {
+				currentDOBStr = profile.DateOfBirth.Format("2006-01-02")
+			}
+			newDOBStr := dob.Format("2006-01-02")
+			if profile.DateOfBirth == nil || currentDOBStr != newDOBStr {
+				updateData["date_of_birth"] = &dob
+			}
 		}
 	}
 	if input.VillageCode != nil {
@@ -97,24 +132,14 @@ func UpdateOrCreateProfile(c *fiber.Ctx) error {
 		if err := tx.First(&village, "code = ?", *input.VillageCode).Error; err != nil {
 			return utils.SendError(c, fiber.StatusNotFound, "Village code not found")
 		}
-		updateData["village_id"] = &village.ID
+		if profile.VillageID == nil || village.ID != *profile.VillageID {
+			updateData["village_id"] = &village.ID
+		}
 	}
 
-	var profile models.Profile
-	err := tx.Where(models.Profile{UserID: user.ID}).First(&profile).Error
-
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		updateData["user_id"] = user.ID
-		if err := tx.Model(&models.Profile{}).Create(updateData).Error; err != nil {
-			return utils.SendError(c, fiber.StatusInternalServerError, "Failed to create profile")
-		}
-	} else if err != nil {
-		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to find profile")
-	} else {
-		if len(updateData) > 0 {
-			if err := tx.Model(&profile).Updates(updateData).Error; err != nil {
-				return utils.SendError(c, fiber.StatusInternalServerError, "Failed to update profile")
-			}
+	if len(updateData) > 0 {
+		if err := tx.Model(&profile).Updates(updateData).Error; err != nil {
+			return utils.SendError(c, fiber.StatusInternalServerError, "Failed to update profile")
 		}
 	}
 
@@ -210,10 +235,15 @@ func GetAllUsers(c *fiber.Ctx) error {
 }
 
 func GetUserByID(c *fiber.Ctx) error {
-	userUUID := c.Params("id")
+	params := c.Locals("request_params").(*dto.UserParam)
+	userUUID := params.ID
 
 	var user models.User
-	result := database.DB.Preload("Roles").First(&user, "uuid = ?", userUUID)
+	result := database.DB.
+		Preload("Roles").
+		Preload("Profile.Village.Classification").
+		Preload("Profile.Village.District.Regency.Province").
+		First(&user, "uuid = ?", userUUID)
 
 	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		return utils.SendError(c, fiber.StatusNotFound, "User not found")

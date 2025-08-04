@@ -9,6 +9,11 @@ import (
 	"time"
 )
 
+// Request Param
+type UserParam struct {
+	ID string `params:"id" validate:"required,uuid"`
+}
+
 // Request Query
 type UserQuery struct {
 	Classification string `query:"classification" validate:"omitempty,oneof='perkotaan' 'perdesaan'"`

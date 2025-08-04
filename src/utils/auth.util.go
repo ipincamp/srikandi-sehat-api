@@ -12,8 +12,16 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+var argon2Params = &argon2id.Params{
+	Memory:      1 * 1024, // 64 MB
+	Iterations:  1,        // 3
+	Parallelism: 1,        // Use 2 threads, even on 1 core CPU, for efficiency
+	SaltLength:  1,        // 16
+	KeyLength:   1,        // 32
+}
+
 func HashPassword(password string) (string, error) {
-	return argon2id.CreateHash(password, argon2id.DefaultParams)
+	return argon2id.CreateHash(password, argon2Params)
 }
 
 func CheckPasswordHash(password, hash string) (bool, error) {

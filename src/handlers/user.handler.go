@@ -163,10 +163,10 @@ func GetAllUsers(c *fiber.Ctx) error {
 
 	var users []models.User
 
-	adminUserIDs := database.DB.Table("user_roles").
-		Select("user_roles.user_id").
-		Joins("join roles on user_roles.role_id = roles.id").
-		Where("roles.name = ?", string(constants.AdminRole))
+	subQuery := database.DB.Table("user_roles").
+		Select("1").
+		Joins("JOIN roles ON user_roles.role_id = roles.id").
+		Where("user_roles.user_id = users.id AND roles.name = ?", string(constants.AdminRole))
 
 	query := database.DB.Model(&models.User{}).
 		Joins("JOIN profiles ON users.id = profiles.user_id").
@@ -177,7 +177,7 @@ func GetAllUsers(c *fiber.Ctx) error {
 		query = query.Where("classifications.name = ?", queries.Classification)
 	}
 
-	query = query.Where("users.id NOT IN (?)", adminUserIDs)
+	query = query.Where("NOT EXISTS (?)", subQuery)
 
 	page := queries.Page
 	if page == 0 {

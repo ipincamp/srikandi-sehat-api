@@ -2,7 +2,6 @@ package routes
 
 import (
 	"ipincamp/srikandi-sehat/src/dto"
-	menstrualDto "ipincamp/srikandi-sehat/src/dto/menstrual"
 	"ipincamp/srikandi-sehat/src/handlers"
 	menstrualHandler "ipincamp/srikandi-sehat/src/handlers/menstrual"
 	"ipincamp/srikandi-sehat/src/middleware"
@@ -39,6 +38,7 @@ func SetupRoutes(app *fiber.App) {
 
 	// Menstrual health routes
 	menstrual := api.Group("/menstrual", middleware.AuthMiddleware)
-	menstrual.Post("/cycles", middleware.ValidateBody[menstrualDto.CycleRequest], menstrualHandler.RecordCycle)
-	menstrual.Post("/symptoms/log", middleware.ValidateBody[menstrualDto.SymptomLogRequest], menstrualHandler.LogSymptoms)
+	menstrual.Post("/cycles", middleware.ValidateBody[dto.CycleRequest], menstrualHandler.RecordCycle)
+	menstrual.Post("/symptoms/log", middleware.ValidateBody[dto.SymptomLogRequest], menstrualHandler.LogSymptoms)
+	menstrual.Get("/symptoms/master", menstrualHandler.GetSymptomsMaster)
 }

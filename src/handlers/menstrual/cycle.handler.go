@@ -2,7 +2,7 @@ package menstrual
 
 import (
 	"ipincamp/srikandi-sehat/database"
-	dto "ipincamp/srikandi-sehat/src/dto/menstrual"
+	"ipincamp/srikandi-sehat/src/dto"
 	"ipincamp/srikandi-sehat/src/models"
 	menstrual "ipincamp/srikandi-sehat/src/models/menstrual"
 	"ipincamp/srikandi-sehat/src/utils"

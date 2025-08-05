@@ -2,14 +2,49 @@ package menstrual
 
 import (
 	"ipincamp/srikandi-sehat/database"
-	dto "ipincamp/srikandi-sehat/src/dto/menstrual"
+	"ipincamp/srikandi-sehat/src/dto"
 	"ipincamp/srikandi-sehat/src/models"
 	"ipincamp/srikandi-sehat/src/models/menstrual"
 	"ipincamp/srikandi-sehat/src/utils"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"gorm.io/gorm"
 )
+
+func GetSymptomsMaster(c *fiber.Ctx) error {
+	var symptoms []menstrual.Symptom
+	if err := database.DB.
+		Select("id, name, type").
+		Preload("Options", func(db *gorm.DB) *gorm.DB {
+			return db.Select("id, name, symptom_id")
+		}).
+		Find(&symptoms).Error; err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to fetch symptoms data")
+	}
+
+	var responseData []dto.SymptomMasterResponse
+
+	for _, s := range symptoms {
+		var optionDTOs []dto.SymptomOptionResponse
+		for _, o := range s.Options {
+			optionDTOs = append(optionDTOs, dto.SymptomOptionResponse{
+				ID:   o.ID,
+				Name: o.Name,
+			})
+		}
+
+		symptomDTO := dto.SymptomMasterResponse{
+			ID:      s.ID,
+			Name:    s.Name,
+			Type:    s.Type,
+			Options: optionDTOs,
+		}
+		responseData = append(responseData, symptomDTO)
+	}
+
+	return utils.SendSuccess(c, fiber.StatusOK, "Symptoms master data fetched successfully", responseData)
+}
 
 func LogSymptoms(c *fiber.Ctx) error {
 	userUUID := c.Locals("user_id").(string)
@@ -37,7 +72,12 @@ func LogSymptoms(c *fiber.Ctx) error {
 		tx.Model(&symptomLog).Update("note", input.Note)
 	}
 
-	tx.Where("symptom_log_id = ?", symptomLog.ID).Delete(&menstrual.SymptomLogDetail{})
+	var activeCycle menstrual.MenstrualCycle
+	err := tx.Where("user_id = ? AND start_date <= ? AND end_date >= ?", user.ID, logDate, logDate).
+		First(&activeCycle).Error
+	if err == nil {
+		tx.Model(&symptomLog).Update("menstrual_cycle_id", activeCycle.ID)
+	}
 
 	for _, s := range input.Symptoms {
 		detail := menstrual.SymptomLogDetail{

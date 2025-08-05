@@ -20,6 +20,8 @@ func main() {
 		migrations.AddUuidAndSoftDeleteToUsers(),
 		migrations.CreateRbacTables(),
 		migrations.CreateInvalidTokensTable(),
+		migrations.CreateRegionTables(),
+		migrations.CreateProfilesTable(),
 		// And more...
 	})
 

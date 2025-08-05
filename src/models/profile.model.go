@@ -23,6 +23,6 @@ type Profile struct {
 	VillageID *uint
 	Village   region.Village `gorm:"foreignKey:VillageID"`
 
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	CreatedAt time.Time `gorm:"default:CURRENT_TIMESTAMP"`
+	UpdatedAt time.Time `gorm:"default:CURRENT_TIMESTAMP"`
 }

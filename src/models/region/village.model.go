@@ -12,6 +12,6 @@ type Village struct {
 	ClassificationID uint           `gorm:"not null"`
 	Classification   Classification `gorm:"foreignKey:ClassificationID"`
 
-	CreatedAt time.Time `gorm:"default:CURRENT_TIMESTAMP"`
-	UpdatedAt time.Time `gorm:"default:CURRENT_TIMESTAMP"`
+	CreatedAt time.Time `gorm:"autoCreateTime"`
+	UpdatedAt time.Time `gorm:"autoUpdateTime"`
 }

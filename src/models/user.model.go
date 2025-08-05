@@ -16,9 +16,10 @@ type User struct {
 
 	Roles       []*Role       `gorm:"many2many:user_roles;"`
 	Permissions []*Permission `gorm:"many2many:user_permissions;"`
+	Profile     Profile       `gorm:"foreignKey:UserID"`
 
-	CreatedAt time.Time      `gorm:"default:CURRENT_TIMESTAMP"`
-	UpdatedAt time.Time      `gorm:"default:CURRENT_TIMESTAMP"`
+	CreatedAt time.Time      `gorm:"autoCreateTime"`
+	UpdatedAt time.Time      `gorm:"autoUpdateTime"`
 	DeletedAt gorm.DeletedAt `gorm:"index"`
 }
 

@@ -1,4 +1,4 @@
-package seed
+package seeders
 
 import (
 	"ipincamp/srikandi-sehat/src/constants"
@@ -9,6 +9,7 @@ import (
 )
 
 func SeedRoles(tx *gorm.DB) error {
+	log.Println("[DB] [SEED] [ROLE] Seeding roles...")
 	roles := []models.Role{
 		{Name: string(constants.AdminRole)},
 		{Name: string(constants.UserRole)},
@@ -20,6 +21,6 @@ func SeedRoles(tx *gorm.DB) error {
 		}
 	}
 
-	log.Println("Roles seeded")
+	log.Println("[DB] [SEED] [ROLE] Roles seeded successfully.")
 	return nil
 }

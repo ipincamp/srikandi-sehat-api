@@ -11,6 +11,6 @@ type District struct {
 	Regency   Regency   `gorm:"foreignKey:RegencyID"`
 	Villages  []Village `gorm:"foreignKey:DistrictID"`
 
-	CreatedAt time.Time `gorm:"default:CURRENT_TIMESTAMP"`
-	UpdatedAt time.Time `gorm:"default:CURRENT_TIMESTAMP"`
+	CreatedAt time.Time `gorm:"autoCreateTime"`
+	UpdatedAt time.Time `gorm:"autoUpdateTime"`
 }

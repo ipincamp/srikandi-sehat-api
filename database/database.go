@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"ipincamp/srikandi-sehat/config"
 	"log"
+	"net/url"
 	"os"
 	"time"
 
@@ -16,12 +17,14 @@ var DB *gorm.DB
 
 func ConnectDB() {
 	var err error
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True",
+	location := url.QueryEscape(config.Get("TIMEZONE"))
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=%s",
 		config.Get("DB_USER"),
 		config.Get("DB_PASS"),
 		config.Get("DB_HOST"),
 		config.Get("DB_PORT"),
 		config.Get("DB_NAME"),
+		location,
 	)
 
 	newLogger := logger.New(
@@ -49,7 +52,7 @@ func ConnectDB() {
 		log.Fatalf("[DB] Failed to get basic DB connection: %v", err)
 	}
 
-	_, err = sqlDB.Exec("SET time_zone = 'Asia/Jakarta'")
+	_, err = sqlDB.Exec(fmt.Sprintf("SET time_zone = '%s'", config.Get("TIMEZONE")))
 	if err != nil {
 		log.Fatalf("[DB] Failed to set database timezone: %v", err)
 	}

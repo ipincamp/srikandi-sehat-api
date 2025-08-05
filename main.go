@@ -19,11 +19,7 @@ import (
 )
 
 func main() {
-	jakartaTime, err := time.LoadLocation("Asia/Jakarta")
-	if err != nil {
-		log.Fatalf("[APP] Failed to load Jakarta timezone: %v", err)
-	}
-	time.Local = jakartaTime
+	config.SetTimeZone()
 	config.LoadConfig()
 	database.ConnectDB()
 

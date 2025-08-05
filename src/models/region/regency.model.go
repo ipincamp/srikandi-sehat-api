@@ -11,6 +11,6 @@ type Regency struct {
 	Province   Province   `gorm:"foreignKey:ProvinceID"`
 	Districts  []District `gorm:"foreignKey:RegencyID"`
 
-	CreatedAt time.Time `gorm:"default:CURRENT_TIMESTAMP"`
-	UpdatedAt time.Time `gorm:"default:CURRENT_TIMESTAMP"`
+	CreatedAt time.Time `gorm:"autoCreateTime"`
+	UpdatedAt time.Time `gorm:"autoUpdateTime"`
 }

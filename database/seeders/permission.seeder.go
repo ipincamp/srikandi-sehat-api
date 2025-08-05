@@ -1,4 +1,4 @@
-package seed
+package seeders
 
 import (
 	"ipincamp/srikandi-sehat/src/models"
@@ -8,9 +8,9 @@ import (
 )
 
 func SeedPermissions(tx *gorm.DB) error {
+	log.Println("[DB] [SEED] [PERMISSION] Seeding permissions...")
 	permissions := []models.Permission{
-		// {Name: "view-profile"},
-		// {Name: "edit-profile"},
+		// {Name: "permission-name"},
 	}
 
 	for _, permission := range permissions {
@@ -19,6 +19,6 @@ func SeedPermissions(tx *gorm.DB) error {
 		}
 	}
 
-	log.Println("Permissions seeded")
+	log.Println("[DB] [SEED] [PERMISSION] Permissions seeded successfully.")
 	return nil
 }

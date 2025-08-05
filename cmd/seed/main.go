@@ -5,17 +5,12 @@ import (
 	"ipincamp/srikandi-sehat/database"
 	"ipincamp/srikandi-sehat/database/seeders"
 	"log"
-	"time"
 
 	"gorm.io/gorm"
 )
 
 func main() {
-	jakartaTime, err := time.LoadLocation("Asia/Jakarta")
-	if err != nil {
-		log.Fatalf("[DB] [SEED] Failed to load Jakarta timezone: %v", err)
-	}
-	time.Local = jakartaTime
+	config.SetTimeZone()
 	config.LoadConfig()
 	database.ConnectDB()
 	log.Println("[DB] [SEED] Starting seeding process...")
@@ -45,7 +40,16 @@ func main() {
 }
 
 func seeds(tx *gorm.DB) error {
+	if err := seeders.SeedRoles(tx); err != nil {
+		return err
+	}
+	if err := seeders.SeedPermissions(tx); err != nil {
+		return err
+	}
 	if err := seeders.SeedUsers(tx); err != nil {
+		return err
+	}
+	if err := seeders.SeedRegions(tx); err != nil {
 		return err
 	}
 	// And more...

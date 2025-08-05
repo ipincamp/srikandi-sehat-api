@@ -1,38 +1,48 @@
 package seeders
 
 import (
-	"ipincamp/srikandi-sehat/config"
 	"ipincamp/srikandi-sehat/database/factories"
+	"ipincamp/srikandi-sehat/src/constants"
 	"ipincamp/srikandi-sehat/src/models"
-	"ipincamp/srikandi-sehat/src/utils"
 	"log"
 
 	"gorm.io/gorm"
 )
 
 func SeedUsers(tx *gorm.DB) error {
-	log.Println("[DB] [SEED] Seeding admin user...")
-	adminPassword, _ := utils.HashPassword(config.Get("ADMIN_PASSWORD"))
-	adminUser := models.User{
-		Name:     config.Get("ADMIN_NAME"),
-		Email:    config.Get("ADMIN_EMAIL"),
-		Password: adminPassword,
-	}
-	if err := tx.Where(models.User{Email: adminUser.Email}).FirstOrCreate(&adminUser).Error; err != nil {
+	log.Println("[DB] [SEED] [USER] Seeding admin user...")
+	adminUser, err := factories.CreateAdminUser(tx)
+	if err != nil {
 		return err
 	}
-	log.Printf("[DB] [SEED] Admin user created: %s", adminUser.Email)
+	var adminRole models.Role
+	if err := tx.First(&adminRole, "name = ?", constants.AdminRole).Error; err != nil {
+		return err
+	}
+	if err := tx.Model(&adminUser).Association("Roles").Replace(&adminRole); err != nil {
+		return err
+	}
+	log.Println("[DB] [SEED] [USER] Admin user seeded successfully.")
 
-	// TODO: Assign role to adminUser
-
-	log.Println("[DB] [SEED] Creating 100 random users...")
+	log.Println("[DB] [SEED] [USER] Creating 100 random users...")
 	randomUsers, err := factories.CreateUsers(tx, 100)
 	if err != nil {
 		return err
 	}
-	log.Printf("[DB] [SEED] %d random users created successfully.", len(randomUsers))
+	log.Printf("[DB] [SEED] [USER] %d random users created successfully.", len(randomUsers))
 
-	// TODO: Assign roles to random users
+	var userRole models.Role
+	if err := tx.First(&userRole, "name = ?", constants.UserRole).Error; err != nil {
+		return err
+	}
+	log.Println("[DB] [SEED] [USER] Assigning 'User' role to random users...")
+	for _, user := range randomUsers {
+		if err := tx.Model(&user).Association("Roles").Append(&userRole); err != nil {
+			log.Printf("[DB] [SEED] [USER] Failed to assign role to user %s: %v", user.Email, err)
+		}
+	}
+	log.Println("[DB] [SEED] [USER] Role assignment for random users completed.")
 
+	log.Printf("[DB] [SEED] [USER] Seeding completed successfully with %d users.", len(randomUsers)+1)
 	return nil
 }

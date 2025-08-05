@@ -1,6 +1,7 @@
 package factories
 
 import (
+	"ipincamp/srikandi-sehat/config"
 	"ipincamp/srikandi-sehat/src/models"
 	"ipincamp/srikandi-sehat/src/utils"
 
@@ -8,8 +9,13 @@ import (
 	"gorm.io/gorm"
 )
 
+type userFactory struct {
+	Name  string `faker:"name"`
+	Email string `faker:"email"`
+}
+
 func MakeUser() (models.User, error) {
-	var factory models.User
+	var factory userFactory
 	if err := faker.FakeData(&factory); err != nil {
 		return models.User{}, err
 	}
@@ -26,18 +32,6 @@ func MakeUser() (models.User, error) {
 	}, nil
 }
 
-func CreateUser(db *gorm.DB) (models.User, error) {
-	user, err := MakeUser()
-	if err != nil {
-		return models.User{}, err
-	}
-
-	if err := db.Create(&user).Error; err != nil {
-		return models.User{}, err
-	}
-	return user, nil
-}
-
 func CreateUsers(db *gorm.DB, count int) ([]models.User, error) {
 	var users []models.User
 	for range count {
@@ -48,8 +42,27 @@ func CreateUsers(db *gorm.DB, count int) ([]models.User, error) {
 		users = append(users, user)
 	}
 
-	if err := db.Create(&users).Error; err != nil {
+	if err := db.CreateInBatches(&users, 100).Error; err != nil {
 		return nil, err
 	}
 	return users, nil
+}
+
+func CreateAdminUser(tx *gorm.DB) (models.User, error) {
+	adminPassword, err := utils.HashPassword(config.Get("ADMIN_PASSWORD"))
+	if err != nil {
+		return models.User{}, err
+	}
+
+	adminUser := models.User{
+		Name:     config.Get("ADMIN_NAME"),
+		Email:    config.Get("ADMIN_EMAIL"),
+		Password: adminPassword,
+	}
+
+	if err := tx.Where(models.User{Email: adminUser.Email}).FirstOrCreate(&adminUser).Error; err != nil {
+		return models.User{}, err
+	}
+
+	return adminUser, nil
 }

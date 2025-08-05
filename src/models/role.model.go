@@ -3,11 +3,11 @@ package models
 import "time"
 
 type Role struct {
-	ID   uint   `gorm:"primarykey" json:"id"`
-	Name string `gorm:"type:varchar(100);uniqueIndex;not null" json:"name"`
+	ID   uint   `gorm:"primarykey"`
+	Name string `gorm:"type:varchar(100);uniqueIndex;not null"`
 
-	Permissions []*Permission `gorm:"many2many:role_permissions;" json:"permissions,omitempty"`
+	Permissions []*Permission `gorm:"many2many:role_permissions;"`
 
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	CreatedAt time.Time `gorm:"default:CURRENT_TIMESTAMP"`
+	UpdatedAt time.Time `gorm:"default:CURRENT_TIMESTAMP"`
 }

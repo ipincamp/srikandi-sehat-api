@@ -18,6 +18,7 @@ func main() {
 	m := gormigrate.New(db, gormigrate.DefaultOptions, []*gormigrate.Migration{
 		migrations.CreateUsersTable(),
 		migrations.AddUuidAndSoftDeleteToUsers(),
+		migrations.CreateRbacTables(),
 		// And more...
 	})
 

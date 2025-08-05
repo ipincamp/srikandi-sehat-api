@@ -6,7 +6,6 @@ import (
 	"ipincamp/srikandi-sehat/src/models"
 	menstrual "ipincamp/srikandi-sehat/src/models/menstrual"
 	"ipincamp/srikandi-sehat/src/utils"
-	"log"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -17,18 +16,26 @@ func RecordCycle(c *fiber.Ctx) error {
 	userUUID := c.Locals("user_id").(string)
 	input := c.Locals("request_body").(*dto.CycleRequest)
 
+	if input == nil || (input.StartDate == "" && input.EndDate == "") {
+		return utils.SendError(c, fiber.StatusBadRequest, "StartDate or EndDate must be provided")
+	}
+
 	var user models.User
 	if err := database.DB.First(&user, "uuid = ?", userUUID).Error; err != nil {
 		return utils.SendError(c, fiber.StatusNotFound, "User not found")
 	}
 
 	tx := database.DB.Begin()
-	if tx.Error != nil {
-		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to start transaction")
-	}
 	defer tx.Rollback()
 
+	activeCycle, err := findActiveCycle(tx, user.ID)
+	isStart := true
+
 	if input.StartDate != "" {
+		if err == nil {
+			return utils.SendError(c, fiber.StatusConflict, "Cannot start a new cycle while another is in progress.")
+		}
+
 		startDate, _ := time.Parse("2006-01-02", input.StartDate)
 
 		newCycle := menstrual.MenstrualCycle{UserID: user.ID, StartDate: startDate}
@@ -40,15 +47,35 @@ func RecordCycle(c *fiber.Ctx) error {
 	}
 
 	if input.EndDate != "" {
-		endDate, _ := time.Parse("2006-01-02", input.EndDate)
-		updateCurrentCyclePeriod(tx, user.ID, endDate)
+		if err != nil {
+			return utils.SendError(c, fiber.StatusConflict, "No active cycle to end.")
+		} else {
+			endDate, _ := time.Parse("2006-01-02", input.EndDate)
+
+			updateCurrentCyclePeriod(tx, activeCycle.UserID, endDate)
+			isStart = false
+		}
 	}
 
 	if err := tx.Commit().Error; err != nil {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to commit transaction")
 	}
 
-	return utils.SendSuccess(c, fiber.StatusOK, "Cycle data recorded successfully", nil)
+	var message string
+	if isStart {
+		message = "Cycle started successfully"
+	} else {
+		message = "Cycle ended successfully"
+	}
+	return utils.SendSuccess(c, fiber.StatusOK, message, nil)
+}
+
+func findActiveCycle(tx *gorm.DB, userID uint) (menstrual.MenstrualCycle, error) {
+	var activeCycle menstrual.MenstrualCycle
+	err := tx.Where("user_id = ? AND end_date IS NULL", userID).
+		Order("start_date desc").
+		First(&activeCycle).Error
+	return activeCycle, err
 }
 
 func updatePreviousCycleLength(tx *gorm.DB, userID uint, newStartDate time.Time) {
@@ -65,7 +92,6 @@ func updatePreviousCycleLength(tx *gorm.DB, userID uint, newStartDate time.Time)
 			"cycle_length":    cycleLength,
 			"is_cycle_normal": isNormal,
 		})
-		log.Printf("Updated previous cycle for user %d. Length: %d days.", userID, cycleLength)
 	}
 }
 
@@ -84,6 +110,5 @@ func updateCurrentCyclePeriod(tx *gorm.DB, userID uint, endDate time.Time) {
 			"period_length":    periodLength,
 			"is_period_normal": isNormal,
 		})
-		log.Printf("Updated current period for user %d. Duration: %d days.", userID, periodLength)
 	}
 }

@@ -19,6 +19,7 @@ func main() {
 		migrations.CreateUsersTable(),
 		migrations.AddUuidAndSoftDeleteToUsers(),
 		migrations.CreateRbacTables(),
+		migrations.CreateInvalidTokensTable(),
 		// And more...
 	})
 

@@ -4,8 +4,8 @@ import "time"
 
 type Classification struct {
 	ID   uint   `gorm:"primarykey"`
-	Name string `gorm:"type:char(9);uniqueIndex"`
+	Name string `gorm:"type:varchar(20);uniqueIndex"`
 
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	CreatedAt time.Time `gorm:"autoCreateTime"`
+	UpdatedAt time.Time `gorm:"autoUpdateTime"`
 }

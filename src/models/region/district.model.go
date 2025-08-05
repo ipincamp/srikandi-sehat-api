@@ -7,10 +7,10 @@ type District struct {
 	Code string `gorm:"type:char(7);uniqueIndex"`
 	Name string `gorm:"type:varchar(100)"`
 
-	RegencyID uint
+	RegencyID uint      `gorm:"not null"`
 	Regency   Regency   `gorm:"foreignKey:RegencyID"`
 	Villages  []Village `gorm:"foreignKey:DistrictID"`
 
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	CreatedAt time.Time `gorm:"autoCreateTime"`
+	UpdatedAt time.Time `gorm:"autoUpdateTime"`
 }

@@ -8,21 +8,24 @@ import (
 )
 
 type User struct {
-	ID       uint   `gorm:"primarykey" json:"-"`
-	UUID     string `gorm:"type:char(36);uniqueIndex" json:"id"`
-	Name     string `gorm:"type:varchar(255);not null" json:"name" validate:"required,min=3"`
-	Email    string `gorm:"type:varchar(255);uniqueIndex;not null" json:"email" validate:"required,email"`
-	Password string `gorm:"type:varchar(255);not null" json:"-"`
+	ID       uint   `gorm:"primarykey"`
+	UUID     string `gorm:"type:char(36);uniqueIndex;not null"`
+	Name     string `gorm:"type:varchar(100)"`
+	Email    string `gorm:"type:varchar(255);uniqueIndex;not null"`
+	Password string `gorm:"type:varchar(255);not null"`
 
-	Roles       []*Role       `gorm:"many2many:user_roles;" json:"roles,omitempty"`
-	Permissions []*Permission `gorm:"many2many:user_permissions;" json:"permissions,omitempty"`
+	Roles       []*Role       `gorm:"many2many:user_roles;"`
+	Permissions []*Permission `gorm:"many2many:user_permissions;"`
 	Profile     Profile       `gorm:"foreignKey:UserID"`
 
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	CreatedAt time.Time      `gorm:"autoCreateTime"`
+	UpdatedAt time.Time      `gorm:"autoUpdateTime"`
+	DeletedAt gorm.DeletedAt `gorm:"index"`
 }
 
 func (user *User) BeforeCreate(tx *gorm.DB) (err error) {
-	user.UUID = uuid.New().String()
+	if user.UUID == "" {
+		user.UUID = uuid.New().String()
+	}
 	return
 }

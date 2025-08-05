@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"ipincamp/srikandi-sehat/config"
 	"ipincamp/srikandi-sehat/database"
 	"ipincamp/srikandi-sehat/src/constants"
 	"ipincamp/srikandi-sehat/src/dto"
@@ -113,7 +114,7 @@ func UpdateOrCreateProfile(c *fiber.Ctx) error {
 	if input.DateOfBirth != nil {
 		dob, err := time.Parse("2006-01-02", *input.DateOfBirth)
 		if err == nil {
-			loc, locErr := time.LoadLocation("Asia/Jakarta")
+			loc, locErr := time.LoadLocation(config.Get("TIMEZONE"))
 			if locErr == nil {
 				dob = dob.In(loc)
 			}

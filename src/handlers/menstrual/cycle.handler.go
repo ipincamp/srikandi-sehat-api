@@ -70,6 +70,33 @@ func RecordCycle(c *fiber.Ctx) error {
 	return utils.SendSuccess(c, fiber.StatusOK, message, nil)
 }
 
+func GetCycleHistory(c *fiber.Ctx) error {
+	userUUID := c.Locals("user_id").(string)
+
+	var user models.User
+	if err := database.DB.First(&user, "uuid = ?", userUUID).Error; err != nil {
+		return utils.SendError(c, fiber.StatusNotFound, "User not found")
+	}
+
+	var cycles []menstrual.MenstrualCycle
+	database.DB.Where("user_id = ?", user.ID).Order("start_date desc").Find(&cycles)
+
+	var responseData []dto.CycleResponse
+	for _, cycle := range cycles {
+		responseData = append(responseData, dto.CycleResponse{
+			ID:             cycle.ID,
+			StartDate:      cycle.StartDate,
+			EndDate:        cycle.EndDate,
+			PeriodLength:   cycle.PeriodLength,
+			CycleLength:    cycle.CycleLength,
+			IsPeriodNormal: cycle.IsPeriodNormal,
+			IsCycleNormal:  cycle.IsCycleNormal,
+		})
+	}
+
+	return utils.SendSuccess(c, fiber.StatusOK, "Cycle history fetched successfully", responseData)
+}
+
 func findActiveCycle(tx *gorm.DB, userID uint) (menstrual.MenstrualCycle, error) {
 	var activeCycle menstrual.MenstrualCycle
 	err := tx.Where("user_id = ? AND end_date IS NULL", userID).

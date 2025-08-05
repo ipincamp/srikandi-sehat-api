@@ -1,6 +1,7 @@
 package menstrual
 
 import (
+	"fmt"
 	"ipincamp/srikandi-sehat/database"
 	"ipincamp/srikandi-sehat/src/dto"
 	"ipincamp/srikandi-sehat/src/models"
@@ -50,6 +51,41 @@ func LogSymptoms(c *fiber.Ctx) error {
 	userUUID := c.Locals("user_id").(string)
 	input := c.Locals("request_body").(*dto.SymptomLogRequest)
 
+	var symptoms []menstrual.Symptom
+	if err := database.DB.
+		Select("id, name, type").
+		Preload("Options", func(db *gorm.DB) *gorm.DB {
+			return db.Select("id, name, symptom_id")
+		}).
+		Find(&symptoms).Error; err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to fetch symptoms data")
+	}
+
+	for _, inputSymptom := range input.Symptoms {
+		var dbSymptom *menstrual.Symptom
+		for i := range symptoms {
+			if inputSymptom.SymptomID == symptoms[i].ID {
+				dbSymptom = &symptoms[i]
+				break
+			}
+		}
+		if dbSymptom == nil {
+			return utils.SendError(c, fiber.StatusBadRequest, "Invalid symptom ID: "+fmt.Sprintf("%d", inputSymptom.SymptomID))
+		}
+		if inputSymptom.SymptomOptionID != nil {
+			foundOption := false
+			for _, opt := range dbSymptom.Options {
+				if opt.ID == *inputSymptom.SymptomOptionID {
+					foundOption = true
+					break
+				}
+			}
+			if !foundOption {
+				return utils.SendError(c, fiber.StatusBadRequest, "Invalid symptom option ID: "+fmt.Sprintf("%d", *inputSymptom.SymptomOptionID))
+			}
+		}
+	}
+
 	var user models.User
 	if err := database.DB.First(&user, "uuid = ?", userUUID).Error; err != nil {
 		return utils.SendError(c, fiber.StatusNotFound, "User not found")
@@ -98,4 +134,48 @@ func LogSymptoms(c *fiber.Ctx) error {
 	}
 
 	return utils.SendSuccess(c, fiber.StatusOK, "Symptoms logged successfully", nil)
+}
+
+func GetSymptomLogsByDateRange(c *fiber.Ctx) error {
+	userUUID := c.Locals("user_id").(string)
+	queries := c.Locals("request_queries").(*dto.SymptomLogQuery)
+
+	var user models.User
+	if err := database.DB.First(&user, "uuid = ?", userUUID).Error; err != nil {
+		return utils.SendError(c, fiber.StatusNotFound, "User not found")
+	}
+
+	startDate, _ := time.Parse("2006-01-02", queries.StartDate)
+	endDate, _ := time.Parse("2006-01-02", queries.EndDate)
+
+	var logs []menstrual.SymptomLog
+	database.DB.
+		Preload("Details.Symptom").
+		Preload("Details.SymptomOption").
+		Where("user_id = ? AND log_date BETWEEN ? AND ?", user.ID, startDate, endDate).
+		Order("log_date asc").
+		Find(&logs)
+
+	var responseData []dto.SymptomLogResponse
+	for _, log := range logs {
+		var detailsDTO []dto.SymptomLogDetailResponse
+		for _, detail := range log.Details {
+			detailDTO := dto.SymptomLogDetailResponse{
+				SymptomName:     detail.Symptom.Name,
+				SymptomCategory: detail.Symptom.Category,
+			}
+			if detail.SymptomOptionID.Valid {
+				detailDTO.SelectedOption = detail.SymptomOption.Name
+			}
+			detailsDTO = append(detailsDTO, detailDTO)
+		}
+
+		responseData = append(responseData, dto.SymptomLogResponse{
+			LogDate: log.LogDate,
+			Note:    log.Note,
+			Details: detailsDTO,
+		})
+	}
+
+	return utils.SendSuccess(c, fiber.StatusOK, "Symptom logs fetched successfully", responseData)
 }

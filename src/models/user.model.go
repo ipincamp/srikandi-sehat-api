@@ -1,13 +1,27 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+)
 
 type User struct {
 	ID       uint   `gorm:"primarykey"`
+	UUID     string `gorm:"type:char(36);uniqueIndex;not null"`
 	Name     string `gorm:"type:varchar(100)"`
 	Email    string `gorm:"type:varchar(255);uniqueIndex;not null"`
 	Password string `gorm:"type:varchar(255);not null"`
 
-	CreatedAt time.Time `gorm:"default:CURRENT_TIMESTAMP"`
-	UpdatedAt time.Time `gorm:"default:CURRENT_TIMESTAMP"`
+	CreatedAt time.Time      `gorm:"default:CURRENT_TIMESTAMP"`
+	UpdatedAt time.Time      `gorm:"default:CURRENT_TIMESTAMP"`
+	DeletedAt gorm.DeletedAt `gorm:"index"`
+}
+
+func (user *User) BeforeCreate(tx *gorm.DB) (err error) {
+	if user.UUID == "" {
+		user.UUID = uuid.New().String()
+	}
+	return
 }

@@ -14,7 +14,8 @@ type MenstrualCycle struct {
 	IsPeriodNormal sql.NullBool
 	IsCycleNormal  sql.NullBool
 
-	UserID uint `gorm:"not null"`
+	UserID      uint         `gorm:"not null"`
+	SymptomLogs []SymptomLog `gorm:"foreignKey:MenstrualCycleID"`
 
 	CreatedAt time.Time `gorm:"autoCreateTime"`
 	UpdatedAt time.Time `gorm:"autoUpdateTime"`

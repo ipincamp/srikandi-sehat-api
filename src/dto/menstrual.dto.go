@@ -12,6 +12,10 @@ type SymptomLogQuery struct {
 	EndDate   string `query:"finish_date" validate:"required,datetime=2006-01-02"`
 }
 
+type RecommendationQuery struct {
+	SymptomIDs string `query:"symptom_ids" validate:"required"`
+}
+
 // Request Body
 type CycleRequest struct {
 	StartDate string `json:"start_date" validate:"omitempty,datetime=2006-01-02"`
@@ -62,4 +66,11 @@ type SymptomLogResponse struct {
 	LogDate time.Time                  `json:"log_date"`
 	Note    string                     `json:"note,omitempty"`
 	Details []SymptomLogDetailResponse `json:"details"`
+}
+
+type RecommendationResponse struct {
+	ForSymptom  string `json:"for_symptom"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Source      string `json:"source,omitempty"`
 }

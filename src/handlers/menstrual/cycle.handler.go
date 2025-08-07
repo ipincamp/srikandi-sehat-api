@@ -41,6 +41,14 @@ func RecordCycle(c *fiber.Ctx) error {
 
 		startDate, _ := time.Parse("2006-01-02", input.StartDate)
 
+		var lastCompletedCycle menstrual.MenstrualCycle
+		errLastCompleted := tx.Where("user_id = ? AND end_date IS NOT NULL", user.ID).Order("end_date desc").First(&lastCompletedCycle).Error
+		if errLastCompleted == nil {
+			if !startDate.After(lastCompletedCycle.EndDate.Time) {
+				return utils.SendError(c, fiber.StatusConflict, "The new cycle's start date cannot overlap with the previous cycle.")
+			}
+		}
+
 		newCycle := menstrual.MenstrualCycle{UserID: user.ID, StartDate: startDate}
 		if err := tx.Create(&newCycle).Error; err != nil {
 			return utils.SendError(c, fiber.StatusInternalServerError, "Failed to record new cycle")
@@ -56,6 +64,11 @@ func RecordCycle(c *fiber.Ctx) error {
 		}
 
 		endDate, _ := time.Parse("2006-01-02", input.EndDate)
+
+		if endDate.Before(activeCycle.StartDate) {
+			return utils.SendError(c, fiber.StatusBadRequest, "The end date cannot be before the start date of the current cycle.")
+		}
+
 		updateCurrentCyclePeriod(tx, &activeCycle, endDate)
 		isStartRequest = false
 	}

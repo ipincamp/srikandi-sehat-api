@@ -1,7 +1,6 @@
 package dto
 
 import (
-	"database/sql"
 	"ipincamp/srikandi-sehat/src/constants"
 	"time"
 )
@@ -47,13 +46,13 @@ type SymptomMasterResponse struct {
 }
 
 type CycleResponse struct {
-	ID             uint          `json:"id"`
-	StartDate      time.Time     `json:"start_date"`
-	EndDate        sql.NullTime  `json:"finish_date"`
-	PeriodLength   sql.NullInt16 `json:"period_length"`
-	CycleLength    sql.NullInt16 `json:"cycle_length"`
-	IsPeriodNormal sql.NullBool  `json:"is_period_normal"`
-	IsCycleNormal  sql.NullBool  `json:"is_cycle_normal"`
+	ID             uint       `json:"id"`
+	StartDate      time.Time  `json:"start_date"`
+	EndDate        *time.Time `json:"finish_date,omitempty"`
+	PeriodLength   *int16     `json:"period_length,omitempty"`
+	CycleLength    *int16     `json:"cycle_length,omitempty"`
+	IsPeriodNormal *bool      `json:"is_period_normal,omitempty"`
+	IsCycleNormal  *bool      `json:"is_cycle_normal,omitempty"`
 }
 
 type SymptomLogDetailResponse struct {

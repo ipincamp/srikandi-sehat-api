@@ -97,7 +97,7 @@ func GetCycleHistory(c *fiber.Ctx) error {
 	}
 
 	var cycles []menstrual.MenstrualCycle
-	database.DB.Where("user_id = ?", user.ID).Order("start_date desc").Find(&cycles)
+	database.DB.Where("user_id = ? AND end_date IS NOT NULL", user.ID).Order("start_date desc").Find(&cycles)
 
 	if len(cycles) == 0 {
 		return utils.SendError(c, fiber.StatusNotFound, "You have no cycle history. Please record a cycle first.")
@@ -105,15 +105,28 @@ func GetCycleHistory(c *fiber.Ctx) error {
 
 	var responseData []dto.CycleResponse
 	for _, cycle := range cycles {
-		responseData = append(responseData, dto.CycleResponse{
-			ID:             cycle.ID,
-			StartDate:      cycle.StartDate,
-			EndDate:        cycle.EndDate,
-			PeriodLength:   cycle.PeriodLength,
-			CycleLength:    cycle.CycleLength,
-			IsPeriodNormal: cycle.IsPeriodNormal,
-			IsCycleNormal:  cycle.IsCycleNormal,
-		})
+		dto := dto.CycleResponse{
+			ID:        cycle.ID,
+			StartDate: cycle.StartDate,
+		}
+
+		if cycle.EndDate.Valid {
+			dto.EndDate = &cycle.EndDate.Time
+		}
+		if cycle.PeriodLength.Valid {
+			dto.PeriodLength = &cycle.PeriodLength.Int16
+		}
+		if cycle.CycleLength.Valid {
+			dto.CycleLength = &cycle.CycleLength.Int16
+		}
+		if cycle.IsPeriodNormal.Valid {
+			dto.IsPeriodNormal = &cycle.IsPeriodNormal.Bool
+		}
+		if cycle.IsCycleNormal.Valid {
+			dto.IsCycleNormal = &cycle.IsCycleNormal.Bool
+		}
+
+		responseData = append(responseData, dto)
 	}
 
 	return utils.SendSuccess(c, fiber.StatusOK, "Cycle history fetched successfully", responseData)

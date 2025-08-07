@@ -25,6 +25,7 @@ func main() {
 		migrations.CreateMenstrualTrackingTables(),
 		migrations.AddIndexesToSymptomLogs(),
 		migrations.AddCycleIdToSymptomLogs(),
+		migrations.ChangeCycleDatesToDatetime(),
 		// And more...
 	})
 

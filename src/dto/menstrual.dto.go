@@ -18,8 +18,8 @@ type RecommendationQuery struct {
 
 // Request Body
 type CycleRequest struct {
-	StartDate string `json:"start_date" validate:"omitempty,datetime=2006-01-02"`
-	EndDate   string `json:"finish_date" validate:"omitempty,datetime=2006-01-02"`
+	StartDate string `json:"start_date" validate:"omitempty,datetime=2006-01-02T15:04:05Z07:00"`
+	EndDate   string `json:"finish_date" validate:"omitempty,datetime=2006-01-02T15:04:05Z07:00"`
 }
 
 type SymptomLogDetailRequest struct {

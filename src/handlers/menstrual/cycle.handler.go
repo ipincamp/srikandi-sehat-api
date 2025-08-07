@@ -40,7 +40,7 @@ func RecordCycle(c *fiber.Ctx) error {
 			return utils.SendError(c, fiber.StatusConflict, "Cannot start a new cycle while another is in progress.")
 		}
 
-		startDate, _ := time.Parse("2006-01-02", input.StartDate)
+		startDate, _ := time.Parse(time.RFC3339, input.StartDate)
 
 		var lastCompletedCycle menstrual.MenstrualCycle
 		errLastCompleted := tx.Where("user_id = ? AND end_date IS NOT NULL", user.ID).Order("end_date desc").First(&lastCompletedCycle).Error
@@ -66,7 +66,7 @@ func RecordCycle(c *fiber.Ctx) error {
 			return utils.SendError(c, fiber.StatusConflict, "No active cycle to end. Please record a new cycle first.")
 		}
 
-		endDate, _ := time.Parse("2006-01-02", input.EndDate)
+		endDate, _ := time.Parse(time.RFC3339, input.EndDate)
 
 		if endDate.Before(activeCycle.StartDate) {
 			formattedDate := activeCycle.StartDate.Format("2 January 2006")
@@ -145,7 +145,12 @@ func updatePreviousCycleLength(tx *gorm.DB, userID uint, newStartDate time.Time)
 }
 
 func updateCurrentCyclePeriod(tx *gorm.DB, currentCycle *menstrual.MenstrualCycle, endDate time.Time) {
-	periodLength := int16(endDate.Sub(currentCycle.StartDate).Hours()/24) + 1
+	loc := time.Local
+
+	startDay := time.Date(currentCycle.StartDate.Year(), currentCycle.StartDate.Month(), currentCycle.StartDate.Day(), 0, 0, 0, 0, loc)
+	endDay := time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 0, 0, 0, 0, loc)
+
+	periodLength := int16(endDay.Sub(startDay).Hours()/24) + 1
 	isNormal := periodLength >= 2 && periodLength <= 7
 
 	tx.Model(currentCycle).Updates(map[string]interface{}{

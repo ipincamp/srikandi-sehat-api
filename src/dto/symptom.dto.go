@@ -16,11 +16,6 @@ type RecommendationQuery struct {
 }
 
 // Request Body
-type CycleRequest struct {
-	StartDate string `json:"start_date" validate:"omitempty,datetime=2006-01-02T15:04:05Z07:00"`
-	EndDate   string `json:"finish_date" validate:"omitempty,datetime=2006-01-02T15:04:05Z07:00"`
-}
-
 type SymptomLogDetailRequest struct {
 	SymptomID       uint  `json:"symptom_id" validate:"required"`
 	SymptomOptionID *uint `json:"option_id,omitempty"`
@@ -43,16 +38,6 @@ type SymptomMasterResponse struct {
 	Name    string                  `json:"name"`
 	Type    constants.SymptomType   `json:"type"`
 	Options []SymptomOptionResponse `json:"options,omitempty"`
-}
-
-type CycleResponse struct {
-	ID             uint       `json:"id"`
-	StartDate      time.Time  `json:"start_date"`
-	EndDate        *time.Time `json:"finish_date,omitempty"`
-	PeriodLength   *int16     `json:"period_length,omitempty"`
-	CycleLength    *int16     `json:"cycle_length,omitempty"`
-	IsPeriodNormal *bool      `json:"is_period_normal,omitempty"`
-	IsCycleNormal  *bool      `json:"is_cycle_normal,omitempty"`
 }
 
 type SymptomLogDetailResponse struct {

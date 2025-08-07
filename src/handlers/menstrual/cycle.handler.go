@@ -1,6 +1,7 @@
 package menstrual
 
 import (
+	"errors"
 	"fmt"
 	"ipincamp/srikandi-sehat/database"
 	"ipincamp/srikandi-sehat/src/dto"
@@ -130,6 +131,73 @@ func GetCycleHistory(c *fiber.Ctx) error {
 	}
 
 	return utils.SendSuccess(c, fiber.StatusOK, "Cycle history fetched successfully", responseData)
+}
+
+func GetCycleByID(c *fiber.Ctx) error {
+	userUUID := c.Locals("user_id").(string)
+	params := c.Locals("request_params").(*dto.CycleParam)
+
+	var user models.User
+	if err := database.DB.First(&user, "uuid = ?", userUUID).Error; err != nil {
+		return utils.SendError(c, fiber.StatusNotFound, "User not found")
+	}
+
+	var cycle menstrual.MenstrualCycle
+	err := database.DB.
+		Preload("SymptomLogs.Details.Symptom").
+		Preload("SymptomLogs.Details.SymptomOption").
+		Where("user_id = ?", user.ID).
+		First(&cycle, params.ID).Error
+
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return utils.SendError(c, fiber.StatusNotFound, "Cycle not found or does not belong to this user")
+	}
+	if err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Database error")
+	}
+
+	var symptomLogsDTO []dto.SymptomLogResponse
+	for _, log := range cycle.SymptomLogs {
+		var detailsDTO []dto.SymptomLogDetailResponse
+		for _, detail := range log.Details {
+			detailDTO := dto.SymptomLogDetailResponse{
+				SymptomName:     detail.Symptom.Name,
+				SymptomCategory: string(detail.Symptom.Category),
+			}
+			if detail.SymptomOptionID.Valid {
+				detailDTO.SelectedOption = detail.SymptomOption.Name
+			}
+			detailsDTO = append(detailsDTO, detailDTO)
+		}
+		symptomLogsDTO = append(symptomLogsDTO, dto.SymptomLogResponse{
+			LogDate: log.LogDate,
+			Note:    log.Note,
+			Details: detailsDTO,
+		})
+	}
+
+	responseData := dto.CycleDetailResponse{
+		ID:          cycle.ID,
+		StartDate:   cycle.StartDate,
+		SymptomLogs: symptomLogsDTO,
+	}
+	if cycle.EndDate.Valid {
+		responseData.EndDate = &cycle.EndDate.Time
+	}
+	if cycle.PeriodLength.Valid {
+		responseData.PeriodLength = &cycle.PeriodLength.Int16
+	}
+	if cycle.CycleLength.Valid {
+		responseData.CycleLength = &cycle.CycleLength.Int16
+	}
+	if cycle.IsPeriodNormal.Valid {
+		responseData.IsPeriodNormal = &cycle.IsPeriodNormal.Bool
+	}
+	if cycle.IsCycleNormal.Valid {
+		responseData.IsCycleNormal = &cycle.IsCycleNormal.Bool
+	}
+
+	return utils.SendSuccess(c, fiber.StatusOK, "Cycle detail fetched successfully", responseData)
 }
 
 func findActiveCycle(tx *gorm.DB, userID uint) (menstrual.MenstrualCycle, error) {

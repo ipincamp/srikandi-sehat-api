@@ -1,6 +1,7 @@
 package menstrual
 
 import (
+	"fmt"
 	"ipincamp/srikandi-sehat/database"
 	"ipincamp/srikandi-sehat/src/dto"
 	"ipincamp/srikandi-sehat/src/models"
@@ -45,7 +46,9 @@ func RecordCycle(c *fiber.Ctx) error {
 		errLastCompleted := tx.Where("user_id = ? AND end_date IS NOT NULL", user.ID).Order("end_date desc").First(&lastCompletedCycle).Error
 		if errLastCompleted == nil {
 			if !startDate.After(lastCompletedCycle.EndDate.Time) {
-				return utils.SendError(c, fiber.StatusConflict, "The new cycle's start date cannot overlap with the previous cycle.")
+				formattedDate := lastCompletedCycle.EndDate.Time.Format("2 January 2006")
+				errorMessage := fmt.Sprintf("Start date cannot be before or equal to the end date of the last completed cycle (%s).", formattedDate)
+				return utils.SendError(c, fiber.StatusConflict, errorMessage)
 			}
 		}
 
@@ -66,7 +69,9 @@ func RecordCycle(c *fiber.Ctx) error {
 		endDate, _ := time.Parse("2006-01-02", input.EndDate)
 
 		if endDate.Before(activeCycle.StartDate) {
-			return utils.SendError(c, fiber.StatusBadRequest, "The end date cannot be before the start date of the current cycle.")
+			formattedDate := activeCycle.StartDate.Format("2 January 2006")
+			errorMessage := fmt.Sprintf("Finish date cannot be before the start date of the current cycle (%s).", formattedDate)
+			return utils.SendError(c, fiber.StatusBadRequest, errorMessage)
 		}
 
 		updateCurrentCyclePeriod(tx, &activeCycle, endDate)
@@ -93,6 +98,10 @@ func GetCycleHistory(c *fiber.Ctx) error {
 
 	var cycles []menstrual.MenstrualCycle
 	database.DB.Where("user_id = ?", user.ID).Order("start_date desc").Find(&cycles)
+
+	if len(cycles) == 0 {
+		return utils.SendError(c, fiber.StatusNotFound, "You have no cycle history. Please record a cycle first.")
+	}
 
 	var responseData []dto.CycleResponse
 	for _, cycle := range cycles {

@@ -26,10 +26,13 @@ func RecordCycle(c *fiber.Ctx) error {
 	}
 
 	tx := database.DB.Begin()
+	if tx.Error != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to start transaction")
+	}
 	defer tx.Rollback()
 
 	activeCycle, err := findActiveCycle(tx, user.ID)
-	isStart := true
+	var isStartRequest bool
 
 	if input.StartDate != "" {
 		if err == nil {
@@ -44,30 +47,27 @@ func RecordCycle(c *fiber.Ctx) error {
 		}
 
 		updatePreviousCycleLength(tx, user.ID, startDate)
+		isStartRequest = true
 	}
 
 	if input.EndDate != "" {
 		if err != nil {
-			return utils.SendError(c, fiber.StatusConflict, "No active cycle to end.")
-		} else {
-			endDate, _ := time.Parse("2006-01-02", input.EndDate)
-
-			updateCurrentCyclePeriod(tx, activeCycle.UserID, endDate)
-			isStart = false
+			return utils.SendError(c, fiber.StatusConflict, "No active cycle to end. Please record a new cycle first.")
 		}
+
+		endDate, _ := time.Parse("2006-01-02", input.EndDate)
+		updateCurrentCyclePeriod(tx, &activeCycle, endDate)
+		isStartRequest = false
 	}
 
 	if err := tx.Commit().Error; err != nil {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to commit transaction")
 	}
 
-	var message string
-	if isStart {
-		message = "Cycle started successfully"
-	} else {
-		message = "Cycle ended successfully"
+	if isStartRequest {
+		return utils.SendSuccess(c, fiber.StatusOK, "Cycle started successfully", nil)
 	}
-	return utils.SendSuccess(c, fiber.StatusOK, message, nil)
+	return utils.SendSuccess(c, fiber.StatusOK, "Cycle ended successfully", nil)
 }
 
 func GetCycleHistory(c *fiber.Ctx) error {
@@ -122,20 +122,13 @@ func updatePreviousCycleLength(tx *gorm.DB, userID uint, newStartDate time.Time)
 	}
 }
 
-func updateCurrentCyclePeriod(tx *gorm.DB, userID uint, endDate time.Time) {
-	var currentCycle menstrual.MenstrualCycle
-	err := tx.Where("user_id = ? AND end_date IS NULL", userID).
-		Order("start_date desc").
-		First(&currentCycle).Error
+func updateCurrentCyclePeriod(tx *gorm.DB, currentCycle *menstrual.MenstrualCycle, endDate time.Time) {
+	periodLength := int16(endDate.Sub(currentCycle.StartDate).Hours()/24) + 1
+	isNormal := periodLength >= 2 && periodLength <= 7
 
-	if err == nil {
-		periodLength := int16(endDate.Sub(currentCycle.StartDate).Hours()/24) + 1
-		isNormal := periodLength >= 2 && periodLength <= 7
-
-		tx.Model(&currentCycle).Updates(map[string]interface{}{
-			"end_date":         endDate,
-			"period_length":    periodLength,
-			"is_period_normal": isNormal,
-		})
-	}
+	tx.Model(currentCycle).Updates(map[string]interface{}{
+		"end_date":         endDate,
+		"period_length":    periodLength,
+		"is_period_normal": isNormal,
+	})
 }

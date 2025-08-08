@@ -1,6 +1,7 @@
 package menstrual
 
 import (
+	"errors"
 	"fmt"
 	"ipincamp/srikandi-sehat/database"
 	"ipincamp/srikandi-sehat/src/dto"
@@ -219,6 +220,81 @@ func GetSymptomHistory(c *fiber.Ctx) error {
 	}
 
 	return utils.SendSuccess(c, fiber.StatusOK, "Symptom history fetched successfully", paginatedResponse)
+}
+
+func GetSymptomLogByID(c *fiber.Ctx) error {
+	userUUID := c.Locals("user_id").(string)
+	params := c.Locals("request_params").(*dto.SymptomLogParam)
+
+	var user models.User
+	if err := database.DB.First(&user, "uuid = ?", userUUID).Error; err != nil {
+		return utils.SendError(c, fiber.StatusNotFound, "User not found")
+	}
+
+	var symptomLog menstrual.SymptomLog
+	err := database.DB.
+		Preload("Details.Symptom").
+		Preload("Details.SymptomOption").
+		Where("id = ? AND user_id = ?", params.ID, user.ID).
+		First(&symptomLog).Error
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return utils.SendError(c, fiber.StatusNotFound, "Symptom log not found")
+		}
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to retrieve symptom log")
+	}
+
+	var detailsDTO []dto.SymptomLogDetailResponse
+	var symptomIDs []uint
+	for _, detail := range symptomLog.Details {
+		detailsDTO = append(detailsDTO, dto.SymptomLogDetailResponse{
+			SymptomID:       detail.SymptomID,
+			SymptomName:     detail.Symptom.Name,
+			SymptomCategory: detail.Symptom.Category,
+			SelectedOption:  detail.SymptomOption.Name,
+		})
+		symptomIDs = append(symptomIDs, detail.SymptomID)
+	}
+
+	var recommendations []menstrual.Recommendation
+	if len(symptomIDs) > 0 {
+		database.DB.
+			Preload("Symptom").
+			Where("symptom_id IN ?", symptomIDs).
+			Find(&recommendations)
+	}
+	var recommendationsDTO []dto.RecommendationResponse
+	for _, r := range recommendations {
+		recommendationsDTO = append(recommendationsDTO, dto.RecommendationResponse{
+			ForSymptom:  r.Symptom.Name,
+			Title:       r.Title,
+			Description: r.Description,
+			Source:      r.Source,
+		})
+	}
+
+	var cycleNumber *int64
+	if symptomLog.MenstrualCycleID.Valid {
+		var associatedCycle menstrual.MenstrualCycle
+		if err := database.DB.First(&associatedCycle, symptomLog.MenstrualCycleID.Int64).Error; err == nil {
+			var count int64
+			database.DB.Model(&menstrual.MenstrualCycle{}).
+				Where("user_id = ? AND start_date <= ?", user.ID, associatedCycle.StartDate).
+				Count(&count)
+			cycleNumber = &count
+		}
+	}
+
+	response := dto.SymptomLogDetailViewResponse{
+		LoggedAt:        symptomLog.LoggedAt,
+		Note:            symptomLog.Note,
+		CycleNumber:     cycleNumber,
+		Details:         detailsDTO,
+		Recommendations: recommendationsDTO,
+	}
+
+	return utils.SendSuccess(c, fiber.StatusOK, "Symptom log detail fetched successfully", response)
 }
 
 func isValidCommaSeparatedInt(input string) bool {

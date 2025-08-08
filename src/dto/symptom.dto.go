@@ -5,7 +5,12 @@ import (
 	"time"
 )
 
-// Request Query
+// --- Request Params ---
+type SymptomLogParam struct {
+	ID uint `params:"id" validate:"required,numeric"`
+}
+
+// --- Request Query ---
 type SymptomLogQuery struct {
 	StartDate string `query:"start_date" validate:"required,datetime=2006-01-02"`
 	EndDate   string `query:"finish_date" validate:"required,datetime=2006-01-02"`
@@ -23,7 +28,7 @@ type SymptomHistoryQuery struct {
 	Date      string `query:"date" validate:"omitempty,datetime=2006-01-02"`
 }
 
-// Request Body
+// --- Request Body ---
 type SymptomLogDetailRequest struct {
 	SymptomID       uint  `json:"symptom_id" validate:"required"`
 	SymptomOptionID *uint `json:"option_id,omitempty"`
@@ -35,7 +40,7 @@ type SymptomLogRequest struct {
 	Symptoms []SymptomLogDetailRequest `json:"symptoms" validate:"required,min=1"`
 }
 
-// Response Body
+// --- Response Body ---
 type SymptomOptionResponse struct {
 	ID   uint   `json:"id"`
 	Name string `json:"name"`
@@ -49,18 +54,20 @@ type SymptomMasterResponse struct {
 }
 
 type SymptomLogDetailResponse struct {
+	SymptomID       uint   `json:"symptom_id"`
 	SymptomName     string `json:"symptom_name"`
 	SymptomCategory string `json:"symptom_category"`
 	SelectedOption  string `json:"selected_option,omitempty"`
 }
 
-type SymptomLogResponse struct {
-	LoggedAt time.Time                  `json:"logged_at"`
-	Note     string                     `json:"note,omitempty"`
-	Details  []SymptomLogDetailResponse `json:"details"`
+type SymptomLogDetailViewResponse struct {
+	LoggedAt        time.Time                  `json:"logged_at"`
+	Note            string                     `json:"note,omitempty"`
+	CycleNumber     *int64                     `json:"cycle_number,omitempty"`
+	Details         []SymptomLogDetailResponse `json:"details"`
+	Recommendations []RecommendationResponse   `json:"recommendations"`
 }
 
-// SymptomHistoryResponse defines the structure for the aggregated symptom history list.
 type SymptomHistoryResponse struct {
 	ID            uint   `json:"id"`
 	TotalSymptoms int    `json:"total_symptoms"`

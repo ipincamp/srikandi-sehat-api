@@ -47,5 +47,6 @@ func SetupRoutes(app *fiber.App) {
 	menstrual.Post("/symptoms/log", middleware.ValidateBody[dto.SymptomLogRequest], menstrualHandler.LogSymptoms)
 	menstrual.Get("/symptoms/master", menstrualHandler.GetSymptomsMaster)
 	menstrual.Get("/symptoms/history", middleware.ValidateQuery[dto.SymptomHistoryQuery], menstrualHandler.GetSymptomHistory)
+	menstrual.Get("/symptoms/log/:id", middleware.ValidateParams[dto.SymptomLogParam], menstrualHandler.GetSymptomLogByID)
 	menstrual.Get("/recommendations", middleware.ValidateQuery[dto.RecommendationQuery], menstrualHandler.GetRecommendationsBySymptoms)
 }

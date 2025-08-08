@@ -22,6 +22,11 @@ func main() {
 		migrations.CreateInvalidTokensTable(),
 		migrations.CreateRegionTables(),
 		migrations.CreateProfilesTable(),
+		migrations.CreateMenstrualTrackingTables(),
+		migrations.AddIndexesToSymptomLogs(),
+		migrations.AddCycleIdToSymptomLogs(),
+		migrations.ChangeCycleDatesToDatetime(),
+		migrations.RenameLogDateInSymptomLogs(),
 		// And more...
 	})
 

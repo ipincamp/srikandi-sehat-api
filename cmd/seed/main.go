@@ -52,6 +52,9 @@ func seeds(tx *gorm.DB) error {
 	if err := seeders.SeedRegions(tx); err != nil {
 		return err
 	}
+	if err := seeders.SeedMenstrualData(tx); err != nil {
+		return err
+	}
 	// And more...
 	return nil
 }

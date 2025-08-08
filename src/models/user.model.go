@@ -1,6 +1,7 @@
 package models
 
 import (
+	"ipincamp/srikandi-sehat/src/models/menstrual"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,9 +15,11 @@ type User struct {
 	Email    string `gorm:"type:varchar(255);uniqueIndex;not null"`
 	Password string `gorm:"type:varchar(255);not null"`
 
-	Roles       []*Role       `gorm:"many2many:user_roles;"`
-	Permissions []*Permission `gorm:"many2many:user_permissions;"`
-	Profile     Profile       `gorm:"foreignKey:UserID"`
+	Roles           []*Role                    `gorm:"many2many:user_roles;"`
+	Permissions     []*Permission              `gorm:"many2many:user_permissions;"`
+	Profile         Profile                    `gorm:"foreignKey:UserID"`
+	MenstrualCycles []menstrual.MenstrualCycle `gorm:"foreignKey:UserID"`
+	SymptomLogs     []menstrual.SymptomLog     `gorm:"foreignKey:UserID"`
 
 	CreatedAt time.Time      `gorm:"autoCreateTime"`
 	UpdatedAt time.Time      `gorm:"autoUpdateTime"`

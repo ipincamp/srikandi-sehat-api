@@ -3,6 +3,7 @@ package routes
 import (
 	"ipincamp/srikandi-sehat/src/dto"
 	"ipincamp/srikandi-sehat/src/handlers"
+	menstrualHandler "ipincamp/srikandi-sehat/src/handlers/menstrual"
 	"ipincamp/srikandi-sehat/src/middleware"
 
 	"github.com/gofiber/fiber/v2"
@@ -34,4 +35,15 @@ func SetupRoutes(app *fiber.App) {
 	region.Get("/regencies", middleware.ValidateQuery[dto.RegencyQuery], handlers.GetRegenciesByProvince)
 	region.Get("/districts", middleware.ValidateQuery[dto.DistrictQuery], handlers.GetDistrictsByRegency)
 	region.Get("/villages", middleware.ValidateQuery[dto.VillageQuery], handlers.GetVillagesByDistrict)
+
+	// Menstrual health routes
+	menstrual := api.Group("/menstrual", middleware.AuthMiddleware)
+	menstrual.Get("/cycles/status", menstrualHandler.GetCycleStatus)
+	menstrual.Post("/cycles", middleware.ValidateBody[dto.CycleRequest], menstrualHandler.RecordCycle)
+	menstrual.Post("/symptoms/log", middleware.ValidateBody[dto.SymptomLogRequest], menstrualHandler.LogSymptoms)
+	menstrual.Get("/symptoms/master", menstrualHandler.GetSymptomsMaster)
+	menstrual.Get("/cycles", middleware.ValidateQuery[dto.PaginationQuery], menstrualHandler.GetCycleHistory)
+	menstrual.Get("/cycles/:id", middleware.ValidateParams[dto.CycleParam], menstrualHandler.GetCycleByID)
+	menstrual.Get("/symptoms/log", middleware.ValidateQuery[dto.SymptomLogQuery], menstrualHandler.GetSymptomLogsByDateRange)
+	menstrual.Get("/recommendations", middleware.ValidateQuery[dto.RecommendationQuery], menstrualHandler.GetRecommendationsBySymptoms)
 }

@@ -22,7 +22,7 @@ type SymptomLogDetailRequest struct {
 }
 
 type SymptomLogRequest struct {
-	LogDate  string                    `json:"log_date" validate:"required,datetime=2006-01-02"`
+	LoggedAt string                    `json:"logged_at" validate:"required,datetime=2006-01-02T15:04:05Z07:00"`
 	Note     string                    `json:"note" validate:"omitempty"`
 	Symptoms []SymptomLogDetailRequest `json:"symptoms" validate:"required,min=1"`
 }
@@ -47,9 +47,9 @@ type SymptomLogDetailResponse struct {
 }
 
 type SymptomLogResponse struct {
-	LogDate time.Time                  `json:"log_date"`
-	Note    string                     `json:"note,omitempty"`
-	Details []SymptomLogDetailResponse `json:"details"`
+	LoggedAt time.Time                  `json:"logged_at"`
+	Note     string                     `json:"note,omitempty"`
+	Details  []SymptomLogDetailResponse `json:"details"`
 }
 
 type RecommendationResponse struct {

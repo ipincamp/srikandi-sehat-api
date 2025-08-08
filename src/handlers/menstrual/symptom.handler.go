@@ -93,7 +93,7 @@ func LogSymptoms(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusNotFound, "User not found")
 	}
 
-	logDate, _ := time.Parse("2006-01-02", input.LogDate)
+	loggedAt, _ := time.Parse(time.RFC3339, input.LoggedAt)
 
 	tx := database.DB.Begin()
 	if tx.Error != nil {
@@ -102,16 +102,16 @@ func LogSymptoms(c *fiber.Ctx) error {
 	defer tx.Rollback()
 
 	symptomLog := menstrual.SymptomLog{
-		UserID:  user.ID,
-		LogDate: logDate,
+		UserID:   user.ID,
+		LoggedAt: loggedAt,
 	}
-	tx.Where("user_id = ? AND log_date = ?", user.ID, logDate).FirstOrCreate(&symptomLog)
+	tx.Where("user_id = ? AND DATE(logged_at) = ?", user.ID, loggedAt.Format("2006-01-02")).FirstOrCreate(&symptomLog)
 	if input.Note != "" {
 		tx.Model(&symptomLog).Update("note", input.Note)
 	}
 
 	var relevantCycle menstrual.MenstrualCycle
-	err := tx.Where("user_id = ? AND start_date <= ? AND (end_date IS NULL OR end_date >= ?)", user.ID, logDate, logDate).
+	err := tx.Where("user_id = ? AND start_date <= ? AND (end_date IS NULL OR end_date >= ?)", user.ID, loggedAt, loggedAt).
 		Order("start_date desc").
 		First(&relevantCycle).Error
 
@@ -175,9 +175,9 @@ func GetSymptomLogsByDateRange(c *fiber.Ctx) error {
 		}
 
 		responseData = append(responseData, dto.SymptomLogResponse{
-			LogDate: log.LogDate,
-			Note:    log.Note,
-			Details: detailsDTO,
+			LoggedAt: log.LoggedAt,
+			Note:     log.Note,
+			Details:  detailsDTO,
 		})
 	}
 

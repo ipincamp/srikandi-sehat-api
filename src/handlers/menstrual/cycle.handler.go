@@ -159,7 +159,7 @@ func GetCycleByID(c *fiber.Ctx) error {
 	symptomLogsByDate := make(map[string]dto.DailySymptomLogResponse)
 
 	for _, log := range cycle.SymptomLogs {
-		date := log.LogDate.Format("2006-01-02")
+		date := log.LoggedAt.Format("2006-01-02")
 
 		dailyLog, exists := symptomLogsByDate[date]
 		if !exists {

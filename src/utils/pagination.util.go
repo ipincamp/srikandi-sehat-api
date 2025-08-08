@@ -1,21 +1,13 @@
 package utils
 
 import (
+	"ipincamp/srikandi-sehat/src/dto"
 	"math"
 
 	"gorm.io/gorm"
 )
 
-type Pagination struct {
-	Limit        int   `json:"limit"`
-	TotalRows    int64 `json:"total_rows"`
-	TotalPages   int   `json:"total_pages"`
-	CurrentPage  int   `json:"current_page"`
-	PreviousPage *int  `json:"previous_page"`
-	NextPage     *int  `json:"next_page"`
-}
-
-func GeneratePagination(page, limit int, db *gorm.DB, model interface{}) (Pagination, func(db *gorm.DB) *gorm.DB) {
+func GeneratePagination(page, limit int, db *gorm.DB, model interface{}) (dto.Pagination, func(db *gorm.DB) *gorm.DB) {
 	var totalRows int64
 	db.Model(model).Count(&totalRows)
 
@@ -33,7 +25,7 @@ func GeneratePagination(page, limit int, db *gorm.DB, model interface{}) (Pagina
 		nextPage = &n
 	}
 
-	pagination := Pagination{
+	pagination := dto.Pagination{
 		Limit:        limit,
 		TotalRows:    totalRows,
 		TotalPages:   totalPages,

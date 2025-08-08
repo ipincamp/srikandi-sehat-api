@@ -1,10 +1,32 @@
 package dto
 
-import "time"
+import (
+	"time"
+)
+
+type Pagination struct {
+	Limit        int   `json:"limit"`
+	TotalRows    int64 `json:"total_data"`
+	TotalPages   int   `json:"total_pages"`
+	CurrentPage  int   `json:"current_page"`
+	PreviousPage *int  `json:"previous_page,omitempty"`
+	NextPage     *int  `json:"next_page,omitempty"`
+}
+
+type PaginatedResponse[T any] struct {
+	Data     []T        `json:"data"`
+	Metadata Pagination `json:"metadata"`
+}
 
 // Request Param
 type CycleParam struct {
 	ID uint `params:"id" validate:"required,numeric"`
+}
+
+// Request Query
+type PaginationQuery struct {
+	Page  int `query:"page" validate:"omitempty,numeric,min=1"`
+	Limit int `query:"limit" validate:"omitempty,numeric,min=1"`
 }
 
 // Request Body
@@ -22,14 +44,6 @@ type CycleResponse struct {
 	CycleLength    *int16     `json:"cycle_length,omitempty"`
 	IsPeriodNormal *bool      `json:"is_period_normal,omitempty"`
 	IsCycleNormal  *bool      `json:"is_cycle_normal,omitempty"`
-}
-
-type SymptomLogInCycleResponse struct {
-	LoggedAt        time.Time `json:"logged_at"`
-	Note            *string   `json:"note,omitempty"`
-	SymptomName     string    `json:"symptom_name"`
-	SymptomCategory string    `json:"symptom_category"`
-	SelectedOption  *string   `json:"selected_option,omitempty"`
 }
 
 type SymptomDetail struct {

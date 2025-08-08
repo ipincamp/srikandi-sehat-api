@@ -97,18 +97,32 @@ func RecordCycle(c *fiber.Ctx) error {
 
 func GetCycleHistory(c *fiber.Ctx) error {
 	userUUID := c.Locals("user_id").(string)
+	queries := c.Locals("request_queries").(*dto.PaginationQuery)
+
+	page := queries.Page
+	if page <= 0 {
+		page = 1
+	}
+	limit := queries.Limit
+	if limit <= 0 {
+		limit = 10
+	}
 
 	var user models.User
 	if err := database.DB.First(&user, "uuid = ?", userUUID).Error; err != nil {
 		return utils.SendError(c, fiber.StatusNotFound, "User not found")
 	}
 
-	var cycles []menstrual.MenstrualCycle
-	database.DB.Where("user_id = ? AND end_date IS NOT NULL", user.ID).Order("start_date desc").Find(&cycles)
+	baseQuery := database.DB.Model(&menstrual.MenstrualCycle{}).Where("user_id = ? AND end_date IS NOT NULL", user.ID)
 
-	if len(cycles) == 0 {
+	pagination, paginateScope := utils.GeneratePagination(page, limit, baseQuery, &menstrual.MenstrualCycle{})
+
+	if pagination.TotalRows == 0 {
 		return utils.SendError(c, fiber.StatusNotFound, "You have no cycle history. Please record a cycle first.")
 	}
+
+	var cycles []menstrual.MenstrualCycle
+	database.DB.Scopes(paginateScope).Order("start_date desc").Find(&cycles)
 
 	var responseData []dto.CycleResponse
 	for _, cycle := range cycles {
@@ -132,11 +146,15 @@ func GetCycleHistory(c *fiber.Ctx) error {
 		if cycle.IsCycleNormal.Valid {
 			dto.IsCycleNormal = &cycle.IsCycleNormal.Bool
 		}
-
 		responseData = append(responseData, dto)
 	}
 
-	return utils.SendSuccess(c, fiber.StatusOK, "Cycle history fetched successfully", responseData)
+	paginatedResponse := dto.PaginatedResponse[dto.CycleResponse]{
+		Data:     responseData,
+		Metadata: pagination,
+	}
+
+	return utils.SendSuccess(c, fiber.StatusOK, "Cycle history fetched successfully", paginatedResponse)
 }
 
 func GetCycleByID(c *fiber.Ctx) error {

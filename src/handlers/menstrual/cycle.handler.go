@@ -149,77 +149,80 @@ func GetCycleByID(c *fiber.Ctx) error {
 	}
 
 	var cycle menstrual.MenstrualCycle
+	if err := database.DB.Where("id = ? AND user_id = ?", params.ID, user.ID).First(&cycle).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return utils.SendError(c, fiber.StatusNotFound, "Cycle not found")
+		}
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to retrieve cycle data")
+	}
+
+	var cycleEndDate time.Time
+	if cycle.EndDate.Valid {
+		cycleEndDate = cycle.EndDate.Time
+	} else {
+		cycleEndDate = time.Now()
+	}
+
+	var symptomLogs []menstrual.SymptomLog
 	err := database.DB.
-		Preload("SymptomLogs.Details.Symptom").
-		Preload("SymptomLogs.Details.SymptomOption").
-		Where("user_id = ?", user.ID).
-		First(&cycle, params.ID).Error
+		Preload("Details.Symptom").
+		Preload("Details.SymptomOption").
+		Where("user_id = ? AND logged_at >= ? AND logged_at <= ?", user.ID, cycle.StartDate, cycleEndDate).
+		Order("logged_at desc").
+		Find(&symptomLogs).Error
 
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return utils.SendError(c, fiber.StatusNotFound, "Cycle not found or does not belong to this user")
-	}
 	if err != nil {
-		return utils.SendError(c, fiber.StatusInternalServerError, "Database error")
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to retrieve symptom data")
 	}
 
-	symptomLogsByDate := make(map[string]dto.DailySymptomLogResponse)
-
-	for _, log := range cycle.SymptomLogs {
-		date := log.LoggedAt.Format("2006-01-02")
-
-		dailyLog, exists := symptomLogsByDate[date]
-		if !exists {
-			dailyLog = dto.DailySymptomLogResponse{
-				Symptoms: make([]dto.SymptomEntryResponse, 0),
-			}
-		}
-
-		if log.Note != "" {
-			if dailyLog.Note == "" {
-				dailyLog.Note = log.Note
-			} else {
-				dailyLog.Note += "\n" + log.Note
-			}
-		}
-
+	var symptomGroups []dto.SymptomLogGroupResponse
+	for _, log := range symptomLogs {
+		var details []dto.SymptomDetail
 		for _, detail := range log.Details {
-			entry := dto.SymptomEntryResponse{
-				// TODO: Fix logged_at
-				LoggedAt:        log.LoggedAt,
+			symptomDetail := dto.SymptomDetail{
 				SymptomName:     detail.Symptom.Name,
 				SymptomCategory: detail.Symptom.Category,
 			}
-			if detail.SymptomOptionID.Valid {
-				entry.SelectedOption = detail.SymptomOption.Name
+			if detail.SymptomOptionID.Valid && detail.SymptomOption.Name != "" {
+				symptomDetail.SelectedOption = &detail.SymptomOption.Name
 			}
-			dailyLog.Symptoms = append(dailyLog.Symptoms, entry)
+			details = append(details, symptomDetail)
 		}
 
-		symptomLogsByDate[date] = dailyLog
+		group := dto.SymptomLogGroupResponse{
+			ID:       log.ID,
+			LoggedAt: log.LoggedAt,
+			Details:  details,
+		}
+		if log.Note != "" {
+			group.Note = &log.Note
+		}
+		symptomGroups = append(symptomGroups, group)
 	}
 
-	responseData := dto.CycleDetailResponse{
-		ID:                cycle.ID,
-		StartDate:         cycle.StartDate,
-		SymptomLogsByDate: symptomLogsByDate,
+	response := dto.CycleDetailResponse{
+		ID:        cycle.ID,
+		StartDate: cycle.StartDate,
+		Symptoms:  symptomGroups,
 	}
+
 	if cycle.EndDate.Valid {
-		responseData.EndDate = &cycle.EndDate.Time
+		response.EndDate = &cycle.EndDate.Time
 	}
 	if cycle.PeriodLength.Valid {
-		responseData.PeriodLength = &cycle.PeriodLength.Int16
+		response.PeriodLength = &cycle.PeriodLength.Int16
 	}
 	if cycle.CycleLength.Valid {
-		responseData.CycleLength = &cycle.CycleLength.Int16
+		response.CycleLength = &cycle.CycleLength.Int16
 	}
 	if cycle.IsPeriodNormal.Valid {
-		responseData.IsPeriodNormal = &cycle.IsPeriodNormal.Bool
+		response.IsPeriodNormal = &cycle.IsPeriodNormal.Bool
 	}
 	if cycle.IsCycleNormal.Valid {
-		responseData.IsCycleNormal = &cycle.IsCycleNormal.Bool
+		response.IsCycleNormal = &cycle.IsCycleNormal.Bool
 	}
 
-	return utils.SendSuccess(c, fiber.StatusOK, "Cycle detail fetched successfully", responseData)
+	return utils.SendSuccess(c, fiber.StatusOK, "Cycle detail fetched successfully", response)
 }
 
 func findActiveCycle(tx *gorm.DB, userID uint) (menstrual.MenstrualCycle, error) {

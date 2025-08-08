@@ -156,30 +156,41 @@ func GetCycleByID(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Database error")
 	}
 
-	var symptomLogsDTO []dto.SymptomLogResponse
+	symptomLogsByDate := make(map[string]dto.DailySymptomLogResponse)
+
 	for _, log := range cycle.SymptomLogs {
-		var detailsDTO []dto.SymptomLogDetailResponse
+		date := log.LogDate.Format("2006-01-02")
+
+		dailyLog, exists := symptomLogsByDate[date]
+		if !exists {
+			dailyLog = dto.DailySymptomLogResponse{
+				Symptoms: make([]dto.SymptomEntryResponse, 0),
+			}
+		}
+
+		if log.Note != "" {
+			dailyLog.Note = log.Note
+		}
+
 		for _, detail := range log.Details {
-			detailDTO := dto.SymptomLogDetailResponse{
+			entry := dto.SymptomEntryResponse{
+				LoggedAt:        log.CreatedAt,
 				SymptomName:     detail.Symptom.Name,
-				SymptomCategory: string(detail.Symptom.Category),
+				SymptomCategory: detail.Symptom.Category,
 			}
 			if detail.SymptomOptionID.Valid {
-				detailDTO.SelectedOption = detail.SymptomOption.Name
+				entry.SelectedOption = detail.SymptomOption.Name
 			}
-			detailsDTO = append(detailsDTO, detailDTO)
+			dailyLog.Symptoms = append(dailyLog.Symptoms, entry)
 		}
-		symptomLogsDTO = append(symptomLogsDTO, dto.SymptomLogResponse{
-			LogDate: log.LogDate,
-			Note:    log.Note,
-			Details: detailsDTO,
-		})
+
+		symptomLogsByDate[date] = dailyLog
 	}
 
 	responseData := dto.CycleDetailResponse{
-		ID:          cycle.ID,
-		StartDate:   cycle.StartDate,
-		SymptomLogs: symptomLogsDTO,
+		ID:                cycle.ID,
+		StartDate:         cycle.StartDate,
+		SymptomLogsByDate: symptomLogsByDate,
 	}
 	if cycle.EndDate.Valid {
 		responseData.EndDate = &cycle.EndDate.Time

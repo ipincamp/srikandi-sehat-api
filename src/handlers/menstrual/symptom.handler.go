@@ -110,11 +110,13 @@ func LogSymptoms(c *fiber.Ctx) error {
 		tx.Model(&symptomLog).Update("note", input.Note)
 	}
 
-	var activeCycle menstrual.MenstrualCycle
-	err := tx.Where("user_id = ? AND start_date <= ? AND end_date >= ?", user.ID, logDate, logDate).
-		First(&activeCycle).Error
+	var relevantCycle menstrual.MenstrualCycle
+	err := tx.Where("user_id = ? AND start_date <= ? AND (end_date IS NULL OR end_date >= ?)", user.ID, logDate, logDate).
+		Order("start_date desc").
+		First(&relevantCycle).Error
+
 	if err == nil {
-		tx.Model(&symptomLog).Update("menstrual_cycle_id", activeCycle.ID)
+		tx.Model(&symptomLog).Update("menstrual_cycle_id", relevantCycle.ID)
 	}
 
 	for _, s := range input.Symptoms {

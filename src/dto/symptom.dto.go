@@ -58,3 +58,15 @@ type RecommendationResponse struct {
 	Description string `json:"description"`
 	Source      string `json:"source,omitempty"`
 }
+
+type SymptomEntryResponse struct {
+	LoggedAt        time.Time `json:"logged_at"`
+	SymptomName     string    `json:"symptom_name"`
+	SymptomCategory string    `json:"symptom_category"`
+	SelectedOption  string    `json:"selected_option,omitempty"`
+}
+
+type DailySymptomLogResponse struct {
+	Note     string                 `json:"note,omitempty"`
+	Symptoms []SymptomEntryResponse `json:"symptoms"`
+}

@@ -25,12 +25,12 @@ type CycleResponse struct {
 }
 
 type CycleDetailResponse struct {
-	ID             uint                 `json:"id"`
-	StartDate      time.Time            `json:"start_date"`
-	EndDate        *time.Time           `json:"finish_date,omitempty"`
-	PeriodLength   *int16               `json:"period_length,omitempty"`
-	CycleLength    *int16               `json:"cycle_length,omitempty"`
-	IsPeriodNormal *bool                `json:"is_period_normal,omitempty"`
-	IsCycleNormal  *bool                `json:"is_cycle_normal,omitempty"`
-	SymptomLogs    []SymptomLogResponse `json:"symptom_logs"`
+	ID                uint                               `json:"id"`
+	StartDate         time.Time                          `json:"start_date"`
+	EndDate           *time.Time                         `json:"finish_date,omitempty"`
+	PeriodLength      *int16                             `json:"period_length,omitempty"`
+	CycleLength       *int16                             `json:"cycle_length,omitempty"`
+	IsPeriodNormal    *bool                              `json:"is_period_normal,omitempty"`
+	IsCycleNormal     *bool                              `json:"is_cycle_normal,omitempty"`
+	SymptomLogsByDate map[string]DailySymptomLogResponse `json:"symptom_logs_by_date"`
 }

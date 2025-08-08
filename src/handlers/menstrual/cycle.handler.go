@@ -243,6 +243,66 @@ func GetCycleByID(c *fiber.Ctx) error {
 	return utils.SendSuccess(c, fiber.StatusOK, "Cycle detail fetched successfully", response)
 }
 
+func GetCycleStatus(c *fiber.Ctx) error {
+	userUUID := c.Locals("user_id").(string)
+
+	var user models.User
+	if err := database.DB.First(&user, "uuid = ?", userUUID).Error; err != nil {
+		return utils.SendError(c, fiber.StatusNotFound, "User not found")
+	}
+
+	var activeCycle menstrual.MenstrualCycle
+	err := database.DB.Where("user_id = ? AND end_date IS NULL", user.ID).Order("start_date desc").First(&activeCycle).Error
+
+	if err == nil {
+		today := time.Now()
+		currentPeriodDay := int(today.Sub(activeCycle.StartDate).Hours()/24) + 1
+		isPeriodNormal := currentPeriodDay >= 2 && currentPeriodDay <= 7
+
+		response := dto.CycleStatusResponse{
+			IsOnCycle:        true,
+			CurrentPeriodDay: &currentPeriodDay,
+			IsPeriodNormal:   &isPeriodNormal,
+			Message:          fmt.Sprintf("You are on day %d of your period.", currentPeriodDay),
+		}
+
+		var previousCycle menstrual.MenstrualCycle
+		errPrev := database.DB.Where("user_id = ? AND end_date IS NOT NULL", user.ID).Order("start_date desc").First(&previousCycle).Error
+		if errPrev == nil {
+			currentCycleLength := int(activeCycle.StartDate.Sub(previousCycle.StartDate).Hours() / 24)
+			isCycleNormal := currentCycleLength >= 21 && currentCycleLength <= 35
+			response.CurrentCycleLength = &currentCycleLength
+			response.IsCycleNormal = &isCycleNormal
+		}
+
+		return utils.SendSuccess(c, fiber.StatusOK, "Cycle status fetched.", response)
+	}
+
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		var lastTwoCycles []menstrual.MenstrualCycle
+		database.DB.Where("user_id = ? AND end_date IS NOT NULL", user.ID).Order("start_date desc").Limit(2).Find(&lastTwoCycles)
+
+		response := dto.CycleStatusResponse{
+			IsOnCycle: false,
+			Message:   "You are not currently in a cycle.",
+		}
+
+		if len(lastTwoCycles) == 2 {
+			lastCycleLength := int(lastTwoCycles[0].StartDate.Sub(lastTwoCycles[1].StartDate).Hours() / 24)
+			isCycleNormal := lastCycleLength >= 21 && lastCycleLength <= 35
+			response.LastCycleLength = &lastCycleLength
+			response.IsCycleNormal = &isCycleNormal
+		} else if len(lastTwoCycles) < 2 {
+			response.Message = "Not enough data to determine cycle status. Please record at least two cycles."
+			return utils.SendSuccess(c, fiber.StatusOK, "Not enough cycle data.", response)
+		}
+
+		return utils.SendSuccess(c, fiber.StatusOK, "Cycle status fetched.", response)
+	}
+
+	return utils.SendError(c, fiber.StatusInternalServerError, "Failed to retrieve cycle data")
+}
+
 func findActiveCycle(tx *gorm.DB, userID uint) (menstrual.MenstrualCycle, error) {
 	var activeCycle menstrual.MenstrualCycle
 	err := tx.Where("user_id = ? AND end_date IS NULL", userID).

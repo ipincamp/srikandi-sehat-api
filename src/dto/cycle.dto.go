@@ -46,6 +46,16 @@ type CycleResponse struct {
 	IsCycleNormal  *bool      `json:"is_cycle_normal,omitempty"`
 }
 
+type CycleStatusResponse struct {
+	IsOnCycle          bool   `json:"is_on_cycle"`
+	CurrentPeriodDay   *int   `json:"current_period_day,omitempty"`
+	IsPeriodNormal     *bool  `json:"is_period_normal,omitempty"`
+	CurrentCycleLength *int   `json:"current_cycle_length,omitempty"`
+	LastCycleLength    *int   `json:"last_cycle_length,omitempty"`
+	IsCycleNormal      *bool  `json:"is_cycle_normal,omitempty"`
+	Message            string `json:"message"`
+}
+
 type SymptomDetail struct {
 	SymptomName     string  `json:"symptom_name"`
 	SymptomCategory string  `json:"symptom_category"`

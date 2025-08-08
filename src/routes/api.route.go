@@ -38,6 +38,7 @@ func SetupRoutes(app *fiber.App) {
 
 	// Menstrual health routes
 	menstrual := api.Group("/menstrual", middleware.AuthMiddleware)
+	menstrual.Get("/cycles/status", menstrualHandler.GetCycleStatus)
 	menstrual.Post("/cycles", middleware.ValidateBody[dto.CycleRequest], menstrualHandler.RecordCycle)
 	menstrual.Post("/symptoms/log", middleware.ValidateBody[dto.SymptomLogRequest], menstrualHandler.LogSymptoms)
 	menstrual.Get("/symptoms/master", menstrualHandler.GetSymptomsMaster)

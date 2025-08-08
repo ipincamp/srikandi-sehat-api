@@ -254,6 +254,7 @@ func GetCycleStatus(c *fiber.Ctx) error {
 	var activeCycle menstrual.MenstrualCycle
 	err := database.DB.Where("user_id = ? AND end_date IS NULL", user.ID).Order("start_date desc").First(&activeCycle).Error
 
+	// Case 1: User is currently in a cycle.
 	if err == nil {
 		today := time.Now()
 		currentPeriodDay := int(today.Sub(activeCycle.StartDate).Hours()/24) + 1
@@ -278,23 +279,64 @@ func GetCycleStatus(c *fiber.Ctx) error {
 		return utils.SendSuccess(c, fiber.StatusOK, "Cycle status fetched.", response)
 	}
 
+	// Case 2: User is not currently in a cycle.
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		var lastTwoCycles []menstrual.MenstrualCycle
-		database.DB.Where("user_id = ? AND end_date IS NOT NULL", user.ID).Order("start_date desc").Limit(2).Find(&lastTwoCycles)
+		var completedCycles []menstrual.MenstrualCycle
+		database.DB.Where("user_id = ? AND end_date IS NOT NULL", user.ID).Order("start_date desc").Limit(6).Find(&completedCycles)
+
+		if len(completedCycles) == 0 {
+			return utils.SendSuccess(c, fiber.StatusOK, "No cycle data available.", dto.CycleStatusResponse{
+				IsOnCycle: false,
+				Message:   "No cycle data found. Please record a cycle to see status and predictions.",
+			})
+		}
 
 		response := dto.CycleStatusResponse{
 			IsOnCycle: false,
 			Message:   "You are not currently in a cycle.",
 		}
 
-		if len(lastTwoCycles) == 2 {
-			lastCycleLength := int(lastTwoCycles[0].StartDate.Sub(lastTwoCycles[1].StartDate).Hours() / 24)
+		// Add last period length
+		lastCompletedCycle := completedCycles[0]
+		if lastCompletedCycle.PeriodLength.Valid {
+			lastPeriodLen := int(lastCompletedCycle.PeriodLength.Int16)
+			response.LastPeriodLength = &lastPeriodLen
+		}
+
+		// Calculate last cycle length if possible
+		if len(completedCycles) >= 2 {
+			lastCycleLength := int(completedCycles[0].StartDate.Sub(completedCycles[1].StartDate).Hours() / 24)
 			isCycleNormal := lastCycleLength >= 21 && lastCycleLength <= 35
 			response.LastCycleLength = &lastCycleLength
 			response.IsCycleNormal = &isCycleNormal
-		} else if len(lastTwoCycles) < 2 {
-			response.Message = "Not enough data to determine cycle status. Please record at least two cycles."
-			return utils.SendSuccess(c, fiber.StatusOK, "Not enough cycle data.", response)
+		}
+
+		// Predict next period
+		var totalCycleLength int
+		var validCyclesForAvg int
+		for _, cycle := range completedCycles {
+			if cycle.CycleLength.Valid {
+				totalCycleLength += int(cycle.CycleLength.Int16)
+				validCyclesForAvg++
+			}
+		}
+
+		if validCyclesForAvg > 0 {
+			averageCycleLength := totalCycleLength / validCyclesForAvg
+			lastStartDate := completedCycles[0].StartDate
+			predictedDate := lastStartDate.AddDate(0, 0, averageCycleLength)
+			daysUntil := int(time.Until(predictedDate).Hours() / 24)
+
+			if daysUntil >= 0 {
+				predictedDateStr := predictedDate.Format("2006-01-02")
+				response.DaysUntilNextPeriod = &daysUntil
+				response.PredictedPeriodDate = &predictedDateStr
+				response.Message = fmt.Sprintf("Your next period is predicted in %d days.", daysUntil)
+			} else {
+				response.Message = "Your predicted period date has passed. Please record your new cycle if it has started."
+			}
+		} else if response.LastCycleLength == nil {
+			response.Message = "Not enough data to predict the next period. Please record at least one full cycle."
 		}
 
 		return utils.SendSuccess(c, fiber.StatusOK, "Cycle status fetched.", response)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"ipincamp/srikandi-sehat/config"
 	"ipincamp/srikandi-sehat/database"
+	"ipincamp/srikandi-sehat/src/middleware"
 	"ipincamp/srikandi-sehat/src/routes"
 	"ipincamp/srikandi-sehat/src/utils"
 	"ipincamp/srikandi-sehat/src/workers"
@@ -19,6 +20,8 @@ import (
 )
 
 func main() {
+	utils.InitLogger()
+
 	config.SetTimeZone()
 	config.LoadConfig()
 	database.ConnectDB()
@@ -36,6 +39,7 @@ func main() {
 		Prefork:      true,
 		ServerHeader: "SrikandiSehat",
 	})
+	app.Use(middleware.RecoverMiddleware())
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: config.Get("CORS_ALLOWED_ORIGINS"),
 		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
@@ -50,8 +54,9 @@ func main() {
 
 	go func() {
 		port := config.Get("API_PORT")
+		utils.InfoLogger.Printf("Server is starting on port %s", port)
 		if err := app.Listen("0.0.0.0:" + port); err != nil {
-			log.Fatalf("Failed to start server: %v", err)
+			utils.ErrorLogger.Fatalf("Failed to start server: %v", err)
 		}
 	}()
 

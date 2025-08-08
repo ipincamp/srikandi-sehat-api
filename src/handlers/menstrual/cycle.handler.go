@@ -41,13 +41,16 @@ func RecordCycle(c *fiber.Ctx) error {
 			return utils.SendError(c, fiber.StatusConflict, "Cannot start a new cycle while another is in progress.")
 		}
 
-		startDate, _ := time.Parse(time.RFC3339, input.StartDate)
+		startDate, parseErr := time.Parse(time.RFC3339, input.StartDate)
+		if parseErr != nil {
+			return utils.SendError(c, fiber.StatusBadRequest, "Invalid StartDate format")
+		}
 
 		var lastCompletedCycle menstrual.MenstrualCycle
 		errLastCompleted := tx.Where("user_id = ? AND end_date IS NOT NULL", user.ID).Order("end_date desc").First(&lastCompletedCycle).Error
 		if errLastCompleted == nil {
 			if !startDate.After(lastCompletedCycle.EndDate.Time) {
-				formattedDate := lastCompletedCycle.EndDate.Time.Format("2 January 2006")
+				formattedDate := lastCompletedCycle.EndDate.Time.Format("2 January 2006 15:04:05")
 				errorMessage := fmt.Sprintf("Start date cannot be before or equal to the end date of the last completed cycle (%s).", formattedDate)
 				return utils.SendError(c, fiber.StatusConflict, errorMessage)
 			}
@@ -67,10 +70,13 @@ func RecordCycle(c *fiber.Ctx) error {
 			return utils.SendError(c, fiber.StatusConflict, "No active cycle to end. Please record a new cycle first.")
 		}
 
-		endDate, _ := time.Parse(time.RFC3339, input.EndDate)
+		endDate, parseErr := time.Parse(time.RFC3339, input.EndDate)
+		if parseErr != nil {
+			return utils.SendError(c, fiber.StatusBadRequest, "Invalid EndDate format")
+		}
 
 		if endDate.Before(activeCycle.StartDate) {
-			formattedDate := activeCycle.StartDate.Format("2 January 2006")
+			formattedDate := activeCycle.StartDate.Format("2 January 2006 15:04:05")
 			errorMessage := fmt.Sprintf("Finish date cannot be before the start date of the current cycle (%s).", formattedDate)
 			return utils.SendError(c, fiber.StatusBadRequest, errorMessage)
 		}
@@ -169,12 +175,17 @@ func GetCycleByID(c *fiber.Ctx) error {
 		}
 
 		if log.Note != "" {
-			dailyLog.Note = log.Note
+			if dailyLog.Note == "" {
+				dailyLog.Note = log.Note
+			} else {
+				dailyLog.Note += "\n" + log.Note
+			}
 		}
 
 		for _, detail := range log.Details {
 			entry := dto.SymptomEntryResponse{
-				LoggedAt:        log.CreatedAt,
+				// TODO: Fix logged_at
+				LoggedAt:        log.LoggedAt,
 				SymptomName:     detail.Symptom.Name,
 				SymptomCategory: detail.Symptom.Category,
 			}

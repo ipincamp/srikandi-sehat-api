@@ -84,32 +84,26 @@ func SeedMenstrualData(tx *gorm.DB) error {
 		{
 			SymptomID:   dysmenorrheaSymptom.ID,
 			Title:       "Tips Alami untuk Meredakan Nyeri Haid Ringan",
-			Description: "Untuk mengurangi rasa sakit saat haid, kamu bisa coba cara-cara alami seperti mengompres hangat bagian perut, melakukan olahraga ringan, tidur cukup, serta mengonsumsi minuman herbal seperti air kelapa hijau, jahe, sereh, atau jamu kunyit asam. Cara ini bantu tubuh lebih rileks dan nyaman selama menstruasi.",
+			Description: "Untuk menekan rasa sakit, cukup dilakukan kompres hangat, olahraga teratur, istirahat yang cukup, minum air kelapa hijau, minuman jahe, sereh, serta jamu kunir-asem, dan akupresur/ Sanyinjiao Hegu atau senam dismenorea. Apabila nyeri haid yang dirasakan sampai mengganggu aktivitas sehari-hari, bisa diberikan obat anti peradangan yang bersifat non steroid atau berkonsultasi langsung dengan tenaga kesehatan.",
 			Source:      "",
 		},
 		{
 			SymptomID:   dysmenorrheaSymptom.ID,
-			Title:       "Pijat Akupresur Bantu Redakan Nyeri",
+			Title:       "Akupresur Titik Sanyinjiao dan Hegu Untuk Mengatasi Dismenore",
 			Description: "Kamu juga bisa mencoba teknik pijat akupresur di titik Sanyinjiao dan Hegu. Titik ini dipercaya bisa membantu mengurangi nyeri haid dengan merangsang sistem saraf tertentu.",
 			Source:      "https://youtu.be/l7Z91rEHD6w",
 		},
 		{
 			SymptomID:   dysmenorrheaSymptom.ID,
-			Title:       "Coba Senam Dismenorea",
+			Title:       "Senam Dismenorea untuk Remaja",
 			Description: "Selain bantu meringankan nyeri, senam ini juga bisa bikin tubuh terasa lebih segar dan mood jadi lebih baik. Gerakannya sederhana dan bisa dilakukan di rumah.",
 			Source:      "https://youtu.be/z_wcXr-gIiU",
-		},
-		{
-			SymptomID:   dysmenorrheaSymptom.ID,
-			Title:       "Kalau Nyeri Sudah Mengganggu Aktivitas",
-			Description: "Kalau nyeri haid terasa cukup parah hingga bikin aktivitas sehari-hari terganggu, kamu bisa konsumsi obat antiinflamasi non-steroid (OAINS) atau langsung konsultasi ke tenaga kesehatan agar dapat penanganan yang sesuai.",
-			Source:      "",
 		},
 		// crampSymptom
 		{
 			SymptomID:   crampSymptom.ID,
 			Title:       "Asupan Kalium untuk Redakan Kram Perut Saat Haid",
-			Description: "Konsumsi makanan tinggi kalium seperti ubi jalar, pisang, salmon, kismis, kacang-kacangan, dan yoghurt. Mengolah makanan dengan cara dikukus atau dipanggang juga dapat membantu meningkatkan asupan kalium dalam tubuh.",
+			Description: "Konsumsi makanan yang tinggi kalium seperti ubi jalar, pisang, salmon, kismis, kacang-kacangan, dan yoghurt. Mengolah makanan dengan cara dikukus atau dipanggang juga dapat membantu meningkatkan asupan kalium dalam tubuh.",
 			Source:      "",
 		},
 		// fiveLSymptom
@@ -123,7 +117,7 @@ func SeedMenstrualData(tx *gorm.DB) error {
 		{
 			SymptomID:   moodSwingSymptom.ID,
 			Title:       "Cara Mengatasi Mood Swing Saat Menstruasi",
-			Description: "Coba lakukan aromaterapi, meditasi, atau aktivitas relaksasi lainnya seperti pernapasan dalam atau mendengarkan musik yang menenangkan. Kegiatan-kegiatan ini bisa membantu menstabilkan suasana hati.",
+			Description: "Lakukan aroma terapi, meditasi, atau aktivitas relaksasi lainnya untuk membantu menstabilkan suasana hati.",
 			Source:      "",
 		},
 	}

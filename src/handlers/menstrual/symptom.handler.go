@@ -7,6 +7,7 @@ import (
 	"ipincamp/srikandi-sehat/src/models"
 	"ipincamp/srikandi-sehat/src/models/menstrual"
 	"ipincamp/srikandi-sehat/src/utils"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -140,48 +141,84 @@ func LogSymptoms(c *fiber.Ctx) error {
 	return utils.SendSuccess(c, fiber.StatusOK, "Symptoms logged successfully", nil)
 }
 
-func GetSymptomLogsByDateRange(c *fiber.Ctx) error {
+func GetSymptomHistory(c *fiber.Ctx) error {
 	userUUID := c.Locals("user_id").(string)
-	queries := c.Locals("request_queries").(*dto.SymptomLogQuery)
+	queries := c.Locals("request_queries").(*dto.SymptomHistoryQuery)
+
+	page := queries.Page
+	if page <= 0 {
+		page = 1
+	}
+	limit := queries.Limit
+	if limit <= 0 {
+		limit = 10
+	}
 
 	var user models.User
 	if err := database.DB.First(&user, "uuid = ?", userUUID).Error; err != nil {
 		return utils.SendError(c, fiber.StatusNotFound, "User not found")
 	}
 
-	startDate, _ := time.Parse("2006-01-02", queries.StartDate)
-	endDate, _ := time.Parse("2006-01-02", queries.EndDate)
+	dataQuery := database.DB.Model(&menstrual.SymptomLog{}).
+		Select("MIN(symptom_logs.id) as id, COUNT(symptom_log_details.id) as total_symptoms, DATE(symptom_logs.logged_at) as log_date").
+		Joins("left join symptom_log_details on symptom_log_details.symptom_log_id = symptom_logs.id").
+		Where("symptom_logs.user_id = ?", user.ID).
+		Group("DATE(symptom_logs.logged_at)")
 
-	var logs []menstrual.SymptomLog
-	database.DB.
-		Preload("Details.Symptom").
-		Preload("Details.SymptomOption").
-		Where("user_id = ? AND log_date BETWEEN ? AND ?", user.ID, startDate, endDate).
-		Order("log_date asc").
-		Find(&logs)
+	countQuery := database.DB.Model(&menstrual.SymptomLog{}).
+		Where("user_id = ?", user.ID)
 
-	var responseData []dto.SymptomLogResponse
-	for _, log := range logs {
-		var detailsDTO []dto.SymptomLogDetailResponse
-		for _, detail := range log.Details {
-			detailDTO := dto.SymptomLogDetailResponse{
-				SymptomName:     detail.Symptom.Name,
-				SymptomCategory: detail.Symptom.Category,
-			}
-			if detail.SymptomOptionID.Valid {
-				detailDTO.SelectedOption = detail.SymptomOption.Name
-			}
-			detailsDTO = append(detailsDTO, detailDTO)
+	if queries.Date != "" {
+		dataQuery = dataQuery.Where("DATE(symptom_logs.logged_at) = ?", queries.Date)
+		countQuery = countQuery.Where("DATE(logged_at) = ?", queries.Date)
+	} else if queries.StartDate != "" && queries.EndDate != "" {
+		endDate, err := time.Parse("2006-01-02", queries.EndDate)
+		if err != nil {
+			return utils.SendError(c, fiber.StatusBadRequest, "Invalid EndDate format")
 		}
+		endDate = endDate.Add(23*time.Hour + 59*time.Minute + 59*time.Second)
 
-		responseData = append(responseData, dto.SymptomLogResponse{
-			LoggedAt: log.LoggedAt,
-			Note:     log.Note,
-			Details:  detailsDTO,
-		})
+		dataQuery = dataQuery.Where("symptom_logs.logged_at BETWEEN ? AND ?", queries.StartDate, endDate)
+		countQuery = countQuery.Where("logged_at BETWEEN ? AND ?", queries.StartDate, endDate)
 	}
 
-	return utils.SendSuccess(c, fiber.StatusOK, "Symptom logs fetched successfully", responseData)
+	var totalRows int64
+	if err := countQuery.Distinct("DATE(logged_at)").Count(&totalRows).Error; err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to count symptom history")
+	}
+
+	if totalRows == 0 {
+		return utils.SendError(c, fiber.StatusNotFound, "No symptom history found for the given criteria.")
+	}
+
+	totalPages := int(math.Ceil(float64(totalRows) / float64(limit)))
+	offset := (page - 1) * limit
+
+	var results []dto.SymptomHistoryResponse
+	err := dataQuery.Offset(offset).Limit(limit).Order("log_date desc").Scan(&results).Error
+	if err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to retrieve symptom history")
+	}
+
+	paginatedResponse := dto.PaginatedResponse[dto.SymptomHistoryResponse]{
+		Data: results,
+		Metadata: dto.Pagination{
+			Limit:       limit,
+			TotalRows:   totalRows,
+			TotalPages:  totalPages,
+			CurrentPage: page,
+		},
+	}
+	if page > 1 {
+		prev := page - 1
+		paginatedResponse.Metadata.PreviousPage = &prev
+	}
+	if page < totalPages {
+		next := page + 1
+		paginatedResponse.Metadata.NextPage = &next
+	}
+
+	return utils.SendSuccess(c, fiber.StatusOK, "Symptom history fetched successfully", paginatedResponse)
 }
 
 func isValidCommaSeparatedInt(input string) bool {

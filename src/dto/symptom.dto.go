@@ -15,6 +15,14 @@ type RecommendationQuery struct {
 	SymptomIDs string `query:"symptom_ids" validate:"required"`
 }
 
+type SymptomHistoryQuery struct {
+	Page      int    `query:"page" validate:"omitempty,numeric,min=1"`
+	Limit     int    `query:"limit" validate:"omitempty,numeric,min=1"`
+	StartDate string `query:"start_date" validate:"omitempty,datetime=2006-01-02"`
+	EndDate   string `query:"finish_date" validate:"omitempty,datetime=2006-01-02"`
+	Date      string `query:"date" validate:"omitempty,datetime=2006-01-02"`
+}
+
 // Request Body
 type SymptomLogDetailRequest struct {
 	SymptomID       uint  `json:"symptom_id" validate:"required"`
@@ -50,6 +58,13 @@ type SymptomLogResponse struct {
 	LoggedAt time.Time                  `json:"logged_at"`
 	Note     string                     `json:"note,omitempty"`
 	Details  []SymptomLogDetailResponse `json:"details"`
+}
+
+// SymptomHistoryResponse defines the structure for the aggregated symptom history list.
+type SymptomHistoryResponse struct {
+	ID            uint   `json:"id"`
+	TotalSymptoms int    `json:"total_symptoms"`
+	LogDate       string `json:"log_date"`
 }
 
 type RecommendationResponse struct {

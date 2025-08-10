@@ -9,7 +9,7 @@ type FullExportRecord struct {
 	UserName            string    `json:"user_name"`
 	UserEmail           string    `json:"user_email"`
 	UserRegisteredAt    time.Time `json:"user_registered_at"`
-	DateOfBirth         *string   `json:"date_of_birth"`
+	Age                 int       `json:"age"`
 	PhoneNumber         string    `json:"phone_number"`
 	HeightCM            uint      `json:"height_cm"`
 	WeightKG            float32   `json:"weight_kg"`

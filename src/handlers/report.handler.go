@@ -17,48 +17,66 @@ import (
 )
 
 // --- Helper functions for CSV Export ---
+
+// calculateAge calculates age based on a birth date.
+func calculateAge(birthDate *time.Time) int {
+	if birthDate == nil {
+		return 0
+	}
+	now := time.Now()
+	age := now.Year() - birthDate.Year()
+	if now.YearDay() < birthDate.YearDay() {
+		age--
+	}
+	return age
+}
+
+// getBMICategory determines the BMI category based on the new value ranges.
 func getBMICategory(bmi float32) string {
 	if bmi <= 0 {
 		return ""
 	}
-	if bmi < 18.5 {
+	if bmi < 17.0 {
+		return "Sangat Kurus"
+	} else if bmi >= 17.0 && bmi < 18.5 {
 		return "Kurus"
-	} else if bmi >= 18.5 && bmi <= 24.9 {
+	} else if bmi >= 18.5 && bmi <= 25.0 {
 		return "Normal"
-	} else if bmi >= 25.0 && bmi <= 29.9 {
+	} else if bmi > 25.0 && bmi <= 27.0 {
 		return "Gemuk"
-	} else {
+	} else { // > 27.0
 		return "Obesitas"
 	}
 }
 
+// getPeriodCategory determines the period duration category based on the new value ranges.
 func getPeriodCategory(length int16) string {
 	if length == 0 {
 		return "N/A"
 	}
 	if length < 2 {
-		return "Terlalu Singkat"
+		return "Pendek (Hipomenorea)"
 	} else if length > 7 {
-		return "Terlalu Lama"
+		return "Panjang (Menoragia)"
 	}
 	return "Normal"
 }
 
+// getCycleCategory determines the cycle length category based on the new value ranges.
 func getCycleCategory(length int16) string {
 	if length == 0 {
 		return "N/A"
 	}
 	if length < 21 {
-		return "Terlalu Cepat"
+		return "Pendek (Polimenorea)"
 	} else if length > 35 {
-		return "Terlalu Lambat"
+		return "Panjang (Oligomenorea)"
 	}
 	return "Normal"
 }
 
 // DownloadFullReportCSV generates a single CSV file combining all user and cycle data.
 func DownloadFullReportCSV(c *fiber.Ctx) error {
-	// 1. Fetch all cycles with comprehensive preloads, excluding admins
 	subQuery := database.DB.Table("user_roles").
 		Select("user_id").
 		Joins("JOIN roles ON user_roles.role_id = roles.id").
@@ -77,7 +95,6 @@ func DownloadFullReportCSV(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to fetch cycle data")
 	}
 
-	// 2. Fetch all symptom logs efficiently
 	var allSymptomLogs []menstrual.SymptomLog
 	database.DB.Preload("Details.Symptom").
 		Where("menstrual_cycle_id IS NOT NULL").
@@ -92,7 +109,6 @@ func DownloadFullReportCSV(c *fiber.Ctx) error {
 		}
 	}
 
-	// 3. Process data into the final record structure
 	var records []dto.FullExportRecord
 	userCycleCount := make(map[uint]int64)
 
@@ -101,12 +117,12 @@ func DownloadFullReportCSV(c *fiber.Ctx) error {
 		user := cycle.User
 		profile := user.Profile
 
-		// Prepare user data
 		record := dto.FullExportRecord{
 			UserUUID:            user.UUID,
 			UserName:            user.Name,
 			UserEmail:           user.Email,
 			UserRegisteredAt:    user.CreatedAt,
+			Age:                 calculateAge(profile.DateOfBirth),
 			PhoneNumber:         profile.PhoneNumber,
 			HeightCM:            profile.HeightCM,
 			WeightKG:            profile.WeightKG,
@@ -115,10 +131,6 @@ func DownloadFullReportCSV(c *fiber.Ctx) error {
 			ParentLastEducation: string(profile.ParentLastEducation),
 			ParentLastJob:       profile.ParentLastJob,
 			InternetAccess:      string(profile.InternetAccess),
-		}
-		if profile.DateOfBirth != nil {
-			dob := profile.DateOfBirth.Format("2006-01-02")
-			record.DateOfBirth = &dob
 		}
 		if profile.Village.ID > 0 {
 			record.Village = profile.Village.Name
@@ -134,7 +146,6 @@ func DownloadFullReportCSV(c *fiber.Ctx) error {
 			record.BMICategory = getBMICategory(record.BMI)
 		}
 
-		// Prepare cycle data
 		endDate := ""
 		if cycle.EndDate.Valid {
 			endDate = cycle.EndDate.Time.Format("2006-01-02")
@@ -163,11 +174,10 @@ func DownloadFullReportCSV(c *fiber.Ctx) error {
 		records = append(records, record)
 	}
 
-	// 4. Write to CSV buffer
 	b := new(bytes.Buffer)
 	w := csv.NewWriter(b)
 	header := []string{
-		"ID Pengguna", "Nama Pengguna", "Email", "Tanggal Registrasi", "Tanggal Lahir", "No. Telepon",
+		"ID Pengguna", "Nama Pengguna", "Email", "Tanggal Registrasi", "Umur", "No. Telepon",
 		"Tinggi (cm)", "Berat (kg)", "IMT", "Kategori IMT", "Usia Menarche", "Pendidikan Terakhir",
 		"Pendidikan Ortu", "Pekerjaan Ortu", "Akses Internet", "Desa/Kelurahan", "Kecamatan",
 		"Kabupaten/Kota", "Provinsi", "Klasifikasi Alamat", "Siklus Ke-", "Tanggal Mulai", "Tanggal Selesai",
@@ -175,12 +185,8 @@ func DownloadFullReportCSV(c *fiber.Ctx) error {
 	}
 	w.Write(header)
 	for _, rec := range records {
-		dob := ""
-		if rec.DateOfBirth != nil {
-			dob = *rec.DateOfBirth
-		}
 		row := []string{
-			rec.UserUUID, rec.UserName, rec.UserEmail, rec.UserRegisteredAt.Format("2006-01-02 15:04:05"), dob, rec.PhoneNumber,
+			rec.UserUUID, rec.UserName, rec.UserEmail, rec.UserRegisteredAt.Format("2006-01-02 15:04:05"), fmt.Sprintf("%d", rec.Age), rec.PhoneNumber,
 			fmt.Sprintf("%d", rec.HeightCM), fmt.Sprintf("%.2f", rec.WeightKG), fmt.Sprintf("%.2f", rec.BMI), rec.BMICategory, fmt.Sprintf("%d", rec.MenarcheAge), rec.LastEducation,
 			rec.ParentLastEducation, rec.ParentLastJob, rec.InternetAccess, rec.Village, rec.District,
 			rec.Regency, rec.Province, rec.Classification, fmt.Sprintf("%d", rec.CycleNumber), rec.StartDate, rec.EndDate,
@@ -190,7 +196,6 @@ func DownloadFullReportCSV(c *fiber.Ctx) error {
 	}
 	w.Flush()
 
-	// 5. Set headers and send response
 	filename := fmt.Sprintf("full_report_%s.csv", time.Now().Format("2006-01-02"))
 	c.Set("Content-Type", "text/csv")
 	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))

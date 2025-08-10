@@ -65,6 +65,28 @@ type UserStatisticsResponse struct {
 	TotalUsers       int64 `json:"total_users"`
 }
 
+type UserCSVRecord struct {
+	UUID                string    `json:"uuid"`
+	Name                string    `json:"name"`
+	Email               string    `json:"email"`
+	DateOfBirth         *string   `json:"date_of_birth"`
+	PhoneNumber         string    `json:"phone_number"`
+	HeightCM            uint      `json:"height_cm"`
+	WeightKG            float32   `json:"weight_kg"`
+	BMI                 float32   `json:"bmi"`
+	MenarcheAge         uint      `json:"menarche_age"`
+	LastEducation       string    `json:"last_education"`
+	ParentLastEducation string    `json:"parent_last_education"`
+	ParentLastJob       string    `json:"parent_last_job"`
+	InternetAccess      string    `json:"internet_access"`
+	Village             string    `json:"village"`
+	District            string    `json:"district"`
+	Regency             string    `json:"regency"`
+	Province            string    `json:"province"`
+	Classification      string    `json:"classification"`
+	RegisteredAt        time.Time `json:"registered_at"`
+}
+
 type UserResponse struct {
 	ID                string           `json:"id"`
 	Name              string           `json:"name"`

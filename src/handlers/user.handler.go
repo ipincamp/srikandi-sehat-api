@@ -1,7 +1,10 @@
 package handlers
 
 import (
+	"bytes"
+	"encoding/csv"
 	"errors"
+	"fmt"
 	"ipincamp/srikandi-sehat/config"
 	"ipincamp/srikandi-sehat/database"
 	"ipincamp/srikandi-sehat/src/constants"
@@ -9,6 +12,7 @@ import (
 	"ipincamp/srikandi-sehat/src/models"
 	"ipincamp/srikandi-sehat/src/models/region"
 	"ipincamp/srikandi-sehat/src/utils"
+	"math"
 	"sync"
 	"time"
 
@@ -356,4 +360,97 @@ func GetUserStatistics(c *fiber.Ctx) error {
 	}
 
 	return utils.SendSuccess(c, fiber.StatusOK, "User statistics fetched successfully", stats)
+}
+
+func DownloadUsersCSV(c *fiber.Ctx) error {
+	// Subquery to exclude admin users
+	subQuery := database.DB.Table("user_roles").
+		Select("user_id").
+		Joins("JOIN roles ON user_roles.role_id = roles.id").
+		Where("roles.name = ?", string(constants.AdminRole))
+
+	// Fetch all user data with joins to get profile and address info
+	var records []dto.UserCSVRecord
+	err := database.DB.Model(&models.User{}).
+		Select(`
+			users.uuid, users.name, users.email,
+			DATE(profiles.date_of_birth) as date_of_birth,
+			profiles.phone_number, profiles.height_cm, profiles.weight_kg,
+			profiles.menarche_age, profiles.last_education, profiles.parent_last_education,
+			profiles.parent_last_job, profiles.internet_access,
+			villages.name as village, districts.name as district,
+			regencies.name as regency, provinces.name as province,
+			classifications.name as classification,
+			users.created_at as registered_at
+		`).
+		Joins("LEFT JOIN profiles ON users.id = profiles.user_id").
+		Joins("LEFT JOIN villages ON profiles.village_id = villages.id").
+		Joins("LEFT JOIN districts ON villages.district_id = districts.id").
+		Joins("LEFT JOIN regencies ON districts.regency_id = regencies.id").
+		Joins("LEFT JOIN provinces ON regencies.province_id = provinces.id").
+		Joins("LEFT JOIN classifications ON villages.classification_id = classifications.id").
+		Where("users.id NOT IN (?)", subQuery).
+		Order("users.created_at DESC").
+		Scan(&records).Error
+
+	if err != nil {
+		utils.ErrorLogger.Println("Failed to fetch user data for CSV export:", err)
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to fetch user data")
+	}
+
+	// Create a buffer to write CSV data to memory
+	b := new(bytes.Buffer)
+	w := csv.NewWriter(b)
+
+	// Write CSV header
+	header := []string{
+		"UUID", "Nama", "Email", "Tanggal Lahir", "No. Telepon", "Tinggi (cm)", "Berat (kg)", "IMT",
+		"Usia Menarche", "Pendidikan Terakhir", "Pendidikan Ortu", "Pekerjaan Ortu",
+		"Akses Internet", "Desa/Kelurahan", "Kecamatan", "Kabupaten/Kota", "Provinsi",
+		"Klasifikasi Alamat", "Tanggal Registrasi",
+	}
+	if err := w.Write(header); err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to write CSV header")
+	}
+
+	// Write user data rows
+	for _, record := range records {
+		// Calculate BMI
+		if record.HeightCM > 0 && record.WeightKG > 0 {
+			heightInMeters := float32(record.HeightCM) / 100
+			bmi := record.WeightKG / (heightInMeters * heightInMeters)
+			record.BMI = float32(math.Round(float64(bmi)*100) / 100)
+		}
+
+		dob := ""
+		if record.DateOfBirth != nil {
+			dob = *record.DateOfBirth
+		}
+
+		csvRow := []string{
+			record.UUID, record.Name, record.Email, dob, record.PhoneNumber,
+			fmt.Sprintf("%d", record.HeightCM), fmt.Sprintf("%.2f", record.WeightKG), fmt.Sprintf("%.2f", record.BMI),
+			fmt.Sprintf("%d", record.MenarcheAge), record.LastEducation, record.ParentLastEducation, record.ParentLastJob,
+			record.InternetAccess, record.Village, record.District, record.Regency, record.Province,
+			record.Classification, record.RegisteredAt.Format("2006-01-02 15:04:05"),
+		}
+		if err := w.Write(csvRow); err != nil {
+			return utils.SendError(c, fiber.StatusInternalServerError, "Failed to write CSV row")
+		}
+	}
+
+	// Flush writes any buffered data to the underlying writer (the buffer)
+	w.Flush()
+
+	if err := w.Error(); err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Error writing CSV data")
+	}
+
+	// Set headers for file download
+	filename := fmt.Sprintf("users_export_%s.csv", time.Now().Format("2006-01-02"))
+	c.Set("Content-Type", "text/csv")
+	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+
+	// Send the buffer as the response
+	return c.Send(b.Bytes())
 }

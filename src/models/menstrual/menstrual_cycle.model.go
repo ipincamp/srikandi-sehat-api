@@ -2,6 +2,7 @@ package menstrual
 
 import (
 	"database/sql"
+	"ipincamp/srikandi-sehat/src/models"
 	"time"
 )
 
@@ -15,6 +16,7 @@ type MenstrualCycle struct {
 	IsCycleNormal  sql.NullBool
 
 	UserID      uint         `gorm:"not null"`
+	User        models.User  `gorm:"foreignKey:UserID"`
 	SymptomLogs []SymptomLog `gorm:"foreignKey:MenstrualCycleID"`
 
 	CreatedAt time.Time `gorm:"autoCreateTime"`

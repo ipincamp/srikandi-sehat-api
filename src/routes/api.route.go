@@ -26,8 +26,8 @@ func SetupRoutes(app *fiber.App) {
 
 	// Admin routes
 	admin := api.Group("/admin", middleware.AuthMiddleware, middleware.AdminMiddleware)
-	admin.Get("/users/export/csv", handlers.DownloadUsersCSV)
 	admin.Get("/users/statistics", handlers.GetUserStatistics)
+	admin.Get("/reports/csv", handlers.DownloadFullReportCSV)
 	admin.Get("/users", middleware.ValidateQuery[dto.UserQuery], handlers.GetAllUsers)
 	admin.Get("/users/:id", middleware.ValidateParams[dto.UserParam], handlers.GetUserByID)
 

@@ -4,6 +4,7 @@ import (
 	"time"
 )
 
+// --- Generic Pagination Structures ---
 type Pagination struct {
 	Limit        int   `json:"limit"`
 	TotalRows    int64 `json:"total_data"`
@@ -16,6 +17,22 @@ type Pagination struct {
 type PaginatedResponse[T any] struct {
 	Data     []T        `json:"data"`
 	Metadata Pagination `json:"metadata"`
+}
+
+// --- Cycle Specific ---
+
+// CycleExportRecord defines the flattened structure for the cycle data CSV export.
+type CycleExportRecord struct {
+	UserUUID       string `json:"user_uuid"`
+	UserName       string `json:"user_name"`
+	CycleNumber    int64  `json:"cycle_number"`
+	StartDate      string `json:"start_date"`
+	EndDate        string `json:"end_date"`
+	PeriodLength   int16  `json:"period_length"`
+	PeriodCategory string `json:"period_category"`
+	CycleLength    int16  `json:"cycle_length"`
+	CycleCategory  string `json:"cycle_category"`
+	Symptoms       string `json:"symptoms"`
 }
 
 // Request Param

@@ -9,19 +9,18 @@ import (
 	"time"
 )
 
-// Request Param
+// --- Request Params & Queries ---
 type UserParam struct {
 	ID string `params:"id" validate:"required,uuid"`
 }
 
-// Request Query
 type UserQuery struct {
-	Classification string `query:"classification" validate:"omitempty,oneof='perkotaan' 'perdesaan'"`
+	Classification string `query:"classification" validate:"omitempty,oneof=urban rural"` // Updated validation
 	Page           int    `query:"page" validate:"omitempty,numeric,min=1"`
 	Limit          int    `query:"limit" validate:"omitempty,numeric,min=1,max=100"`
 }
 
-// Request Body
+// --- Request Body ---
 type UpdateProfileRequest struct {
 	Name                *string                   `json:"name" validate:"omitempty,min=3"`
 	PhoneNumber         *string                   `json:"phone" validate:"omitempty,min=10,max=15"`
@@ -42,7 +41,7 @@ type ChangePasswordRequest struct {
 	NewPasswordConfirmation string `json:"new_password_confirmation" validate:"required,eqfield=NewPassword"`
 }
 
-// Response Body
+// --- Response Body ---
 type ProfileResponse struct {
 	PhoneNumber         string                   `json:"phone"`
 	DateOfBirth         *time.Time               `json:"birthdate"`

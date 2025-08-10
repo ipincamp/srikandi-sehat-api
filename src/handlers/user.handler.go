@@ -200,8 +200,16 @@ func GetAllUsers(c *fiber.Ctx) error {
 		Joins("JOIN villages ON profiles.village_id = villages.id").
 		Joins("JOIN classifications ON villages.classification_id = classifications.id")
 
+	// Updated logic to handle English parameters
 	if queries.Classification != "" {
-		query = query.Where("classifications.name = ?", queries.Classification)
+		var classificationDBValue string
+		switch queries.Classification {
+		case "urban":
+			classificationDBValue = "Perkotaan"
+		case "rural":
+			classificationDBValue = "Perdesaan"
+		}
+		query = query.Where("classifications.name = ?", classificationDBValue)
 	}
 
 	query = query.Where("NOT EXISTS (?)", subQuery)

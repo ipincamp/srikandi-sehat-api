@@ -15,7 +15,7 @@ type UserParam struct {
 }
 
 type UserQuery struct {
-	Classification string `query:"classification" validate:"omitempty,oneof=urban rural"` // Updated validation
+	Classification string `query:"classification" validate:"omitempty,oneof=urban rural"`
 	Page           int    `query:"page" validate:"omitempty,numeric,min=1"`
 	Limit          int    `query:"limit" validate:"omitempty,numeric,min=1,max=100"`
 }
@@ -42,6 +42,14 @@ type ChangePasswordRequest struct {
 }
 
 // --- Response Body ---
+type CycleHistoryEntry struct {
+	ID               uint       `json:"id"`
+	StartDate        time.Time  `json:"start_date"`
+	FinishDate       *time.Time `json:"finish_date,omitempty"`
+	PeriodLengthDays *int16     `json:"period_length_days,omitempty"`
+	CycleLengthDays  *int16     `json:"cycle_length_days,omitempty"`
+}
+
 type ProfileResponse struct {
 	PhoneNumber         string                   `json:"phone"`
 	DateOfBirth         *time.Time               `json:"birthdate"`
@@ -55,6 +63,18 @@ type ProfileResponse struct {
 	MenarcheAge         uint                     `json:"first_haid"`
 	Address             string                   `json:"address"`
 	UpdatedAt           *time.Time               `json:"updated_at,omitempty"`
+}
+
+type UserResponse struct {
+	ID                string              `json:"id"`
+	Name              string              `json:"name"`
+	Email             string              `json:"email"`
+	Role              string              `json:"role,omitempty"`
+	Token             string              `json:"token,omitempty"`
+	IsProfileComplete bool                `json:"profile_complete"`
+	Profile           *ProfileResponse    `json:"profile,omitempty"`
+	CycleHistory      []CycleHistoryEntry `json:"cycle_history,omitempty"`
+	CreatedAt         time.Time           `json:"created_at"`
 }
 
 type UserStatisticsResponse struct {
@@ -85,17 +105,6 @@ type UserCSVRecord struct {
 	Province            string    `json:"province"`
 	Classification      string    `json:"classification"`
 	RegisteredAt        time.Time `json:"registered_at"`
-}
-
-type UserResponse struct {
-	ID                string           `json:"id"`
-	Name              string           `json:"name"`
-	Email             string           `json:"email"`
-	Role              string           `json:"role,omitempty"`
-	Token             string           `json:"token,omitempty"`
-	IsProfileComplete bool             `json:"profile_complete"`
-	Profile           *ProfileResponse `json:"profile,omitempty"`
-	CreatedAt         time.Time        `json:"created_at"`
 }
 
 // Formatter
@@ -135,7 +144,6 @@ func UserResponseJson(user models.User, token ...string) UserResponse {
 
 	var response UserResponse
 	if len(token) > 0 {
-		// Login request: only basic user info and token
 		response = UserResponse{
 			ID:                user.UUID,
 			Name:              user.Name,
@@ -146,7 +154,6 @@ func UserResponseJson(user models.User, token ...string) UserResponse {
 			CreatedAt:         user.CreatedAt,
 		}
 	} else {
-		// Get my profile request: load full profile data
 		response = UserResponse{
 			ID:                user.UUID,
 			Name:              user.Name,

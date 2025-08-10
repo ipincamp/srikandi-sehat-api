@@ -7,6 +7,7 @@ import (
 	"ipincamp/srikandi-sehat/src/constants"
 	"ipincamp/srikandi-sehat/src/dto"
 	"ipincamp/srikandi-sehat/src/models"
+	"ipincamp/srikandi-sehat/src/models/menstrual"
 	"ipincamp/srikandi-sehat/src/models/region"
 	"ipincamp/srikandi-sehat/src/utils"
 	"sync"
@@ -248,6 +249,7 @@ func GetUserByID(c *fiber.Ctx) error {
 	params := c.Locals("request_params").(*dto.UserParam)
 	userUUID := params.ID
 
+	// 1. Fetch user with profile details
 	var user models.User
 	result := database.DB.
 		Preload("Roles").
@@ -259,7 +261,34 @@ func GetUserByID(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusNotFound, "User not found")
 	}
 
+	// 2. Fetch the user's menstrual cycle history
+	var cycles []menstrual.MenstrualCycle
+	database.DB.Where("user_id = ?", user.ID).Order("start_date DESC").Find(&cycles)
+
+	// 3. Format the cycle history into the DTO structure
+	var cycleHistoryDTO []dto.CycleHistoryEntry
+	for _, cycle := range cycles {
+		entry := dto.CycleHistoryEntry{
+			ID:        cycle.ID,
+			StartDate: cycle.StartDate,
+		}
+		if cycle.EndDate.Valid {
+			entry.FinishDate = &cycle.EndDate.Time
+		}
+		if cycle.PeriodLength.Valid {
+			entry.PeriodLengthDays = &cycle.PeriodLength.Int16
+		}
+		if cycle.CycleLength.Valid {
+			entry.CycleLengthDays = &cycle.CycleLength.Int16
+		}
+		cycleHistoryDTO = append(cycleHistoryDTO, entry)
+	}
+
+	// 4. Get the base user response data
 	responseData := dto.UserResponseJson(user)
+
+	// 5. Add the cycle history to the response
+	responseData.CycleHistory = cycleHistoryDTO
 
 	return utils.SendSuccess(c, fiber.StatusOK, "User fetched successfully", responseData)
 }

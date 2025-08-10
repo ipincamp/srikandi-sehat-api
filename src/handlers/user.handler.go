@@ -363,13 +363,11 @@ func GetUserStatistics(c *fiber.Ctx) error {
 }
 
 func DownloadUsersCSV(c *fiber.Ctx) error {
-	// Subquery to exclude admin users
 	subQuery := database.DB.Table("user_roles").
 		Select("user_id").
 		Joins("JOIN roles ON user_roles.role_id = roles.id").
 		Where("roles.name = ?", string(constants.AdminRole))
 
-	// Fetch all user data with joins to get profile and address info
 	var records []dto.UserCSVRecord
 	err := database.DB.Model(&models.User{}).
 		Select(`
@@ -398,13 +396,11 @@ func DownloadUsersCSV(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to fetch user data")
 	}
 
-	// Create a buffer to write CSV data to memory
 	b := new(bytes.Buffer)
 	w := csv.NewWriter(b)
 
-	// Write CSV header
 	header := []string{
-		"UUID", "Nama", "Email", "Tanggal Lahir", "No. Telepon", "Tinggi (cm)", "Berat (kg)", "IMT",
+		"UUID", "Nama", "Email", "Tanggal Lahir", "No. Telepon", "Tinggi (cm)", "Berat (kg)", "IMT", "Kategori IMT",
 		"Usia Menarche", "Pendidikan Terakhir", "Pendidikan Ortu", "Pekerjaan Ortu",
 		"Akses Internet", "Desa/Kelurahan", "Kecamatan", "Kabupaten/Kota", "Provinsi",
 		"Klasifikasi Alamat", "Tanggal Registrasi",
@@ -413,13 +409,12 @@ func DownloadUsersCSV(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to write CSV header")
 	}
 
-	// Write user data rows
 	for _, record := range records {
-		// Calculate BMI
 		if record.HeightCM > 0 && record.WeightKG > 0 {
 			heightInMeters := float32(record.HeightCM) / 100
 			bmi := record.WeightKG / (heightInMeters * heightInMeters)
 			record.BMI = float32(math.Round(float64(bmi)*100) / 100)
+			record.BMICategory = getBMICategory(record.BMI)
 		}
 
 		dob := ""
@@ -429,7 +424,7 @@ func DownloadUsersCSV(c *fiber.Ctx) error {
 
 		csvRow := []string{
 			record.UUID, record.Name, record.Email, dob, record.PhoneNumber,
-			fmt.Sprintf("%d", record.HeightCM), fmt.Sprintf("%.2f", record.WeightKG), fmt.Sprintf("%.2f", record.BMI),
+			fmt.Sprintf("%d", record.HeightCM), fmt.Sprintf("%.2f", record.WeightKG), fmt.Sprintf("%.2f", record.BMI), record.BMICategory,
 			fmt.Sprintf("%d", record.MenarcheAge), record.LastEducation, record.ParentLastEducation, record.ParentLastJob,
 			record.InternetAccess, record.Village, record.District, record.Regency, record.Province,
 			record.Classification, record.RegisteredAt.Format("2006-01-02 15:04:05"),
@@ -439,18 +434,30 @@ func DownloadUsersCSV(c *fiber.Ctx) error {
 		}
 	}
 
-	// Flush writes any buffered data to the underlying writer (the buffer)
 	w.Flush()
 
 	if err := w.Error(); err != nil {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Error writing CSV data")
 	}
 
-	// Set headers for file download
 	filename := fmt.Sprintf("users_export_%s.csv", time.Now().Format("2006-01-02"))
 	c.Set("Content-Type", "text/csv")
 	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
 
-	// Send the buffer as the response
 	return c.Send(b.Bytes())
+}
+
+func getBMICategory(bmi float32) string {
+	if bmi <= 0 {
+		return ""
+	}
+	if bmi < 18.5 {
+		return "Kurus"
+	} else if bmi >= 18.5 && bmi <= 24.9 {
+		return "Normal"
+	} else if bmi >= 25.0 && bmi <= 29.9 {
+		return "Gemuk"
+	} else {
+		return "Obesitas"
+	}
 }

@@ -74,6 +74,7 @@ type UserCSVRecord struct {
 	HeightCM            uint      `json:"height_cm"`
 	WeightKG            float32   `json:"weight_kg"`
 	BMI                 float32   `json:"bmi"`
+	BMICategory         string    `json:"bmi_category"`
 	MenarcheAge         uint      `json:"menarche_age"`
 	LastEducation       string    `json:"last_education"`
 	ParentLastEducation string    `json:"parent_last_education"`

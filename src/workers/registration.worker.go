@@ -15,6 +15,7 @@ import (
 
 type Job struct {
 	RegistrationData dto.RegisterRequest
+	FCMToken         string
 }
 
 var JobQueue chan Job
@@ -34,11 +35,18 @@ func StartWorkerPool() {
 func worker(id int, jobs <-chan Job) {
 	for job := range jobs {
 		data := job.RegistrationData
+		fcmToken := job.FCMToken
 
 		var existingUser models.User
 		err := database.DB.First(&existingUser, "email = ?", data.Email).Error
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			log.Printf("Worker %d: Registration failed for %s. Email is already registered.", id, data.Email)
+			utils.SendFCMNotification(
+				fcmToken,
+				"Registration Failed",
+				"The email you used is already registered in our system.",
+				map[string]string{"status": "failed", "reason": "email_exists"},
+			)
 			continue
 		}
 
@@ -72,10 +80,21 @@ func worker(id int, jobs <-chan Job) {
 
 		if err != nil {
 			log.Printf("ERROR (Worker %d): Failed to create user %s in database: %v", id, data.Email, err)
+			utils.SendFCMNotification(
+				fcmToken,
+				"Registration Failed",
+				"An error occurred while processing your account. Please try again.",
+				map[string]string{"status": "failed", "reason": "server_error"},
+			)
 		} else {
 			utils.AddEmailToRegistrationFilter(user.Email)
 			log.Printf("Worker %d: User %s has been created and activated.", id, user.Email)
-			// TODO: Send email notification to user
+			utils.SendFCMNotification(
+				fcmToken,
+				"Registration Successful!",
+				"Your account has been created successfully. Please log in to get started.",
+				map[string]string{"status": "success"},
+			)
 		}
 	}
 }

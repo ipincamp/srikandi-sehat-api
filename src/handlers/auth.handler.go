@@ -25,6 +25,7 @@ func Register(c *fiber.Ctx) error {
 
 	job := workers.Job{
 		RegistrationData: *input,
+		FCMToken:         input.FCMToken,
 	}
 	workers.JobQueue <- job
 

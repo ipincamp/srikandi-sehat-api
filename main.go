@@ -22,6 +22,8 @@ import (
 func main() {
 	utils.InitLogger()
 
+	utils.InitFCM()
+
 	config.SetTimeZone()
 	config.LoadConfig()
 	database.ConnectDB()
@@ -36,7 +38,7 @@ func main() {
 	go utils.CleanupExpiredTokens()
 
 	app := fiber.New(fiber.Config{
-		Prefork:      true,
+		Prefork:      false,
 		ServerHeader: "SrikandiSehat",
 	})
 	app.Use(middleware.RecoverMiddleware())

@@ -39,3 +39,6 @@ srikandi-sehat
 
 # Logs
 logs/
+
+# Firebase service account key
+serviceAccountKey.json

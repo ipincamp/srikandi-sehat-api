@@ -58,6 +58,13 @@ type ProfileResponse struct {
 	UpdatedAt           *time.Time               `json:"updated_at,omitempty"`
 }
 
+type UserStatisticsResponse struct {
+	TotalRuralUsers  int64 `json:"total_rural_users"`
+	TotalUrbanUsers  int64 `json:"total_urban_users"`
+	TotalActiveUsers int64 `json:"total_active_users"`
+	TotalUsers       int64 `json:"total_users"`
+}
+
 type UserResponse struct {
 	ID                string           `json:"id"`
 	Name              string           `json:"name"`

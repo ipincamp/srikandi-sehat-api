@@ -9,6 +9,7 @@ import (
 	"ipincamp/srikandi-sehat/src/models"
 	"ipincamp/srikandi-sehat/src/models/region"
 	"ipincamp/srikandi-sehat/src/utils"
+	"sync"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -253,4 +254,106 @@ func GetUserByID(c *fiber.Ctx) error {
 	responseData := dto.UserResponseJson(user)
 
 	return utils.SendSuccess(c, fiber.StatusOK, "User fetched successfully", responseData)
+}
+
+func GetUserStatistics(c *fiber.Ctx) error {
+	var stats dto.UserStatisticsResponse
+	var wg sync.WaitGroup
+	var dbErr error
+
+	// Channel to handle potential concurrent errors
+	errChan := make(chan error, 4)
+
+	// --- 1. Get Total Rural Users ---
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var count int64
+		err := database.DB.Model(&models.User{}).
+			Joins("JOIN profiles ON users.id = profiles.user_id").
+			Joins("JOIN villages ON profiles.village_id = villages.id").
+			Joins("JOIN classifications ON villages.classification_id = classifications.id").
+			Where("classifications.name = ?", "Perdesaan").
+			Count(&count).Error
+		if err != nil {
+			errChan <- err
+			return
+		}
+		stats.TotalRuralUsers = count
+	}()
+
+	// --- 2. Get Total Urban Users ---
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var count int64
+		err := database.DB.Model(&models.User{}).
+			Joins("JOIN profiles ON users.id = profiles.user_id").
+			Joins("JOIN villages ON profiles.village_id = villages.id").
+			Joins("JOIN classifications ON villages.classification_id = classifications.id").
+			Where("classifications.name = ?", "Perkotaan").
+			Count(&count).Error
+		if err != nil {
+			errChan <- err
+			return
+		}
+		stats.TotalUrbanUsers = count
+	}()
+
+	// --- 3. Get Total Active Users ---
+	// (Users with at least 2 cycles, meaning 1 completed and 1 active/completed)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var count int64
+		err := database.DB.Table("users").
+			Joins("JOIN (SELECT user_id, COUNT(id) as cycle_count FROM menstrual_cycles GROUP BY user_id) as mc ON users.id = mc.user_id").
+			Where("mc.cycle_count >= 2").
+			Count(&count).Error
+		if err != nil {
+			errChan <- err
+			return
+		}
+		stats.TotalActiveUsers = count
+	}()
+
+	// --- 4. Get Total Users (excluding Admins) ---
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var count int64
+		// Subquery to find users who are admins
+		subQuery := database.DB.Table("user_roles").
+			Select("user_id").
+			Joins("JOIN roles ON user_roles.role_id = roles.id").
+			Where("roles.name = ?", string(constants.AdminRole))
+
+		err := database.DB.Model(&models.User{}).
+			Where("id NOT IN (?)", subQuery).
+			Count(&count).Error
+		if err != nil {
+			errChan <- err
+			return
+		}
+		stats.TotalUsers = count
+	}()
+
+	// Wait for all goroutines to finish
+	wg.Wait()
+	close(errChan)
+
+	// Check if any goroutine reported an error
+	for err := range errChan {
+		if err != nil {
+			dbErr = err // Capture the first error
+			break
+		}
+	}
+
+	if dbErr != nil {
+		utils.ErrorLogger.Println("Failed to retrieve user statistics:", dbErr)
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to retrieve user statistics")
+	}
+
+	return utils.SendSuccess(c, fiber.StatusOK, "User statistics fetched successfully", stats)
 }

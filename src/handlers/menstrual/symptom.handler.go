@@ -139,7 +139,11 @@ func LogSymptoms(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to commit transaction")
 	}
 
-	return utils.SendSuccess(c, fiber.StatusOK, "Symptoms logged successfully", nil)
+	responseData := dto.SymptomLogCreateResponse{
+		ID: symptomLog.ID,
+	}
+
+	return utils.SendSuccess(c, fiber.StatusOK, "Symptoms logged successfully", responseData)
 }
 
 func GetSymptomHistory(c *fiber.Ctx) error {

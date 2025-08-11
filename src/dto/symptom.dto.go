@@ -41,6 +41,10 @@ type SymptomLogRequest struct {
 }
 
 // --- Response Body ---
+type SymptomLogCreateResponse struct {
+	ID uint `json:"id"`
+}
+
 type SymptomOptionResponse struct {
 	ID   uint   `json:"id"`
 	Name string `json:"name"`

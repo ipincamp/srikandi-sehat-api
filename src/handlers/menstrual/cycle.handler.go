@@ -27,6 +27,10 @@ func RecordCycle(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusNotFound, "User not found")
 	}
 
+	if user.Profile.ID == 0 || user.Profile.DateOfBirth == nil || user.Profile.HeightCM == 0 || user.Profile.WeightKG == 0 || user.Profile.MenarcheAge == 0 {
+		return utils.SendError(c, fiber.StatusForbidden, "Please complete your profile before recording a cycle. Essential data is missing.")
+	}
+
 	tx := database.DB.Begin()
 	if tx.Error != nil {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to start transaction")

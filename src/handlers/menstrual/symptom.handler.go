@@ -9,8 +9,6 @@ import (
 	"ipincamp/srikandi-sehat/src/models/menstrual"
 	"ipincamp/srikandi-sehat/src/utils"
 	"math"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -301,55 +299,51 @@ func GetSymptomLogByID(c *fiber.Ctx) error {
 	return utils.SendSuccess(c, fiber.StatusOK, "Symptom log detail fetched successfully", response)
 }
 
-func isValidCommaSeparatedInt(input string) bool {
-	for _, char := range input {
-		if (char < '0' || char > '9') && char != ',' {
-			return false
-		}
-	}
-	return true
-}
-
 func GetRecommendationsBySymptoms(c *fiber.Ctx) error {
-	queries := c.Locals("request_queries").(*dto.RecommendationQuery)
-
-	// Validasi input query parameter
-	if queries.SymptomIDs == "" {
-		return utils.SendError(c, fiber.StatusBadRequest, "symptom_ids query parameter is required")
-	}
-	// Jika symptom_ids tidak valid, kembalikan error
-	if !isValidCommaSeparatedInt(queries.SymptomIDs) {
-		return utils.SendError(c, fiber.StatusBadRequest, "Invalid symptom_ids format")
+	userUUID := c.Locals("user_id").(string)
+	var user models.User
+	if err := database.DB.First(&user, "uuid = ?", userUUID).Error; err != nil {
+		return utils.SendError(c, fiber.StatusNotFound, "User not found")
 	}
 
-	// 1. Konversi string "1,4,5" menjadi slice of integer []int{1, 4, 5}
-	// TODO: remove duplicate. example: "1,1,1,2,3,4" to "1,2,3,4"
-	idStrings := strings.Split(queries.SymptomIDs, ",")
-	var symptomIDs []int
-	for _, idStr := range idStrings {
-		id, err := strconv.Atoi(idStr)
-		if err == nil {
-			symptomIDs = append(symptomIDs, id)
-		}
-	}
+	recentDate := time.Now().AddDate(0, 0, -30)
 
-	if len(symptomIDs) == 0 {
-		return utils.SendError(c, fiber.StatusBadRequest, "Invalid or empty symptom_ids")
+	type SymptomFrequency struct {
+		SymptomID uint
+		Frequency int
 	}
+	var frequentSymptoms []SymptomFrequency
 
-	// 2. Cari semua rekomendasi yang cocok di database
-	var recommendations []menstrual.Recommendation
-	// Gunakan Preload("Symptom") untuk mendapatkan nama gejala terkait
-	err := database.DB.
-		Preload("Symptom").
-		Where("symptom_id IN ?", symptomIDs).
-		Find(&recommendations).Error
+	err := database.DB.Model(&menstrual.SymptomLogDetail{}).
+		Select("symptom_id, COUNT(symptom_id) as frequency").
+		Joins("JOIN symptom_logs ON symptom_logs.id = symptom_log_details.symptom_log_id").
+		Where("symptom_logs.user_id = ? AND symptom_logs.logged_at >= ?", user.ID, recentDate).
+		Group("symptom_id").
+		Order("frequency DESC").
+		Limit(4).
+		Scan(&frequentSymptoms).Error
 
 	if err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to analyze recent symptoms")
+	}
+
+	if len(frequentSymptoms) == 0 {
+		return utils.SendSuccess(c, fiber.StatusOK, "No recent symptoms found to generate recommendations", []dto.RecommendationResponse{})
+	}
+
+	var topSymptomIDs []uint
+	for _, s := range frequentSymptoms {
+		topSymptomIDs = append(topSymptomIDs, s.SymptomID)
+	}
+
+	var recommendations []menstrual.Recommendation
+	if err := database.DB.
+		Preload("Symptom").
+		Where("symptom_id IN ?", topSymptomIDs).
+		Find(&recommendations).Error; err != nil {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to fetch recommendations")
 	}
 
-	// 3. Petakan hasil dari model ke DTO
 	var responseData []dto.RecommendationResponse
 	for _, r := range recommendations {
 		responseData = append(responseData, dto.RecommendationResponse{
@@ -360,5 +354,5 @@ func GetRecommendationsBySymptoms(c *fiber.Ctx) error {
 		})
 	}
 
-	return utils.SendSuccess(c, fiber.StatusOK, "Recommendations fetched successfully", responseData)
+	return utils.SendSuccess(c, fiber.StatusOK, "Recommendations fetched successfully based on recent symptoms", responseData)
 }

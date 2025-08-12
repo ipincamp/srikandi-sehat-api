@@ -122,7 +122,11 @@ func GetCycleHistory(c *fiber.Ctx) error {
 	}
 
 	var cycles []menstrual.MenstrualCycle
-	database.DB.Scopes(paginateScope).Order("start_date desc").Find(&cycles)
+	err := baseQuery.Scopes(paginateScope).Order("start_date desc").Find(&cycles).Error
+	if err != nil {
+		utils.ErrorLogger.Printf("Failed to fetch cycle history for user %s: %v", userUUID, err)
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to retrieve cycle history")
+	}
 
 	var responseData []dto.CycleResponse
 	for _, cycle := range cycles {

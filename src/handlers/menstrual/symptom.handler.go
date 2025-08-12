@@ -193,7 +193,7 @@ func GetSymptomHistory(c *fiber.Ctx) error {
 	}
 
 	if totalRows == 0 {
-		return utils.SendError(c, fiber.StatusNotFound, "No symptom history found for the given criteria.")
+		return utils.SendSuccess(c, fiber.StatusOK, "No symptom history found for the given criteria.", []dto.SymptomHistoryResponse{})
 	}
 
 	totalPages := int(math.Ceil(float64(totalRows) / float64(limit)))

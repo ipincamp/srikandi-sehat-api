@@ -51,11 +51,15 @@ func ConnectDB() {
 	if err != nil {
 		log.Fatalf("[DB] Failed to get basic DB connection: %v", err)
 	}
+	sqlDB.SetMaxIdleConns(10)
+	sqlDB.SetMaxOpenConns(100)
+	sqlDB.SetConnMaxLifetime(5 * time.Minute)
+	sqlDB.SetConnMaxIdleTime(1 * time.Minute)
 
 	_, err = sqlDB.Exec(fmt.Sprintf("SET time_zone = '%s'", config.Get("TIMEZONE")))
 	if err != nil {
 		log.Fatalf("[DB] Failed to set database timezone: %v", err)
 	}
 
-	log.Println("[DB] Connected to MySQL database")
+	log.Println("[DB] Connected to MySQL database and connection pool configured.")
 }

@@ -118,7 +118,7 @@ func GetCycleHistory(c *fiber.Ctx) error {
 	pagination, paginateScope := utils.GeneratePagination(page, limit, baseQuery, &menstrual.MenstrualCycle{})
 
 	if pagination.TotalRows == 0 {
-		return utils.SendError(c, fiber.StatusNotFound, "You have no cycle history. Please record a cycle first.")
+		return utils.SendSuccess(c, fiber.StatusOK, "You have no cycle history. Please record a cycle first.", []dto.CycleResponse{})
 	}
 
 	var cycles []menstrual.MenstrualCycle

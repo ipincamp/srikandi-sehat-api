@@ -1,0 +1,56 @@
+services:
+  api:
+    image: srikandisehat:1.0-api
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: srikandisehat_api
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    volumes:
+      - ./database:/app/database
+      - ./logs:/app/logs
+    networks:
+      - srikandi-sehat
+    depends_on:
+      - db
+
+  db:
+    image: mariadb:10.11.13
+    container_name: srikandisehat_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password_srikandi
+      MYSQL_DATABASE: db_srikandi
+      MYSQL_USER: srikandi
+      MYSQL_PASSWORD: srikandi123
+    ports:
+      - "3307:3306"
+    volumes:
+      - srikandi-db:/var/lib/mysql
+      - ./.docker/mariadb:/docker-entrypoint-initdb.d
+    networks:
+      - srikandi-sehat
+
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: srikandisehat_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./.docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    networks:
+      - srikandi-sehat
+    depends_on:
+      - api
+
+networks:
+  srikandi-sehat:
+    driver: bridge
+
+volumes:
+  srikandi-db:
+    driver: local

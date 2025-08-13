@@ -1,0 +1,22 @@
+# Abaikan folder Git
+.git
+.github
+
+# Abaikan konfigurasi editor
+.vscode
+.idea
+
+# Abaikan file environment lokal (sudah di-handle docker-compose)
+.env
+
+# Abaikan file dokumentasi dan lain-lain
+README.md
+LICENSE
+.gitignore
+
+# Abaikan node_modules jika ada proyek frontend
+node_modules
+
+# Abaikan log dan file hasil build lokal
+logs
+build/

@@ -11,11 +11,6 @@ type SymptomLogParam struct {
 }
 
 // --- Request Query ---
-type SymptomLogQuery struct {
-	StartDate string `query:"start_date" validate:"required,datetime=2006-01-02"`
-	EndDate   string `query:"finish_date" validate:"required,datetime=2006-01-02"`
-}
-
 type RecommendationQuery struct {
 	SymptomIDs string `query:"symptom_ids" validate:"required"`
 }
@@ -73,9 +68,10 @@ type SymptomLogDetailViewResponse struct {
 }
 
 type SymptomHistoryResponse struct {
-	ID            uint   `json:"id"`
-	TotalSymptoms int    `json:"total_symptoms"`
-	LogDate       string `json:"log_date"`
+	ID            uint      `json:"id"`
+	TotalSymptoms int       `json:"total_symptoms"`
+	LoggedAt      time.Time `json:"logged_at"`
+	Note          string    `json:"note,omitempty"`
 }
 
 type RecommendationResponse struct {

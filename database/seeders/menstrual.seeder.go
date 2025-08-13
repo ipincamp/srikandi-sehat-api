@@ -90,13 +90,13 @@ func SeedMenstrualData(tx *gorm.DB) error {
 		{
 			SymptomID:   dysmenorrheaSymptom.ID,
 			Title:       "Akupresur Titik Sanyinjiao dan Hegu Untuk Mengatasi Dismenore",
-			Description: "Kamu juga bisa mencoba teknik pijat akupresur di titik Sanyinjiao dan Hegu. Titik ini dipercaya bisa membantu mengurangi nyeri haid dengan merangsang sistem saraf tertentu.",
+			Description: "",
 			Source:      "https://youtu.be/l7Z91rEHD6w",
 		},
 		{
 			SymptomID:   dysmenorrheaSymptom.ID,
 			Title:       "Senam Dismenorea untuk Remaja",
-			Description: "Selain bantu meringankan nyeri, senam ini juga bisa bikin tubuh terasa lebih segar dan mood jadi lebih baik. Gerakannya sederhana dan bisa dilakukan di rumah.",
+			Description: "",
 			Source:      "https://youtu.be/z_wcXr-gIiU",
 		},
 		// crampSymptom

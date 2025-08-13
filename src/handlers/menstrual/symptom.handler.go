@@ -8,9 +8,6 @@ import (
 	"ipincamp/srikandi-sehat/src/models"
 	"ipincamp/srikandi-sehat/src/models/menstrual"
 	"ipincamp/srikandi-sehat/src/utils"
-	"math"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -106,10 +103,10 @@ func LogSymptoms(c *fiber.Ctx) error {
 	symptomLog := menstrual.SymptomLog{
 		UserID:   user.ID,
 		LoggedAt: loggedAt,
+		Note:     input.Note,
 	}
-	tx.Where("user_id = ? AND DATE(logged_at) = ?", user.ID, loggedAt.Format("2006-01-02")).FirstOrCreate(&symptomLog)
-	if input.Note != "" {
-		tx.Model(&symptomLog).Update("note", input.Note)
+	if err := tx.Create(&symptomLog).Error; err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to create symptom log")
 	}
 
 	var relevantCycle menstrual.MenstrualCycle
@@ -143,7 +140,7 @@ func LogSymptoms(c *fiber.Ctx) error {
 		ID: symptomLog.ID,
 	}
 
-	return utils.SendSuccess(c, fiber.StatusOK, "Symptoms logged successfully", responseData)
+	return utils.SendSuccess(c, fiber.StatusCreated, "Symptoms logged successfully", responseData)
 }
 
 func GetSymptomHistory(c *fiber.Ctx) error {
@@ -164,63 +161,46 @@ func GetSymptomHistory(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusNotFound, "User not found")
 	}
 
-	dataQuery := database.DB.Model(&menstrual.SymptomLog{}).
-		Select("MIN(symptom_logs.id) as id, COUNT(symptom_log_details.id) as total_symptoms, DATE(symptom_logs.logged_at) as log_date").
-		Joins("left join symptom_log_details on symptom_log_details.symptom_log_id = symptom_logs.id").
-		Where("symptom_logs.user_id = ?", user.ID).
-		Group("DATE(symptom_logs.logged_at)")
-
-	countQuery := database.DB.Model(&menstrual.SymptomLog{}).
-		Where("user_id = ?", user.ID)
+	baseQuery := database.DB.Model(&menstrual.SymptomLog{}).Where("user_id = ?", user.ID)
 
 	if queries.Date != "" {
-		dataQuery = dataQuery.Where("DATE(symptom_logs.logged_at) = ?", queries.Date)
-		countQuery = countQuery.Where("DATE(logged_at) = ?", queries.Date)
+		startOfDay, _ := time.Parse("2006-01-02", queries.Date)
+		endOfDay := startOfDay.Add(23*time.Hour + 59*time.Minute + 59*time.Second)
+		baseQuery = baseQuery.Where("logged_at BETWEEN ? AND ?", startOfDay, endOfDay)
 	} else if queries.StartDate != "" && queries.EndDate != "" {
-		endDate, err := time.Parse("2006-01-02", queries.EndDate)
-		if err != nil {
-			return utils.SendError(c, fiber.StatusBadRequest, "Invalid EndDate format")
-		}
+		endDate, _ := time.Parse("2006-01-02", queries.EndDate)
 		endDate = endDate.Add(23*time.Hour + 59*time.Minute + 59*time.Second)
-
-		dataQuery = dataQuery.Where("symptom_logs.logged_at BETWEEN ? AND ?", queries.StartDate, endDate)
-		countQuery = countQuery.Where("logged_at BETWEEN ? AND ?", queries.StartDate, endDate)
+		baseQuery = baseQuery.Where("logged_at BETWEEN ? AND ?", queries.StartDate, endDate)
 	}
 
-	var totalRows int64
-	if err := countQuery.Distinct("DATE(logged_at)").Count(&totalRows).Error; err != nil {
-		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to count symptom history")
+	pagination, paginateScope := utils.GeneratePagination(page, limit, baseQuery, &menstrual.SymptomLog{})
+
+	if pagination.TotalRows == 0 {
+		return utils.SendSuccess(c, fiber.StatusOK, "No symptom history found", dto.PaginatedResponse[dto.SymptomHistoryResponse]{
+			Data:     []dto.SymptomHistoryResponse{},
+			Metadata: pagination,
+		})
 	}
 
-	if totalRows == 0 {
-		return utils.SendError(c, fiber.StatusNotFound, "No symptom history found for the given criteria.")
-	}
-
-	totalPages := int(math.Ceil(float64(totalRows) / float64(limit)))
-	offset := (page - 1) * limit
-
-	var results []dto.SymptomHistoryResponse
-	err := dataQuery.Offset(offset).Limit(limit).Order("log_date desc").Scan(&results).Error
+	var logs []menstrual.SymptomLog
+	err := baseQuery.Preload("Details").Scopes(paginateScope).Order("logged_at desc").Find(&logs).Error
 	if err != nil {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to retrieve symptom history")
 	}
 
+	var results []dto.SymptomHistoryResponse
+	for _, log := range logs {
+		results = append(results, dto.SymptomHistoryResponse{
+			ID:            log.ID,
+			TotalSymptoms: len(log.Details),
+			LoggedAt:      log.LoggedAt,
+			// Note:          log.Note,
+		})
+	}
+
 	paginatedResponse := dto.PaginatedResponse[dto.SymptomHistoryResponse]{
-		Data: results,
-		Metadata: dto.Pagination{
-			Limit:       limit,
-			TotalRows:   totalRows,
-			TotalPages:  totalPages,
-			CurrentPage: page,
-		},
-	}
-	if page > 1 {
-		prev := page - 1
-		paginatedResponse.Metadata.PreviousPage = &prev
-	}
-	if page < totalPages {
-		next := page + 1
-		paginatedResponse.Metadata.NextPage = &next
+		Data:     results,
+		Metadata: pagination,
 	}
 
 	return utils.SendSuccess(c, fiber.StatusOK, "Symptom history fetched successfully", paginatedResponse)
@@ -301,55 +281,51 @@ func GetSymptomLogByID(c *fiber.Ctx) error {
 	return utils.SendSuccess(c, fiber.StatusOK, "Symptom log detail fetched successfully", response)
 }
 
-func isValidCommaSeparatedInt(input string) bool {
-	for _, char := range input {
-		if (char < '0' || char > '9') && char != ',' {
-			return false
-		}
-	}
-	return true
-}
-
 func GetRecommendationsBySymptoms(c *fiber.Ctx) error {
-	queries := c.Locals("request_queries").(*dto.RecommendationQuery)
-
-	// Validasi input query parameter
-	if queries.SymptomIDs == "" {
-		return utils.SendError(c, fiber.StatusBadRequest, "symptom_ids query parameter is required")
-	}
-	// Jika symptom_ids tidak valid, kembalikan error
-	if !isValidCommaSeparatedInt(queries.SymptomIDs) {
-		return utils.SendError(c, fiber.StatusBadRequest, "Invalid symptom_ids format")
+	userUUID := c.Locals("user_id").(string)
+	var user models.User
+	if err := database.DB.First(&user, "uuid = ?", userUUID).Error; err != nil {
+		return utils.SendError(c, fiber.StatusNotFound, "User not found")
 	}
 
-	// 1. Konversi string "1,4,5" menjadi slice of integer []int{1, 4, 5}
-	// TODO: remove duplicate. example: "1,1,1,2,3,4" to "1,2,3,4"
-	idStrings := strings.Split(queries.SymptomIDs, ",")
-	var symptomIDs []int
-	for _, idStr := range idStrings {
-		id, err := strconv.Atoi(idStr)
-		if err == nil {
-			symptomIDs = append(symptomIDs, id)
-		}
-	}
+	recentDate := time.Now().AddDate(0, 0, -30)
 
-	if len(symptomIDs) == 0 {
-		return utils.SendError(c, fiber.StatusBadRequest, "Invalid or empty symptom_ids")
+	type SymptomFrequency struct {
+		SymptomID uint
+		Frequency int
 	}
+	var frequentSymptoms []SymptomFrequency
 
-	// 2. Cari semua rekomendasi yang cocok di database
-	var recommendations []menstrual.Recommendation
-	// Gunakan Preload("Symptom") untuk mendapatkan nama gejala terkait
-	err := database.DB.
-		Preload("Symptom").
-		Where("symptom_id IN ?", symptomIDs).
-		Find(&recommendations).Error
+	err := database.DB.Model(&menstrual.SymptomLogDetail{}).
+		Select("symptom_id, COUNT(symptom_id) as frequency").
+		Joins("JOIN symptom_logs ON symptom_logs.id = symptom_log_details.symptom_log_id").
+		Where("symptom_logs.user_id = ? AND symptom_logs.logged_at >= ?", user.ID, recentDate).
+		Group("symptom_id").
+		Order("frequency DESC").
+		Limit(4).
+		Scan(&frequentSymptoms).Error
 
 	if err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to analyze recent symptoms")
+	}
+
+	if len(frequentSymptoms) == 0 {
+		return utils.SendSuccess(c, fiber.StatusOK, "No recent symptoms found to generate recommendations", []dto.RecommendationResponse{})
+	}
+
+	var topSymptomIDs []uint
+	for _, s := range frequentSymptoms {
+		topSymptomIDs = append(topSymptomIDs, s.SymptomID)
+	}
+
+	var recommendations []menstrual.Recommendation
+	if err := database.DB.
+		Preload("Symptom").
+		Where("symptom_id IN ?", topSymptomIDs).
+		Find(&recommendations).Error; err != nil {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to fetch recommendations")
 	}
 
-	// 3. Petakan hasil dari model ke DTO
 	var responseData []dto.RecommendationResponse
 	for _, r := range recommendations {
 		responseData = append(responseData, dto.RecommendationResponse{
@@ -360,5 +336,5 @@ func GetRecommendationsBySymptoms(c *fiber.Ctx) error {
 		})
 	}
 
-	return utils.SendSuccess(c, fiber.StatusOK, "Recommendations fetched successfully", responseData)
+	return utils.SendSuccess(c, fiber.StatusOK, "Recommendations fetched successfully based on recent symptoms", responseData)
 }

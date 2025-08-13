@@ -35,11 +35,11 @@ func GetMyProfile(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Database error")
 	}
 
+	responseData := dto.UserResponseJson(user)
 	if user.Profile.ID == 0 {
-		return utils.SendError(c, fiber.StatusNotFound, "Your profile has not been created yet. Please update your profile first.")
+		return utils.SendSuccess(c, fiber.StatusOK, "Your profile has not been created yet. Please update your profile first.", responseData)
 	}
 
-	responseData := dto.UserResponseJson(user)
 	return utils.SendSuccess(c, fiber.StatusOK, "Profile fetched successfully", responseData)
 }
 

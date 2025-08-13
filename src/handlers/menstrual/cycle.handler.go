@@ -8,6 +8,7 @@ import (
 	"ipincamp/srikandi-sehat/src/models"
 	menstrual "ipincamp/srikandi-sehat/src/models/menstrual"
 	"ipincamp/srikandi-sehat/src/utils"
+	"log"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -23,11 +24,15 @@ func RecordCycle(c *fiber.Ctx) error {
 	}
 
 	var user models.User
-	if err := database.DB.First(&user, "uuid = ?", userUUID).Error; err != nil {
+	if err := database.DB.Preload("Profile").First(&user, "uuid = ?", userUUID).Error; err != nil {
 		return utils.SendError(c, fiber.StatusNotFound, "User not found")
 	}
 
-	if user.Profile.ID == 0 || user.Profile.DateOfBirth == nil || user.Profile.HeightCM == 0 || user.Profile.WeightKG == 0 || user.Profile.MenarcheAge == 0 {
+	log.Print(user.Profile.ID)
+
+	if user.Profile.ID >= 1 {
+		// Profile exists, proceed without error
+	} else {
 		return utils.SendError(c, fiber.StatusForbidden, "Please complete your profile before recording a cycle. Essential data is missing.")
 	}
 

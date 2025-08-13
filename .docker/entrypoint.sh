@@ -1,8 +1,7 @@
 #!/bin/sh
 set -e
 
-echo "Waiting for database..."
-sleep 10
+echo "Waiting for database... (Handled by Docker healthcheck)"
 
 echo "Running database migrations..."
 /app/migrate up

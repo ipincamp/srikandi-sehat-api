@@ -22,9 +22,9 @@ func AuthMiddleware(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusUnauthorized, "Invalid token format, 'Bearer ' prefix missing")
 	}
 
-	if utils.IsTokenBlocked(tokenString) {
-		return utils.SendError(c, fiber.StatusUnauthorized, "Token has been invalidated")
-	}
+	// if utils.IsTokenBlocked(tokenString) {
+	// 	return utils.SendError(c, fiber.StatusUnauthorized, "Token has been invalidated")
+	// }
 
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {

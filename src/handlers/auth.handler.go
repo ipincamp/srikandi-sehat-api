@@ -89,21 +89,21 @@ func Logout(c *fiber.Ctx) error {
 		return utils.SendSuccess(c, fiber.StatusOK, "Token already expired", nil)
 	}
 
-	invalidToken := models.InvalidToken{
-		Token:     tokenString,
-		ExpiresAt: expiresAt,
-	}
+	// invalidToken := models.InvalidToken{
+	// 	Token:     tokenString,
+	// 	ExpiresAt: expiresAt,
+	// }
 
-	if err := database.DB.Create(&invalidToken).Error; err != nil {
-		if strings.Contains(err.Error(), "Duplicate entry") {
-			// Token is already blocklisted
-		} else {
-			return utils.SendError(c, fiber.StatusInternalServerError, "Failed to invalidate token")
-		}
-	}
+	// if err := database.DB.Create(&invalidToken).Error; err != nil {
+	// 	if strings.Contains(err.Error(), "Duplicate entry") {
+	// 		// Token is already blocklisted
+	// 	} else {
+	// 		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to invalidate token")
+	// 	}
+	// }
 
-	remainingDuration := time.Until(expiresAt)
-	utils.AddToBlocklistCache(tokenString, remainingDuration)
+	// remainingDuration := time.Until(expiresAt)
+	// utils.AddToBlocklistCache(tokenString, remainingDuration)
 
 	return utils.SendSuccess(c, fiber.StatusOK, "Logout successful", nil)
 }

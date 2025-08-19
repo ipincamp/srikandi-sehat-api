@@ -13,11 +13,11 @@ import (
 )
 
 var argon2Params = &argon2id.Params{
-	Memory:      1 * 1024, // 64 MB
-	Iterations:  1,        // 3
-	Parallelism: 1,        // Use 2 threads, even on 1 core CPU, for efficiency
-	SaltLength:  1,        // 16
-	KeyLength:   1,        // 32
+	Memory:      64 * 1024, // 64 MB
+	Iterations:  3,         // Recommended minimum is 3
+	Parallelism: 2,         // Use 2 threads for efficiency
+	SaltLength:  16,        // 16 bytes salt
+	KeyLength:   32,        // 32 bytes key
 }
 
 func HashPassword(password string) (string, error) {

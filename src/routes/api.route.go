@@ -5,6 +5,7 @@ import (
 	"ipincamp/srikandi-sehat/src/handlers"
 	menstrualHandler "ipincamp/srikandi-sehat/src/handlers/menstrual"
 	"ipincamp/srikandi-sehat/src/middleware"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -14,8 +15,10 @@ func SetupRoutes(app *fiber.App) {
 
 	// Auth routes
 	auth := api.Group("/auth")
-	auth.Post("/register", middleware.ValidateBody[dto.RegisterRequest], handlers.Register)
-	auth.Post("/login", middleware.ValidateBody[dto.LoginRequest], handlers.Login)
+	loginLimiter := middleware.CreateRateLimiter(5, 1*time.Minute)
+	registerLimiter := middleware.CreateRateLimiter(10, 5*time.Minute)
+	auth.Post("/register", registerLimiter, middleware.ValidateBody[dto.RegisterRequest], handlers.Register)
+	auth.Post("/login", loginLimiter, middleware.ValidateBody[dto.LoginRequest], handlers.Login)
 	auth.Post("/logout", middleware.AuthMiddleware, handlers.Logout)
 
 	// User routes
@@ -25,7 +28,8 @@ func SetupRoutes(app *fiber.App) {
 	user.Patch("/password", middleware.ValidateBody[dto.ChangePasswordRequest], handlers.ChangeMyPassword)
 
 	// Admin routes
-	admin := api.Group("/admin", middleware.AuthMiddleware, middleware.AdminMiddleware)
+	adminLimiter := middleware.CreateRateLimiter(100, 1*time.Minute)
+	admin := api.Group("/admin", middleware.AuthMiddleware, middleware.AdminMiddleware, adminLimiter)
 	admin.Get("/users/statistics", handlers.GetUserStatistics)
 	admin.Get("/reports/csv", handlers.DownloadFullReportCSV)
 	admin.Get("/users", middleware.ValidateQuery[dto.UserQuery], handlers.GetAllUsers)

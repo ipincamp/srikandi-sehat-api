@@ -38,8 +38,9 @@ func main() {
 	go utils.CleanupExpiredTokens()
 
 	app := fiber.New(fiber.Config{
-		Prefork:      false,
-		ServerHeader: "SrikandiSehat",
+		Prefork:        false,
+		ServerHeader:   "SrikandiSehat",
+		TrustedProxies: []string{config.Get("TRUSTED_PROXIES")},
 	})
 	app.Use(middleware.RecoverMiddleware())
 	app.Use(cors.New(cors.Config{

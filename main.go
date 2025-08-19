@@ -42,6 +42,11 @@ func main() {
 		ServerHeader:   "SrikandiSehat",
 		TrustedProxies: []string{config.Get("TRUSTED_PROXIES")},
 	})
+	app.Use(func(c *fiber.Ctx) error {
+		log.Printf("Header X-Real-IP: %s", c.Get("X-Real-IP"))
+		log.Printf("Header X-Forwarded-For: %s", c.Get("X-Forwarded-For"))
+		return c.Next()
+	})
 	app.Use(middleware.RecoverMiddleware())
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: config.Get("CORS_ALLOWED_ORIGINS"),

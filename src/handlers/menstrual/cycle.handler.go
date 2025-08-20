@@ -277,7 +277,7 @@ func GetCycleStatus(c *fiber.Ctx) error {
 			IsOnCycle:        true,
 			CurrentPeriodDay: &currentPeriodDay,
 			IsPeriodNormal:   &isPeriodNormal,
-			Message:          fmt.Sprintf("You are on day %d of your period.", currentPeriodDay),
+			Message:          fmt.Sprintf("Anda sedang berada di hari ke-%d siklus menstruasi.", currentPeriodDay),
 		}
 
 		var previousCycle menstrual.MenstrualCycle
@@ -300,13 +300,13 @@ func GetCycleStatus(c *fiber.Ctx) error {
 		if len(completedCycles) == 0 {
 			return utils.SendSuccess(c, fiber.StatusOK, "No cycle data available.", dto.CycleStatusResponse{
 				IsOnCycle: false,
-				Message:   "No cycle data found. Please record a cycle to see status and predictions.",
+				Message:   "Belum ada data siklus ditemukan. Silakan catat siklus menstruasi Anda untuk melihat status dan prediksi.",
 			})
 		}
 
 		response := dto.CycleStatusResponse{
 			IsOnCycle: false,
-			Message:   "You are not currently in a cycle.",
+			Message:   "Anda tidak sedang dalam siklus menstruasi saat ini.",
 		}
 
 		// Add last period length
@@ -344,12 +344,12 @@ func GetCycleStatus(c *fiber.Ctx) error {
 				predictedDateStr := predictedDate.Format("2006-01-02")
 				response.DaysUntilNextPeriod = &daysUntil
 				response.PredictedPeriodDate = &predictedDateStr
-				response.Message = fmt.Sprintf("Your next period is predicted in %d days.", daysUntil)
+				response.Message = fmt.Sprintf("Periode menstruasi Anda berikutnya diprediksi dalam %d hari.", daysUntil)
 			} else {
-				response.Message = "Your predicted period date has passed. Please record your new cycle if it has started."
+				response.Message = "Tanggal prediksi menstruasi Anda telah lewat. Silakan catat siklus baru jika sudah dimulai."
 			}
 		} else if response.LastCycleLength == nil {
-			response.Message = "Not enough data to predict the next period. Please record at least one full cycle."
+			response.Message = "Data belum cukup untuk memprediksi periode berikutnya. Silakan catat minimal satu siklus menstruasi lengkap."
 		}
 
 		return utils.SendSuccess(c, fiber.StatusOK, "Cycle status fetched.", response)

@@ -55,8 +55,12 @@ func seeds(tx *gorm.DB) error {
 	if err := seeders.SeedMenstrualData(tx); err != nil {
 		return err
 	}
-	if err := seeders.SeedSimulationData(tx); err != nil {
-		return err
+	if config.Get("APP_ENV") == "production" {
+		log.Println("[DB] [SEED] Skipping simulation data seeding in production environment.")
+	} else {
+		if err := seeders.SeedSimulationData(tx); err != nil {
+			return err
+		}
 	}
 	// And more...
 	return nil

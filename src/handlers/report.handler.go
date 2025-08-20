@@ -118,7 +118,7 @@ func DownloadFullReportCSV(c *fiber.Ctx) error {
 		profile := user.Profile
 
 		record := dto.FullExportRecord{
-			UserUUID:            user.UUID,
+			// UserUUID:            user.UUID,
 			UserName:            user.Name,
 			UserEmail:           user.Email,
 			UserRegisteredAt:    user.CreatedAt,
@@ -177,7 +177,7 @@ func DownloadFullReportCSV(c *fiber.Ctx) error {
 	b := new(bytes.Buffer)
 	w := csv.NewWriter(b)
 	header := []string{
-		"ID Pengguna", "Nama Pengguna", "Email", "Tanggal Registrasi", "Umur", "No. Telepon",
+		"Nama Pengguna", "Email", "Tanggal Registrasi", "Umur", "No. Telepon",
 		"Tinggi (cm)", "Berat (kg)", "IMT", "Kategori IMT", "Usia Menarche", "Pendidikan Terakhir",
 		"Pendidikan Ortu", "Pekerjaan Ortu", "Akses Internet", "Desa/Kelurahan", "Kecamatan",
 		"Kabupaten/Kota", "Provinsi", "Klasifikasi Alamat", "Siklus Ke-", "Tanggal Mulai", "Tanggal Selesai",
@@ -186,7 +186,7 @@ func DownloadFullReportCSV(c *fiber.Ctx) error {
 	w.Write(header)
 	for _, rec := range records {
 		row := []string{
-			rec.UserUUID, rec.UserName, rec.UserEmail, rec.UserRegisteredAt.Format("2006-01-02 15:04:05"), fmt.Sprintf("%d", rec.Age), rec.PhoneNumber,
+			rec.UserName, rec.UserEmail, rec.UserRegisteredAt.Format("2006-01-02 15:04:05"), fmt.Sprintf("%d", rec.Age), rec.PhoneNumber,
 			fmt.Sprintf("%d", rec.HeightCM), fmt.Sprintf("%.2f", rec.WeightKG), fmt.Sprintf("%.2f", rec.BMI), rec.BMICategory, fmt.Sprintf("%d", rec.MenarcheAge), rec.LastEducation,
 			rec.ParentLastEducation, rec.ParentLastJob, rec.InternetAccess, rec.Village, rec.District,
 			rec.Regency, rec.Province, rec.Classification, fmt.Sprintf("%d", rec.CycleNumber), rec.StartDate, rec.EndDate,

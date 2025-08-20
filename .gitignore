@@ -38,7 +38,7 @@ srikandi-sehat
 *.js
 
 # Logs
-logs/
+*.log
 
 # Firebase service account key
 serviceAccountKey.json

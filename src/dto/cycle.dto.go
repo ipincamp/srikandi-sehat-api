@@ -23,7 +23,7 @@ type PaginatedResponse[T any] struct {
 
 // CycleExportRecord defines the flattened structure for the cycle data CSV export.
 type CycleExportRecord struct {
-	UserUUID       string `json:"user_uuid"`
+	// UserUUID       string `json:"user_uuid"`
 	UserName       string `json:"user_name"`
 	CycleNumber    int64  `json:"cycle_number"`
 	StartDate      string `json:"start_date"`

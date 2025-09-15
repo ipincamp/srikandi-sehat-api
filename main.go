@@ -1,12 +1,17 @@
 package main
 
 import (
+	"context"
 	"ipincamp/srikandi-sehat/config"
 	"ipincamp/srikandi-sehat/database"
-	"ipincamp/srikandi-sehat/src/models"
+	"ipincamp/srikandi-sehat/src/middleware"
 	"ipincamp/srikandi-sehat/src/routes"
 	"ipincamp/srikandi-sehat/src/utils"
+	"ipincamp/srikandi-sehat/src/workers"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -14,30 +19,35 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/logger"
 )
 
-func cleanupExpiredTokens() {
-	ticker := time.NewTicker(24 * time.Hour)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		log.Println("Running expired token cleanup...")
-		now := time.Now()
-		result := database.DB.Where("expires_at < ?", now).Delete(&models.InvalidToken{})
-		if result.Error != nil {
-			log.Printf("Failed to clean up expired tokens: %v", result.Error)
-		} else {
-			log.Printf("%d expired tokens have been deleted.", result.RowsAffected)
-		}
-	}
-}
-
 func main() {
+	utils.InitLogger()
+
+	utils.InitFCM()
+
+	config.SetTimeZone()
 	config.LoadConfig()
 	database.ConnectDB()
+
 	utils.SetupValidator()
+	utils.InitializeRegistrationFilter()
+	utils.InitializeFrequentLoginFilter()
+	utils.InitializeRoleCache()
+	utils.InitializeBlocklistCache()
 
-	go cleanupExpiredTokens()
+	workers.StartWorkerPool()
+	go utils.CleanupExpiredTokens()
 
-	app := fiber.New()
+	app := fiber.New(fiber.Config{
+		Prefork:        false,
+		ServerHeader:   "SrikandiSehat",
+		TrustedProxies: []string{config.Get("TRUSTED_PROXIES")},
+	})
+	app.Use(func(c *fiber.Ctx) error {
+		log.Printf("Header X-Real-IP: %s", c.Get("X-Real-IP"))
+		log.Printf("Header X-Forwarded-For: %s", c.Get("X-Forwarded-For"))
+		return c.Next()
+	})
+	app.Use(middleware.RecoverMiddleware())
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: config.Get("CORS_ALLOWED_ORIGINS"),
 		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
@@ -47,6 +57,26 @@ func main() {
 
 	routes.SetupRoutes(app)
 
-	port := config.Get("API_PORT")
-	log.Fatal(app.Listen("0.0.0.0:" + port))
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		port := config.Get("API_PORT")
+		utils.InfoLogger.Printf("Server is starting on port %s", port)
+		if err := app.Listen("0.0.0.0:" + port); err != nil {
+			utils.ErrorLogger.Fatalf("Failed to start server: %v", err)
+		}
+	}()
+
+	<-quit
+	log.Println("[APP] Shutting down server...")
+
+	utils.SaveAllBloomFilters()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := app.ShutdownWithContext(ctx); err != nil {
+		log.Fatalf("[APP] Failed to gracefully shutdown server: %v", err)
+	}
 }

@@ -2,22 +2,30 @@ package utils
 
 import (
 	"ipincamp/srikandi-sehat/config"
+	"ipincamp/srikandi-sehat/database"
 	"ipincamp/srikandi-sehat/src/models"
+	"log"
 	"strconv"
 	"time"
 
+	"github.com/alexedwards/argon2id"
 	"github.com/golang-jwt/jwt/v5"
-	"golang.org/x/crypto/bcrypt"
 )
 
-func HashPassword(password string) (string, error) {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
-	return string(bytes), err
+var argon2Params = &argon2id.Params{
+	Memory:      64 * 1024, // 64 MB
+	Iterations:  3,         // Recommended minimum is 3
+	Parallelism: 2,         // Use 2 threads for efficiency
+	SaltLength:  16,        // 16 bytes salt
+	KeyLength:   32,        // 32 bytes key
 }
 
-func CheckPasswordHash(password, hash string) bool {
-	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
-	return err == nil
+func HashPassword(password string) (string, error) {
+	return argon2id.CreateHash(password, argon2Params)
+}
+
+func CheckPasswordHash(password, hash string) (bool, error) {
+	return argon2id.ComparePasswordAndHash(password, hash)
 }
 
 func GenerateJWT(user models.User) (string, error) {
@@ -36,4 +44,20 @@ func GenerateJWT(user models.User) (string, error) {
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString([]byte(secretKey))
+}
+
+func CleanupExpiredTokens() {
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		log.Println("Running expired token cleanup...")
+		now := time.Now()
+		result := database.DB.Where("expires_at < ?", now).Delete(&models.InvalidToken{})
+		if result.Error != nil {
+			log.Printf("Failed to clean up expired tokens: %v", result.Error)
+		} else {
+			log.Printf("%d expired tokens have been deleted.", result.RowsAffected)
+		}
+	}
 }

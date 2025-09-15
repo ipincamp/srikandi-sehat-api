@@ -26,6 +26,7 @@ go.work.sum
 
 # env file
 .env
+database/*bin
 
 # Editor/IDE
 # .idea/
@@ -33,3 +34,11 @@ go.work.sum
 
 # Debugging files
 __debug*
+srikandi-sehat
+*.js
+
+# Logs
+*.log
+
+# Firebase service account key
+serviceAccountKey.json

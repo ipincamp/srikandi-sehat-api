@@ -1,0 +1,82 @@
+package dto
+
+import (
+	"ipincamp/srikandi-sehat/src/constants"
+	"time"
+)
+
+// --- Request Params ---
+type SymptomLogParam struct {
+	ID uint `params:"id" validate:"required,numeric"`
+}
+
+// --- Request Query ---
+type RecommendationQuery struct {
+	SymptomIDs string `query:"symptom_ids" validate:"required"`
+}
+
+type SymptomHistoryQuery struct {
+	Page      int    `query:"page" validate:"omitempty,numeric,min=1"`
+	Limit     int    `query:"limit" validate:"omitempty,numeric,min=1"`
+	StartDate string `query:"start_date" validate:"omitempty,datetime=2006-01-02"`
+	EndDate   string `query:"finish_date" validate:"omitempty,datetime=2006-01-02"`
+	Date      string `query:"date" validate:"omitempty,datetime=2006-01-02"`
+}
+
+// --- Request Body ---
+type SymptomLogDetailRequest struct {
+	SymptomID       uint  `json:"symptom_id" validate:"required"`
+	SymptomOptionID *uint `json:"option_id,omitempty"`
+}
+
+type SymptomLogRequest struct {
+	LoggedAt string                    `json:"logged_at" validate:"required,datetime=2006-01-02T15:04:05Z07:00"`
+	Note     string                    `json:"note" validate:"omitempty"`
+	Symptoms []SymptomLogDetailRequest `json:"symptoms" validate:"required,min=1"`
+}
+
+// --- Response Body ---
+type SymptomLogCreateResponse struct {
+	ID uint `json:"id"`
+}
+
+type SymptomOptionResponse struct {
+	ID   uint   `json:"id"`
+	Name string `json:"name"`
+}
+
+type SymptomMasterResponse struct {
+	ID      uint                    `json:"id"`
+	Name    string                  `json:"name"`
+	Type    constants.SymptomType   `json:"type"`
+	Options []SymptomOptionResponse `json:"options,omitempty"`
+}
+
+type SymptomLogDetailResponse struct {
+	SymptomID       uint   `json:"symptom_id"`
+	SymptomName     string `json:"symptom_name"`
+	SymptomCategory string `json:"symptom_category"`
+	SelectedOption  string `json:"selected_option,omitempty"`
+}
+
+type SymptomLogDetailViewResponse struct {
+	LoggedAt        time.Time                  `json:"logged_at"`
+	Note            string                     `json:"note,omitempty"`
+	CycleNumber     *int64                     `json:"cycle_number,omitempty"`
+	Details         []SymptomLogDetailResponse `json:"details"`
+	Recommendations []RecommendationResponse   `json:"recommendations"`
+}
+
+type SymptomHistoryResponse struct {
+	ID            uint      `json:"id"`
+	TotalSymptoms int       `json:"total_symptoms"`
+	LoggedAt      time.Time `json:"logged_at"`
+	Note          string    `json:"note,omitempty"`
+}
+
+type RecommendationResponse struct {
+	ForSymptom  string `json:"for_symptom"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Source      string `json:"source,omitempty"`
+}

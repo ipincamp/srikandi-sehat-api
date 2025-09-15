@@ -1,4 +1,4 @@
-package seed
+package seeders
 
 import (
 	"ipincamp/srikandi-sehat/src/constants"
@@ -9,6 +9,8 @@ import (
 )
 
 func SeedRegions(tx *gorm.DB) error {
+	log.Println("[DB] [SEED] [REGION] Seeding regions...")
+
 	perkotaan, perdesaan, err := seedClassifications(tx)
 	if err != nil {
 		return err
@@ -18,11 +20,12 @@ func SeedRegions(tx *gorm.DB) error {
 		return err
 	}
 
-	log.Println("Region seeder executed successfully.")
+	log.Println("[DB] [SEED] [REGION] Seeding regions completed successfully.")
 	return nil
 }
 
 func seedClassifications(tx *gorm.DB) (region.Classification, region.Classification, error) {
+	log.Println("[DB] [SEED] [CLASSIFICATION] Seeding classifications...")
 	var perkotaan = region.Classification{Name: string(constants.UrbanClassification)}
 	var perdesaan = region.Classification{Name: string(constants.RuralClassification)}
 
@@ -33,11 +36,12 @@ func seedClassifications(tx *gorm.DB) (region.Classification, region.Classificat
 		return perkotaan, perdesaan, err
 	}
 
-	log.Println("Classifications seeded")
+	log.Println("[DB] [SEED] [CLASSIFICATION] Classifications seeded successfully.")
 	return perkotaan, perdesaan, nil
 }
 
 func seedBanyumasRegion(tx *gorm.DB, perkotaan, perdesaan region.Classification) error {
+	log.Println("[DB] [SEED] [REGION] [BANYUMAS] Seeding Banyumas region...")
 	province := region.Province{
 		Code: "33",
 		Name: "JAWA TENGAH",
@@ -579,6 +583,6 @@ func seedBanyumasRegion(tx *gorm.DB, perkotaan, perdesaan region.Classification)
 		return err
 	}
 
-	log.Println("Central Java Province & Banyumas Regency seeded")
+	log.Println("[DB] [SEED] [REGION] [BANYUMAS] Banyumas region seeded successfully.")
 	return nil
 }

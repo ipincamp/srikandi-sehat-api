@@ -3,11 +3,10 @@ package handlers
 import (
 	"errors"
 	"ipincamp/srikandi-sehat/database"
-	"ipincamp/srikandi-sehat/src/constants"
 	"ipincamp/srikandi-sehat/src/dto"
 	"ipincamp/srikandi-sehat/src/models"
 	"ipincamp/srikandi-sehat/src/utils"
-	"log"
+	"ipincamp/srikandi-sehat/src/workers"
 
 	"strings"
 	"time"
@@ -18,93 +17,46 @@ import (
 )
 
 func Register(c *fiber.Ctx) error {
-	input := new(dto.RegisterRequest)
-	if err := c.BodyParser(input); err != nil {
-		return utils.SendError(c, fiber.StatusBadRequest, "Cannot parse JSON")
+	input := c.Locals("request_body").(*dto.RegisterRequest)
+
+	if utils.CheckEmailExistsInRegistrationFilter(input.Email) {
+		return utils.SendError(c, fiber.StatusUnprocessableEntity, "Email already registered")
 	}
 
-	if errors := utils.ValidateStruct(input); len(errors) > 0 {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  false,
-			"message": "Validation failed",
-			"errors":  errors,
-		})
+	job := workers.Job{
+		RegistrationData: *input,
+		FCMToken:         input.FCMToken,
 	}
+	workers.JobQueue <- job
 
-	var existingUser models.User
-	err := database.DB.First(&existingUser, "email = ?", input.Email).Error
-	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return utils.SendError(c, fiber.StatusConflict, "Email has already been taken")
-	}
-
-	hashedPassword, _ := utils.HashPassword(input.Password)
-
-	user := models.User{
-		Name:     input.Name,
-		Email:    input.Email,
-		Password: hashedPassword,
-	}
-
-	tx := database.DB.Begin()
-	if tx.Error != nil {
-		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to start transaction")
-	}
-
-	if err := tx.Create(&user).Error; err != nil {
-		tx.Rollback()
-		return utils.SendError(c, fiber.StatusConflict, "Failed to create user")
-	}
-
-	var defaultRole models.Role
-	if err := tx.First(&defaultRole, "name = ?", string(constants.UserRole)).Error; err != nil {
-		tx.Rollback()
-		log.Printf("CRITICAL: Default role '%s' not found. Please run the seeder.", constants.UserRole)
-		return utils.SendError(c, fiber.StatusInternalServerError, "Server configuration error: default role not found")
-	}
-
-	if err := tx.Model(&user).Association("Roles").Append(&defaultRole); err != nil {
-		tx.Rollback()
-		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to assign role to user")
-	}
-
-	if err := tx.Commit().Error; err != nil {
-		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to commit transaction")
-	}
-
-	database.DB.Preload("Roles").First(&user, user.ID)
-
-	responseData := dto.AuthResponseJson(user)
-
-	return utils.SendSuccess(c, fiber.StatusCreated, "User registered successfully", responseData)
+	return utils.SendSuccess(c, fiber.StatusAccepted, "Your account is being processed. Please try logging in after a while.", nil)
 }
 
 func Login(c *fiber.Ctx) error {
-	input := new(dto.LoginRequest)
-	if err := c.BodyParser(input); err != nil {
-		return utils.SendError(c, fiber.StatusBadRequest, "Cannot parse JSON")
-	}
-
-	if errors := utils.ValidateStruct(input); len(errors) > 0 {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  false,
-			"message": "Validation failed",
-			"errors":  errors,
-		})
-	}
+	input := c.Locals("request_body").(*dto.LoginRequest)
 
 	var user models.User
-	result := database.DB.Preload("Roles.Permissions").Preload("Permissions").First(&user, "email = ?", input.Email)
+	err := database.DB.Preload("Roles").Preload("Profile").First(&user, "email = ?", input.Email).Error
 
-	if errors.Is(result.Error, gorm.ErrRecordNotFound) || !utils.CheckPasswordHash(input.Password, user.Password) {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return utils.SendError(c, fiber.StatusUnauthorized, "Invalid credentials")
+	}
+	if err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Database query error")
+	}
+
+	match, err := utils.CheckPasswordHash(input.Password, user.Password)
+	if err != nil || !match {
 		return utils.SendError(c, fiber.StatusUnauthorized, "Invalid credentials")
 	}
 
 	token, err := utils.GenerateJWT(user)
 	if err != nil {
-		return utils.SendError(c, fiber.StatusInternalServerError, "Could not generate token")
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to generate JWT token")
 	}
 
-	responseData := dto.AuthResponseJson(user, token)
+	go utils.AddUserToFrequentLoginFilter(user)
+	responseData := dto.UserResponseJson(user, token)
 
 	return utils.SendSuccess(c, fiber.StatusOK, "Login successful", responseData)
 }
@@ -119,28 +71,39 @@ func Logout(c *fiber.Ctx) error {
 
 	token, _, err := new(jwt.Parser).ParseUnverified(tokenString, jwt.MapClaims{})
 	if err != nil {
-		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to parse token")
+		return utils.SendError(c, fiber.StatusBadRequest, "Malformed token")
 	}
 
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return utils.SendError(c, fiber.StatusInternalServerError, "Invalid token claims")
+		return utils.SendError(c, fiber.StatusBadRequest, "Invalid token claims")
 	}
 
 	exp, ok := claims["exp"].(float64)
 	if !ok {
-		return utils.SendError(c, fiber.StatusInternalServerError, "Invalid expiration time in token")
+		return utils.SendError(c, fiber.StatusBadRequest, "Invalid expiration time in token")
 	}
 	expiresAt := time.Unix(int64(exp), 0)
 
-	invalidToken := models.InvalidToken{
-		Token:     tokenString,
-		ExpiresAt: expiresAt,
+	if time.Now().After(expiresAt) {
+		return utils.SendSuccess(c, fiber.StatusOK, "Token already expired", nil)
 	}
 
-	if err := database.DB.Create(&invalidToken).Error; err != nil {
-		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to logout")
-	}
+	// invalidToken := models.InvalidToken{
+	// 	Token:     tokenString,
+	// 	ExpiresAt: expiresAt,
+	// }
+
+	// if err := database.DB.Create(&invalidToken).Error; err != nil {
+	// 	if strings.Contains(err.Error(), "Duplicate entry") {
+	// 		// Token is already blocklisted
+	// 	} else {
+	// 		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to invalidate token")
+	// 	}
+	// }
+
+	// remainingDuration := time.Until(expiresAt)
+	// utils.AddToBlocklistCache(tokenString, remainingDuration)
 
 	return utils.SendSuccess(c, fiber.StatusOK, "Logout successful", nil)
 }

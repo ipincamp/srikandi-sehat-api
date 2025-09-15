@@ -2,86 +2,176 @@ package handlers
 
 import (
 	"errors"
+	"ipincamp/srikandi-sehat/config"
 	"ipincamp/srikandi-sehat/database"
 	"ipincamp/srikandi-sehat/src/constants"
 	"ipincamp/srikandi-sehat/src/dto"
 	"ipincamp/srikandi-sehat/src/models"
+	"ipincamp/srikandi-sehat/src/models/menstrual"
+	"ipincamp/srikandi-sehat/src/models/region"
 	"ipincamp/srikandi-sehat/src/utils"
+	"sync"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 )
 
-func Profile(c *fiber.Ctx) error {
+func GetMyProfile(c *fiber.Ctx) error {
 	userUUID := c.Locals("user_id").(string)
-	var user models.User
-	result := database.DB.Preload("Roles.Permissions").Preload("Permissions").First(&user, "uuid = ?", userUUID)
 
-	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
-		return utils.SendError(c, fiber.StatusNotFound, "User not found")
+	var user models.User
+
+	err := database.DB.
+		Preload("Roles").
+		Preload("Profile.Village.Classification").
+		Preload("Profile.Village.District.Regency.Province").
+		First(&user, "uuid = ?", userUUID).Error
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return utils.SendError(c, fiber.StatusNotFound, "User not found")
+		}
+		return utils.SendError(c, fiber.StatusInternalServerError, "Database error")
 	}
 
-	responseData := dto.AuthResponseJson(user)
+	responseData := dto.UserResponseJson(user)
+	if user.Profile.ID == 0 {
+		return utils.SendSuccess(c, fiber.StatusOK, "Your profile has not been created yet. Please update your profile first.", responseData)
+	}
 
 	return utils.SendSuccess(c, fiber.StatusOK, "Profile fetched successfully", responseData)
 }
 
-func UpdateDetails(c *fiber.Ctx) error {
+func UpdateOrCreateProfile(c *fiber.Ctx) error {
 	userUUID := c.Locals("user_id").(string)
+	input := c.Locals("request_body").(*dto.UpdateProfileRequest)
 
-	input := new(dto.UpdateDetailsRequest)
-	if err := c.BodyParser(input); err != nil {
-		return utils.SendError(c, fiber.StatusBadRequest, "Cannot parse JSON")
+	tx := database.DB.Begin()
+	if tx.Error != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to start transaction")
 	}
-
-	if errors := utils.ValidateStruct(input); len(errors) > 0 {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  false,
-			"message": "Validation failed",
-			"errors":  errors,
-		})
-	}
+	defer tx.Rollback()
 
 	var user models.User
-	if err := database.DB.First(&user, "uuid = ?", userUUID).Error; err != nil {
+	if err := tx.First(&user, "uuid = ?", userUUID).Error; err != nil {
 		return utils.SendError(c, fiber.StatusNotFound, "User not found")
 	}
 
-	if err := database.DB.Model(&user).Updates(input).Error; err != nil {
-		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to update user details")
+	var profile models.Profile
+	err := tx.Where(models.Profile{UserID: user.ID}).First(&profile).Error
+
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		profile = models.Profile{
+			UserID:              user.ID,
+			PhoneNumber:         "",
+			HeightCM:            0,
+			WeightKG:            0,
+			LastEducation:       constants.EduNone,
+			ParentLastEducation: constants.EduNone,
+			ParentLastJob:       "",
+			InternetAccess:      constants.AccessCellular,
+			MenarcheAge:         0,
+			DateOfBirth:         nil,
+			VillageID:           nil,
+		}
+		if err := tx.Model(&models.Profile{}).Create(&profile).Error; err != nil {
+			return utils.SendError(c, fiber.StatusInternalServerError, "Failed to create profile")
+		}
 	}
 
-	responseData := dto.AuthResponseJson(user)
-	return utils.SendSuccess(c, fiber.StatusOK, "Profile details updated successfully", responseData)
+	updateData := make(map[string]interface{})
+
+	if input.Name != nil && *input.Name != user.Name {
+		if err := tx.Model(&user).Update("name", *input.Name).Error; err != nil {
+			return utils.SendError(c, fiber.StatusInternalServerError, "Failed to update user name")
+		}
+	}
+
+	if input.PhoneNumber != nil && *input.PhoneNumber != profile.PhoneNumber {
+		updateData["phone_number"] = *input.PhoneNumber
+	}
+	if input.HeightCM != nil && *input.HeightCM != profile.HeightCM {
+		updateData["height_cm"] = *input.HeightCM
+	}
+	if input.WeightKG != nil && *input.WeightKG != profile.WeightKG {
+		updateData["weight_kg"] = *input.WeightKG
+	}
+	if input.LastEducation != nil && *input.LastEducation != profile.LastEducation {
+		updateData["last_education"] = *input.LastEducation
+	}
+	if input.ParentLastEducation != nil && *input.ParentLastEducation != profile.ParentLastEducation {
+		updateData["parent_last_education"] = *input.ParentLastEducation
+	}
+	if input.ParentLastJob != nil && *input.ParentLastJob != profile.ParentLastJob {
+		updateData["parent_last_job"] = *input.ParentLastJob
+	}
+	if input.InternetAccess != nil && *input.InternetAccess != profile.InternetAccess {
+		updateData["internet_access"] = *input.InternetAccess
+	}
+	if input.MenarcheAge != nil && *input.MenarcheAge != profile.MenarcheAge {
+		updateData["menarche_age"] = *input.MenarcheAge
+	}
+
+	if input.DateOfBirth != nil {
+		dob, err := time.Parse("2006-01-02", *input.DateOfBirth)
+		if err == nil {
+			loc, locErr := time.LoadLocation(config.Get("TIMEZONE"))
+			if locErr == nil {
+				dob = dob.In(loc)
+			}
+			var currentDOBStr string
+			if profile.DateOfBirth != nil {
+				currentDOBStr = profile.DateOfBirth.Format("2006-01-02")
+			}
+			newDOBStr := dob.Format("2006-01-02")
+			if profile.DateOfBirth == nil || currentDOBStr != newDOBStr {
+				updateData["date_of_birth"] = &dob
+			}
+		}
+	}
+	if input.VillageCode != nil {
+		var village region.Village
+		if err := tx.First(&village, "code = ?", *input.VillageCode).Error; err != nil {
+			return utils.SendError(c, fiber.StatusNotFound, "Village code not found")
+		}
+		if profile.VillageID == nil || village.ID != *profile.VillageID {
+			updateData["village_id"] = &village.ID
+		}
+	}
+
+	if len(updateData) > 0 {
+		if err := tx.Model(&profile).Updates(updateData).Error; err != nil {
+			return utils.SendError(c, fiber.StatusInternalServerError, "Failed to update profile")
+		}
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to commit transaction")
+	}
+
+	return utils.SendSuccess(c, fiber.StatusOK, "Profile updated successfully", nil)
 }
 
-func ChangePassword(c *fiber.Ctx) error {
+func ChangeMyPassword(c *fiber.Ctx) error {
 	userUUID := c.Locals("user_id").(string)
 
-	input := new(dto.ChangePasswordRequest)
-	if err := c.BodyParser(input); err != nil {
-		return utils.SendError(c, fiber.StatusBadRequest, "Cannot parse JSON")
-	}
-
-	if errors := utils.ValidateStruct(input); len(errors) > 0 {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"status":  false,
-			"message": "Validation failed",
-			"errors":  errors,
-		})
-	}
+	input := c.Locals("request_body").(*dto.ChangePasswordRequest)
 
 	var user models.User
 	if err := database.DB.First(&user, "uuid = ?", userUUID).Error; err != nil {
-		return utils.SendError(c, fiber.StatusNotFound, "User not found")
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return utils.SendError(c, fiber.StatusNotFound, "User not found")
+		}
+		return utils.SendError(c, fiber.StatusInternalServerError, "Database error")
 	}
 
-	if !utils.CheckPasswordHash(input.OldPassword, user.Password) {
-		return utils.SendError(c, fiber.StatusBadRequest, "Old password does not match")
+	match, err := utils.CheckPasswordHash(input.OldPassword, user.Password)
+	if err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to verify old password")
 	}
-
-	if input.NewPassword != input.NewPasswordConfirmation {
-		return utils.SendError(c, fiber.StatusBadRequest, "New password and confirmation do not match")
+	if !match {
+		return utils.SendError(c, fiber.StatusUnauthorized, "Old password is incorrect")
 	}
 
 	newHashedPassword, err := utils.HashPassword(input.NewPassword)
@@ -97,36 +187,210 @@ func ChangePassword(c *fiber.Ctx) error {
 }
 
 func GetAllUsers(c *fiber.Ctx) error {
+	queries := c.Locals("request_queries").(*dto.UserQuery)
+
 	var users []models.User
 
-	adminUserIDs := database.DB.Table("user_roles").
-		Select("user_roles.user_id").
-		Joins("join roles on user_roles.role_id = roles.id").
-		Where("roles.name = ?", string(constants.AdminRole))
+	subQuery := database.DB.Table("user_roles").
+		Select("1").
+		Joins("JOIN roles ON user_roles.role_id = roles.id").
+		Where("user_roles.user_id = users.id AND roles.name = ?", string(constants.AdminRole))
 
-	database.DB.Preload("Roles").
-		Where("id NOT IN (?)", adminUserIDs).
-		Find(&users)
+	query := database.DB.Model(&models.User{}).
+		Joins("JOIN profiles ON users.id = profiles.user_id").
+		Joins("JOIN villages ON profiles.village_id = villages.id").
+		Joins("JOIN classifications ON villages.classification_id = classifications.id")
 
-	var responseData []dto.UserResponse
-	for _, user := range users {
-		responseData = append(responseData, dto.AuthResponseJson(user))
+	// Updated logic to handle English parameters
+	if queries.Classification != "" {
+		var classificationDBValue string
+		switch queries.Classification {
+		case "urban":
+			classificationDBValue = "Perkotaan"
+		case "rural":
+			classificationDBValue = "Perdesaan"
+		}
+		query = query.Where("classifications.name = ?", classificationDBValue)
 	}
 
-	return utils.SendSuccess(c, fiber.StatusOK, "Users fetched successfully", responseData)
+	query = query.Where("NOT EXISTS (?)", subQuery)
+
+	page := queries.Page
+	if page == 0 {
+		page = 1
+	}
+	limit := queries.Limit
+	if limit == 0 {
+		limit = 10
+	}
+
+	pagination, paginateScope := utils.GeneratePagination(page, limit, query, &models.User{})
+
+	query.Select("users.uuid, users.name, users.created_at").Scopes(paginateScope).Find(&users)
+
+	var responseData []fiber.Map
+	for _, user := range users {
+		responseData = append(responseData, fiber.Map{
+			"id":         user.UUID,
+			"name":       user.Name,
+			"created_at": user.CreatedAt,
+		})
+	}
+
+	paginatedResponse := fiber.Map{
+		"data": responseData,
+		"meta": pagination,
+	}
+
+	return utils.SendSuccess(c, fiber.StatusOK, "Users fetched successfully", paginatedResponse)
 }
 
 func GetUserByID(c *fiber.Ctx) error {
-	userUUID := c.Params("id")
+	params := c.Locals("request_params").(*dto.UserParam)
+	userUUID := params.ID
 
+	// 1. Fetch user with profile details
 	var user models.User
-	result := database.DB.Preload("Roles").First(&user, "uuid = ?", userUUID)
+	result := database.DB.
+		Preload("Roles").
+		Preload("Profile.Village.Classification").
+		Preload("Profile.Village.District.Regency.Province").
+		First(&user, "uuid = ?", userUUID)
 
 	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 		return utils.SendError(c, fiber.StatusNotFound, "User not found")
 	}
 
-	responseData := dto.AuthResponseJson(user)
+	// 2. Fetch the user's menstrual cycle history
+	var cycles []menstrual.MenstrualCycle
+	database.DB.Where("user_id = ?", user.ID).Order("start_date DESC").Find(&cycles)
+
+	// 3. Format the cycle history into the DTO structure
+	var cycleHistoryDTO []dto.CycleHistoryEntry
+	for _, cycle := range cycles {
+		entry := dto.CycleHistoryEntry{
+			ID:        cycle.ID,
+			StartDate: cycle.StartDate,
+		}
+		if cycle.EndDate.Valid {
+			entry.FinishDate = &cycle.EndDate.Time
+		}
+		if cycle.PeriodLength.Valid {
+			entry.PeriodLengthDays = &cycle.PeriodLength.Int16
+		}
+		if cycle.CycleLength.Valid {
+			entry.CycleLengthDays = &cycle.CycleLength.Int16
+		}
+		cycleHistoryDTO = append(cycleHistoryDTO, entry)
+	}
+
+	// 4. Get the base user response data
+	responseData := dto.UserResponseJson(user)
+
+	// 5. Add the cycle history to the response
+	responseData.CycleHistory = cycleHistoryDTO
 
 	return utils.SendSuccess(c, fiber.StatusOK, "User fetched successfully", responseData)
+}
+
+func GetUserStatistics(c *fiber.Ctx) error {
+	var stats dto.UserStatisticsResponse
+	var wg sync.WaitGroup
+	var dbErr error
+
+	// Channel to handle potential concurrent errors
+	errChan := make(chan error, 4)
+
+	// --- 1. Get Total Rural Users ---
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var count int64
+		err := database.DB.Model(&models.User{}).
+			Joins("JOIN profiles ON users.id = profiles.user_id").
+			Joins("JOIN villages ON profiles.village_id = villages.id").
+			Joins("JOIN classifications ON villages.classification_id = classifications.id").
+			Where("classifications.name = ?", "Perdesaan").
+			Count(&count).Error
+		if err != nil {
+			errChan <- err
+			return
+		}
+		stats.TotalRuralUsers = count
+	}()
+
+	// --- 2. Get Total Urban Users ---
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var count int64
+		err := database.DB.Model(&models.User{}).
+			Joins("JOIN profiles ON users.id = profiles.user_id").
+			Joins("JOIN villages ON profiles.village_id = villages.id").
+			Joins("JOIN classifications ON villages.classification_id = classifications.id").
+			Where("classifications.name = ?", "Perkotaan").
+			Count(&count).Error
+		if err != nil {
+			errChan <- err
+			return
+		}
+		stats.TotalUrbanUsers = count
+	}()
+
+	// --- 3. Get Total Active Users ---
+	// (Users with at least 2 cycles, meaning 1 completed and 1 active/completed)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var count int64
+		err := database.DB.Table("users").
+			Joins("JOIN (SELECT user_id, COUNT(id) as cycle_count FROM menstrual_cycles GROUP BY user_id) as mc ON users.id = mc.user_id").
+			Where("mc.cycle_count >= 2").
+			Count(&count).Error
+		if err != nil {
+			errChan <- err
+			return
+		}
+		stats.TotalActiveUsers = count
+	}()
+
+	// --- 4. Get Total Users (excluding Admins) ---
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var count int64
+		// Subquery to find users who are admins
+		subQuery := database.DB.Table("user_roles").
+			Select("user_id").
+			Joins("JOIN roles ON user_roles.role_id = roles.id").
+			Where("roles.name = ?", string(constants.AdminRole))
+
+		err := database.DB.Model(&models.User{}).
+			Where("id NOT IN (?)", subQuery).
+			Count(&count).Error
+		if err != nil {
+			errChan <- err
+			return
+		}
+		stats.TotalUsers = count
+	}()
+
+	// Wait for all goroutines to finish
+	wg.Wait()
+	close(errChan)
+
+	// Check if any goroutine reported an error
+	for err := range errChan {
+		if err != nil {
+			dbErr = err // Capture the first error
+			break
+		}
+	}
+
+	if dbErr != nil {
+		utils.ErrorLogger.Println("Failed to retrieve user statistics:", dbErr)
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to retrieve user statistics")
+	}
+
+	return utils.SendSuccess(c, fiber.StatusOK, "User statistics fetched successfully", stats)
 }

@@ -1,8 +1,11 @@
 package routes
 
 import (
+	"ipincamp/srikandi-sehat/src/dto"
 	"ipincamp/srikandi-sehat/src/handlers"
+	menstrualHandler "ipincamp/srikandi-sehat/src/handlers/menstrual"
 	"ipincamp/srikandi-sehat/src/middleware"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -12,25 +15,44 @@ func SetupRoutes(app *fiber.App) {
 
 	// Auth routes
 	auth := api.Group("/auth")
-	auth.Post("/register", handlers.Register)
-	auth.Post("/login", handlers.Login)
+	loginLimiter := middleware.CreateRateLimiter(5, 1*time.Minute)
+	registerLimiter := middleware.CreateRateLimiter(10, 5*time.Minute)
+	auth.Post("/register", registerLimiter, middleware.ValidateBody[dto.RegisterRequest], handlers.Register)
+	auth.Post("/login", loginLimiter, middleware.ValidateBody[dto.LoginRequest], handlers.Login)
 	auth.Post("/logout", middleware.AuthMiddleware, handlers.Logout)
 
 	// User routes
 	user := api.Group("/me", middleware.AuthMiddleware)
-	user.Get("/", handlers.Profile)
-	user.Patch("/details", handlers.UpdateDetails)
-	user.Patch("/password", handlers.ChangePassword)
+	user.Get("/", handlers.GetMyProfile)
+	user.Put("/details", middleware.ValidateBody[dto.UpdateProfileRequest], handlers.UpdateOrCreateProfile)
+	user.Patch("/password", middleware.ValidateBody[dto.ChangePasswordRequest], handlers.ChangeMyPassword)
 
 	// Admin routes
-	admin := api.Group("/admin", middleware.AuthMiddleware, middleware.AdminMiddleware)
-	admin.Get("/users", handlers.GetAllUsers)
-	admin.Get("/users/:id", handlers.GetUserByID)
+	adminLimiter := middleware.CreateRateLimiter(100, 1*time.Minute)
+	admin := api.Group("/admin", middleware.AuthMiddleware, middleware.AdminMiddleware, adminLimiter)
+	admin.Get("/users/statistics", handlers.GetUserStatistics)
+	admin.Get("/reports/csv", handlers.DownloadFullReportCSV)
+	admin.Get("/users", middleware.ValidateQuery[dto.UserQuery], handlers.GetAllUsers)
+	admin.Get("/users/:id", middleware.ValidateParams[dto.UserParam], handlers.GetUserByID)
 
 	// Region routes
 	region := api.Group("/regions")
 	region.Get("/provinces", handlers.GetAllProvinces)
-	region.Get("/regencies", handlers.GetRegenciesByProvince)
-	region.Get("/districts", handlers.GetDistrictsByRegency)
-	region.Get("/villages", handlers.GetVillagesByDistrict)
+	region.Get("/regencies", middleware.ValidateQuery[dto.RegencyQuery], handlers.GetRegenciesByProvince)
+	region.Get("/districts", middleware.ValidateQuery[dto.DistrictQuery], handlers.GetDistrictsByRegency)
+	region.Get("/villages", middleware.ValidateQuery[dto.VillageQuery], handlers.GetVillagesByDistrict)
+
+	// Menstrual health routes
+	menstrual := api.Group("/menstrual", middleware.AuthMiddleware)
+	menstrual.Get("/cycles/status", menstrualHandler.GetCycleStatus)
+	menstrual.Post("/cycles", middleware.ValidateBody[dto.CycleRequest], menstrualHandler.RecordCycle)
+	menstrual.Get("/cycles", middleware.ValidateQuery[dto.PaginationQuery], menstrualHandler.GetCycleHistory)
+	menstrual.Get("/cycles/:id", middleware.ValidateParams[dto.CycleParam], menstrualHandler.GetCycleByID)
+
+	// Symptom specific routes
+	menstrual.Post("/symptoms/log", middleware.ValidateBody[dto.SymptomLogRequest], menstrualHandler.LogSymptoms)
+	menstrual.Get("/symptoms/master", menstrualHandler.GetSymptomsMaster)
+	menstrual.Get("/symptoms/history", middleware.ValidateQuery[dto.SymptomHistoryQuery], menstrualHandler.GetSymptomHistory)
+	menstrual.Get("/symptoms/log/:id", middleware.ValidateParams[dto.SymptomLogParam], menstrualHandler.GetSymptomLogByID)
+	menstrual.Get("/recommendations", menstrualHandler.GetRecommendationsBySymptoms)
 }

@@ -16,6 +16,7 @@ type MenstrualCycle struct {
 	CycleLength    sql.NullInt16
 	IsPeriodNormal sql.NullBool
 	IsCycleNormal  sql.NullBool
+	DeletionReason sql.NullString `gorm:"type:text"`
 
 	UserID      uint         `gorm:"not null"`
 	User        models.User  `gorm:"foreignKey:UserID"`

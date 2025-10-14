@@ -1,6 +1,7 @@
 package menstrual
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"ipincamp/srikandi-sehat/database"
@@ -67,6 +68,8 @@ func RecordCycle(c *fiber.Ctx) error {
 
 		newCycle := menstrual.MenstrualCycle{UserID: user.ID, StartDate: startDate}
 		if err := tx.Create(&newCycle).Error; err != nil {
+			// tampilkan errornya
+			log.Printf("Error creating new cycle: %v", err)
 			return utils.SendError(c, fiber.StatusInternalServerError, "Failed to record new cycle")
 		}
 
@@ -361,14 +364,21 @@ func GetCycleStatus(c *fiber.Ctx) error {
 func DeleteCycleByID(c *fiber.Ctx) error {
 	userUUID := c.Locals("user_id").(string)
 	params := c.Locals("request_params").(*dto.CycleParam)
+	input := c.Locals("request_body").(*dto.DeleteCycleRequest)
+
+	tx := database.DB.Begin()
+	if tx.Error != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to start transaction")
+	}
+	defer tx.Rollback()
 
 	var user models.User
-	if err := database.DB.First(&user, "uuid = ?", userUUID).Error; err != nil {
+	if err := tx.First(&user, "uuid = ?", userUUID).Error; err != nil {
 		return utils.SendError(c, fiber.StatusNotFound, "User not found")
 	}
 
 	var cycle menstrual.MenstrualCycle
-	err := database.DB.
+	err := tx.
 		Where("id = ? AND user_id = ?", params.ID, user.ID).
 		First(&cycle).Error
 
@@ -379,8 +389,17 @@ func DeleteCycleByID(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to retrieve cycle data")
 	}
 
-	if err := database.DB.Delete(&cycle).Error; err != nil {
+	cycle.DeletionReason = sql.NullString{String: input.Reason, Valid: true}
+	if err := tx.Save(&cycle).Error; err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to save deletion reason")
+	}
+
+	if err := tx.Delete(&cycle).Error; err != nil {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to delete cycle")
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to commit transaction")
 	}
 
 	return utils.SendSuccess(c, fiber.StatusOK, "Cycle deleted successfully", nil)

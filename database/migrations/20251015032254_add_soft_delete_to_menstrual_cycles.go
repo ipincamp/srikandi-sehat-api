@@ -1,12 +1,15 @@
 package migrations
 
 import (
+	"database/sql"
+
 	"github.com/go-gormigrate/gormigrate/v2"
 	"gorm.io/gorm"
 )
 
 func AddSoftDeleteToMenstrualCycles() *gormigrate.Migration {
 	type MenstrualCycle struct {
+		DeletionReason sql.NullString `gorm:"type:text"`
 		gorm.DeletedAt
 	}
 
@@ -18,7 +21,10 @@ func AddSoftDeleteToMenstrualCycles() *gormigrate.Migration {
 		},
 
 		Rollback: func(tx *gorm.DB) error {
-			return tx.Migrator().DropColumn(&MenstrualCycle{}, "deleted_at")
+			if err := tx.Migrator().DropColumn(&MenstrualCycle{}, "deleted_at"); err != nil {
+				return err
+			}
+			return tx.Migrator().DropColumn(&MenstrualCycle{}, "deletion_reason")
 		},
 	}
 }

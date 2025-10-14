@@ -52,6 +52,10 @@ type CycleRequest struct {
 	EndDate   string `json:"finish_date" validate:"omitempty,datetime=2006-01-02T15:04:05Z07:00"`
 }
 
+type DeleteCycleRequest struct {
+	Reason string `json:"reason" validate:"required,min=5,max=255"`
+}
+
 // Response Body
 type CycleResponse struct {
 	ID             uint       `json:"id"`

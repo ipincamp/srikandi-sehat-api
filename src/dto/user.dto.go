@@ -46,8 +46,10 @@ type CycleHistoryEntry struct {
 	ID               uint       `json:"id"`
 	StartDate        time.Time  `json:"start_date"`
 	FinishDate       *time.Time `json:"finish_date,omitempty"`
-	PeriodLengthDays *int16     `json:"period_length_days,omitempty"`
-	CycleLengthDays  *int16     `json:"cycle_length_days,omitempty"`
+	PeriodLengthDays *int16     `json:"period_length_days"`
+	CycleLengthDays  *int16     `json:"cycle_length_days"`
+	DeletedAt        *time.Time `json:"deleted_at"`
+	DeletionReason   *string    `json:"deletion_reason"`
 }
 
 type ProfileResponse struct {

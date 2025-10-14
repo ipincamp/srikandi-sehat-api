@@ -261,9 +261,9 @@ func GetUserByID(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusNotFound, "User not found")
 	}
 
-	// 2. Fetch the user's menstrual cycle history
+	// 2. Fetch the user's menstrual cycle history, including soft-deleted records
 	var cycles []menstrual.MenstrualCycle
-	database.DB.Where("user_id = ?", user.ID).Order("start_date DESC").Find(&cycles)
+	database.DB.Unscoped().Where("user_id = ?", user.ID).Order("start_date DESC").Find(&cycles)
 
 	// 3. Format the cycle history into the DTO structure
 	var cycleHistoryDTO []dto.CycleHistoryEntry
@@ -275,12 +275,30 @@ func GetUserByID(c *fiber.Ctx) error {
 		if cycle.EndDate.Valid {
 			entry.FinishDate = &cycle.EndDate.Time
 		}
+
+		var periodLength int16
 		if cycle.PeriodLength.Valid {
-			entry.PeriodLengthDays = &cycle.PeriodLength.Int16
+			periodLength = cycle.PeriodLength.Int16
+		} else if !cycle.EndDate.Valid {
+			// Calculate period length for ongoing cycles (from start date to today)
+			periodLength = int16(time.Since(cycle.StartDate).Hours()/24) + 1
 		}
+		entry.PeriodLengthDays = &periodLength
+
+		var cycleLength *int16
 		if cycle.CycleLength.Valid {
-			entry.CycleLengthDays = &cycle.CycleLength.Int16
+			cycleLength = &cycle.CycleLength.Int16
 		}
+		entry.CycleLengthDays = cycleLength
+
+		// Include deletion info if the record is soft-deleted
+		if !cycle.DeletedAt.Time.IsZero() {
+			entry.DeletedAt = &cycle.DeletedAt.Time
+			if cycle.DeletionReason.Valid {
+				entry.DeletionReason = &cycle.DeletionReason.String
+			}
+		}
+
 		cycleHistoryDTO = append(cycleHistoryDTO, entry)
 	}
 

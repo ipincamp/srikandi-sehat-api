@@ -196,7 +196,7 @@ func DownloadFullReportCSV(c *fiber.Ctx) error {
 	}
 	w.Flush()
 
-	filename := fmt.Sprintf("full_report_%s.csv", time.Now().Format("2006-01-02"))
+	filename := fmt.Sprintf("full_report_%s.csv", time.Now().Format("2006-01-02 15:04:05"))
 	c.Set("Content-Type", "text/csv")
 	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
 	return c.Send(b.Bytes())

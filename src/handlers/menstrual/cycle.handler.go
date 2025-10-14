@@ -358,6 +358,34 @@ func GetCycleStatus(c *fiber.Ctx) error {
 	return utils.SendError(c, fiber.StatusInternalServerError, "Failed to retrieve cycle data")
 }
 
+func DeleteCycleByID(c *fiber.Ctx) error {
+	userUUID := c.Locals("user_id").(string)
+	params := c.Locals("request_params").(*dto.CycleParam)
+
+	var user models.User
+	if err := database.DB.First(&user, "uuid = ?", userUUID).Error; err != nil {
+		return utils.SendError(c, fiber.StatusNotFound, "User not found")
+	}
+
+	var cycle menstrual.MenstrualCycle
+	err := database.DB.
+		Where("id = ? AND user_id = ?", params.ID, user.ID).
+		First(&cycle).Error
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return utils.SendError(c, fiber.StatusNotFound, "Cycle not found")
+		}
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to retrieve cycle data")
+	}
+
+	if err := database.DB.Delete(&cycle).Error; err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to delete cycle")
+	}
+
+	return utils.SendSuccess(c, fiber.StatusOK, "Cycle deleted successfully", nil)
+}
+
 func findActiveCycle(tx *gorm.DB, userID uint) (menstrual.MenstrualCycle, error) {
 	var activeCycle menstrual.MenstrualCycle
 	err := tx.Where("user_id = ? AND end_date IS NULL", userID).

@@ -1,5 +1,8 @@
 .PHONY: migrate-create migrate-up migrate-down db-seed debug build
 
+GOBIN=$(GOPATH)/bin
+GOPATH=$(shell go env GOPATH)
+
 migrate-create:
 	@$(eval timestamp := $(shell date +%Y%m%d%H%M%S))
 	@$(eval name := $(name))
@@ -44,6 +47,14 @@ migrate-down:
 db-seed:
 	@go run cmd/seed/main.go
 
+air-install:
+	@echo "Installing Air..."
+	@go install github.com/air-verse/air@latest
+	@echo "Air installed successfully. You can now use 'make debug' to run the application with live reload."
+
+dev: air-install
+	@echo "Running in development mode with auto-reload..."
+	@$(GOBIN)/air
 debug:
 	@go run .
 

@@ -27,6 +27,7 @@ func main() {
 		migrations.AddCycleIdToSymptomLogs(),
 		migrations.ChangeCycleDatesToDatetime(),
 		migrations.RenameLogDateInSymptomLogs(),
+		migrations.AddSoftDeleteToMenstrualCycles(),
 		// And more...
 	})
 

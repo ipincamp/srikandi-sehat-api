@@ -36,6 +36,7 @@ database/*bin
 __debug*
 srikandi-sehat
 *.js
+tmp/main
 
 # Logs
 *.log

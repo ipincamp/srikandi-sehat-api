@@ -29,6 +29,7 @@ func main() {
 		migrations.RenameLogDateInSymptomLogs(),
 		migrations.AddSoftDeleteToMenstrualCycles(),
 		migrations.AddFcmTokenToUsersTable(),
+		migrations.CreateNotificationsTable(),
 		// And more...
 	})
 

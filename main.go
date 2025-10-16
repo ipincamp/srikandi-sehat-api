@@ -17,10 +17,18 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/robfig/cron/v3"
 )
 
 func main() {
 	utils.InitLogger()
+
+	c := cron.New()
+	// c.AddFunc("0 9 * * *", workers.CheckLongMenstrualCycles) // setiap jam 9 pagi
+	c.AddFunc("*/1 * * * *", workers.CheckLongMenstrualCycles) // setiap 1 menit (untuk testing)
+	c.Start()
+	log.Println("Cron job for cycle checking has been scheduled.")
+	defer c.Stop()
 
 	utils.InitFCM()
 

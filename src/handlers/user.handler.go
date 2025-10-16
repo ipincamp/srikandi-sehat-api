@@ -412,3 +412,26 @@ func GetUserStatistics(c *fiber.Ctx) error {
 
 	return utils.SendSuccess(c, fiber.StatusOK, "User statistics fetched successfully", stats)
 }
+
+func UpdateFcmToken(c *fiber.Ctx) error {
+	userUUID := c.Locals("user_id").(string)
+
+	var payload struct {
+		FcmToken string `json:"fcm_token"`
+	}
+
+	if err := c.BodyParser(&payload); err != nil {
+		return utils.SendError(c, fiber.StatusBadRequest, "Invalid request body")
+	}
+
+	if payload.FcmToken == "" {
+		return utils.SendError(c, fiber.StatusBadRequest, "fcm_token is required")
+	}
+
+	result := database.DB.Model(&models.User{}).Where("uuid = ?", userUUID).Update("fcm_token", payload.FcmToken)
+	if result.Error != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to update FCM token")
+	}
+
+	return utils.SendSuccess(c, fiber.StatusOK, "FCM token updated successfully", nil)
+}

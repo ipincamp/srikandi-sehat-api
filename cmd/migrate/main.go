@@ -31,6 +31,7 @@ func main() {
 		migrations.AddFcmTokenToUsersTable(),
 		migrations.CreateNotificationsTable(),
 		migrations.AddLongPeriodNotifiedToMenstrualCycles(),
+		migrations.AddLatePeriodNotifiedToMenstrualCycles(),
 		// And more...
 	})
 

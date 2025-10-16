@@ -17,7 +17,8 @@ type MenstrualCycle struct {
 	IsPeriodNormal     sql.NullBool
 	IsCycleNormal      sql.NullBool
 	DeletionReason     sql.NullString `gorm:"type:text"`
-	LongPeriodNotified bool           `gorm:"default:false"`
+	LongPeriodNotified bool           `gorm:"default:false" json:"long_period_notified"`
+	LatePeriodNotified bool           `gorm:"default:false" json:"late_period_notified"`
 
 	UserID      uint         `gorm:"not null"`
 	User        models.User  `gorm:"foreignKey:UserID"`

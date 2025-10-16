@@ -30,6 +30,7 @@ func main() {
 		migrations.AddSoftDeleteToMenstrualCycles(),
 		migrations.AddFcmTokenToUsersTable(),
 		migrations.CreateNotificationsTable(),
+		migrations.AddLongPeriodNotifiedToMenstrualCycles(),
 		// And more...
 	})
 

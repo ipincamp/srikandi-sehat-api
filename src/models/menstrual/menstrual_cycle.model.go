@@ -9,14 +9,15 @@ import (
 )
 
 type MenstrualCycle struct {
-	ID             uint `gorm:"primarykey"`
-	StartDate      time.Time
-	EndDate        sql.NullTime
-	PeriodLength   sql.NullInt16
-	CycleLength    sql.NullInt16
-	IsPeriodNormal sql.NullBool
-	IsCycleNormal  sql.NullBool
-	DeletionReason sql.NullString `gorm:"type:text"`
+	ID                 uint `gorm:"primarykey"`
+	StartDate          time.Time
+	EndDate            sql.NullTime
+	PeriodLength       sql.NullInt16
+	CycleLength        sql.NullInt16
+	IsPeriodNormal     sql.NullBool
+	IsCycleNormal      sql.NullBool
+	DeletionReason     sql.NullString `gorm:"type:text"`
+	LongPeriodNotified bool           `gorm:"default:false"`
 
 	UserID      uint         `gorm:"not null"`
 	User        models.User  `gorm:"foreignKey:UserID"`

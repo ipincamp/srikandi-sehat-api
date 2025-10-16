@@ -42,6 +42,7 @@ func worker(id int, jobs <-chan Job) {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			log.Printf("Worker %d: Registration failed for %s. Email is already registered.", id, data.Email)
 			utils.SendFCMNotification(
+				0,
 				fcmToken,
 				"Registration Failed",
 				"The email you used is already registered in our system.",
@@ -81,6 +82,7 @@ func worker(id int, jobs <-chan Job) {
 		if err != nil {
 			log.Printf("ERROR (Worker %d): Failed to create user %s in database: %v", id, data.Email, err)
 			utils.SendFCMNotification(
+				user.ID,
 				fcmToken,
 				"Registration Failed",
 				"An error occurred while processing your account. Please try again.",
@@ -90,6 +92,7 @@ func worker(id int, jobs <-chan Job) {
 			utils.AddEmailToRegistrationFilter(user.Email)
 			log.Printf("Worker %d: User %s has been created and activated.", id, user.Email)
 			utils.SendFCMNotification(
+				user.ID,
 				fcmToken,
 				"Registration Successful!",
 				"Your account has been created successfully. Please log in to get started.",

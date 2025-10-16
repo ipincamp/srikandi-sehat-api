@@ -43,6 +43,9 @@ func SetupRoutes(app *fiber.App) {
 	region.Get("/districts", middleware.ValidateQuery[dto.DistrictQuery], handlers.GetDistrictsByRegency)
 	region.Get("/villages", middleware.ValidateQuery[dto.VillageQuery], handlers.GetVillagesByDistrict)
 
+	// Notification routes
+	api.Get("/notifications", middleware.AuthMiddleware, handlers.GetNotificationHistory)
+
 	// Menstrual health routes
 	menstrual := api.Group("/menstrual", middleware.AuthMiddleware)
 	menstrual.Get("/cycles/status", menstrualHandler.GetCycleStatus)

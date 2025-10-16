@@ -2,6 +2,8 @@ package utils
 
 import (
 	"context"
+	"ipincamp/srikandi-sehat/database"
+	"ipincamp/srikandi-sehat/src/models"
 	"log"
 
 	firebase "firebase.google.com/go/v4"
@@ -27,7 +29,7 @@ func InitFCM() {
 	InfoLogger.Println("Firebase Cloud Messaging client initialized successfully.")
 }
 
-func SendFCMNotification(token string, title string, body string, data map[string]string) error {
+func SendFCMNotification(userID uint, token string, title string, body string, data map[string]string) error {
 	if fcmClient == nil {
 		ErrorLogger.Println("FCM client is not initialized.")
 		return nil
@@ -46,6 +48,17 @@ func SendFCMNotification(token string, title string, body string, data map[strin
 	if err != nil {
 		ErrorLogger.Printf("Failed to send FCM notification to token %s: %v\n", token, err)
 		return err
+	}
+
+	// Simpan notifikasi ke database
+	notification := models.Notification{
+		UserID: userID,
+		Title:  title,
+		Body:   body,
+	}
+	if err := database.DB.Create(&notification).Error; err != nil {
+		ErrorLogger.Printf("Failed to save notification to database for user %d: %v\n", userID, err)
+		// Jangan return error, agar pengiriman notifikasi tidak gagal hanya karena gagal menyimpan
 	}
 
 	InfoLogger.Printf("Successfully sent FCM notification to token %s", token)

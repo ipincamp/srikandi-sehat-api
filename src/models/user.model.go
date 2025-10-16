@@ -13,6 +13,7 @@ type User struct {
 	Name     string `gorm:"type:varchar(100)"`
 	Email    string `gorm:"type:varchar(255);uniqueIndex;not null"`
 	Password string `gorm:"type:varchar(255);not null"`
+	FcmToken string `gorm:"type:text"`
 
 	Roles       []*Role       `gorm:"many2many:user_roles;"`
 	Permissions []*Permission `gorm:"many2many:user_permissions;"`

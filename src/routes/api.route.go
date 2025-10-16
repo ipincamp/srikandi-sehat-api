@@ -45,6 +45,7 @@ func SetupRoutes(app *fiber.App) {
 
 	// Notification routes
 	api.Get("/notifications", middleware.AuthMiddleware, handlers.GetNotificationHistory)
+	api.Patch("/notifications/:id/read", middleware.AuthMiddleware, handlers.MarkNotificationAsRead)
 
 	// Menstrual health routes
 	menstrual := api.Group("/menstrual", middleware.AuthMiddleware)

@@ -37,8 +37,8 @@ services:
     volumes:
       - srikandi-db:/var/lib/mysql
       - ./.docker/mariadb/init-timezone.sh:/docker-entrypoint-initdb.d/init-timezone.sh
-    # ports:
-    #   - "3306:3306"
+    ports:
+      - "3306:3306"
     networks:
       - srikandi-sehat
     healthcheck:

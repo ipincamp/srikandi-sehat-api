@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"ipincamp/srikandi-sehat/config"
 	"ipincamp/srikandi-sehat/database"
+	"ipincamp/srikandi-sehat/src/dto"
 	"ipincamp/srikandi-sehat/src/models"
 	"ipincamp/srikandi-sehat/src/utils"
 
@@ -51,4 +53,42 @@ func MarkNotificationAsRead(c *fiber.Ctx) error {
 	}
 
 	return utils.SendSuccess(c, fiber.StatusOK, "Notification marked as read", nil)
+}
+
+// SendTestNotification sends a test FCM notification to the authenticated user.
+// !! Should only be enabled in development environments. !!
+func SendTestNotification(c *fiber.Ctx) error {
+	// --- Environment Check (Simple) ---
+	// Hanya izinkan jika APP_ENV tidak 'production'
+	if config.Get("APP_ENV") == "production" {
+		return utils.SendError(c, fiber.StatusForbidden, "This endpoint is disabled in production environment.")
+	}
+	// --- End Environment Check ---
+
+	userUUID := c.Locals("user_id").(string)
+	input := c.Locals("request_body").(*dto.TestNotificationRequest)
+
+	var user models.User
+	if err := database.DB.Select("id", "fcm_token").First(&user, "uuid = ?", userUUID).Error; err != nil {
+		return utils.SendError(c, fiber.StatusNotFound, "User not found")
+	}
+
+	if user.FcmToken == "" {
+		return utils.SendError(c, fiber.StatusBadRequest, "User does not have an FCM token registered.")
+	}
+
+	err := utils.SendFCMNotification(user.ID, user.FcmToken, input.Title, input.Body, input.Data)
+	if err != nil {
+		// Log error server-side
+		utils.ErrorLogger.Printf("Failed to send test FCM notification to user %d (%s): %v", user.ID, userUUID, err)
+		// Berikan pesan error yang lebih umum ke client
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to send test notification. Check server logs.")
+	}
+
+	return utils.SendSuccess(c, fiber.StatusOK, "Test notification sent successfully.", fiber.Map{
+		"to_token": user.FcmToken,
+		"title":    input.Title,
+		"body":     input.Body,
+		"data":     input.Data,
+	})
 }

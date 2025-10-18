@@ -28,6 +28,10 @@ func SetupRoutes(app *fiber.App) {
 	user.Put("/details", middleware.ValidateBody[dto.UpdateProfileRequest], handlers.UpdateOrCreateProfile)
 	user.Patch("/password", middleware.ValidateBody[dto.ChangePasswordRequest], handlers.ChangeMyPassword)
 	user.Patch("/fcm-token", handlers.UpdateFcmToken)
+	user.Post("/test-notification",
+		middleware.ValidateBody[dto.TestNotificationRequest], // Validasi request body
+		handlers.SendTestNotification,                        // Panggil handler baru
+	)
 
 	// Admin routes
 	adminLimiter := middleware.CreateRateLimiter(100, 1*time.Minute)

@@ -64,6 +64,7 @@ func main() {
 		AllowMethods: "GET, POST, PUT, DELETE, PATCH",
 	}))
 	app.Use(logger.New())
+	app.Use(middleware.MaintenanceMiddleware())
 
 	routes.SetupRoutes(app)
 

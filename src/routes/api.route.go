@@ -11,6 +11,7 @@ import (
 )
 
 func SetupRoutes(app *fiber.App) {
+	app.Get("/api/health", handlers.HealthCheck)
 	api := app.Group("/api")
 
 	// Auth routes
@@ -35,6 +36,14 @@ func SetupRoutes(app *fiber.App) {
 	admin.Get("/reports/csv", handlers.DownloadFullReportCSV)
 	admin.Get("/users", middleware.ValidateQuery[dto.UserQuery], handlers.GetAllUsers)
 	admin.Get("/users/:id", middleware.ValidateParams[dto.UserParam], handlers.GetUserByID)
+
+	// Maintenance Management Routes (Admin only)
+	maintenance := admin.Group("/maintenance")
+	maintenance.Get("/", handlers.GetMaintenanceStatus)
+	maintenance.Post("/toggle", middleware.ValidateBody[dto.ToggleMaintenanceRequest], handlers.ToggleMaintenanceMode)
+	maintenance.Get("/whitelist", handlers.GetWhitelistedUsers)
+	maintenance.Post("/whitelist", middleware.ValidateBody[dto.WhitelistUserRequest], handlers.AddUserToWhitelist)
+	maintenance.Delete("/whitelist", middleware.ValidateBody[dto.WhitelistUserRequest], handlers.RemoveUserFromWhitelist)
 
 	// Region routes
 	region := api.Group("/regions")

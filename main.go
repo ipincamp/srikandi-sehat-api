@@ -26,8 +26,8 @@ func main() {
 	c := cron.New()
 	// c.AddFunc("0 9 * * *", workers.CheckLongMenstrualCycles) // setiap jam 9 pagi
 	// c.AddFunc("0 9 * * *", workers.CheckLateMenstrualCycles) // setiap jam 9 pagi
-	c.AddFunc("*/1 * * * *", workers.CheckLongMenstrualCycles) // setiap 1 menit (untuk testing)
-	c.AddFunc("*/1 * * * *", workers.CheckLateMenstrualCycles) // setiap 1 menit (untuk testing)
+	c.AddFunc("*/10 * * * *", workers.CheckLongMenstrualCycles) // setiap 10 menit (untuk testing)
+	c.AddFunc("*/10 * * * *", workers.CheckLateMenstrualCycles) // setiap 10 menit (untuk testing)
 	c.Start()
 	log.Println("Cron job for cycle checking has been scheduled.")
 	defer c.Stop()

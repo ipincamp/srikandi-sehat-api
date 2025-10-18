@@ -32,6 +32,7 @@ func main() {
 		migrations.CreateNotificationsTable(),
 		migrations.AddLongPeriodNotifiedToMenstrualCycles(),
 		migrations.AddLatePeriodNotifiedToMenstrualCycles(),
+		migrations.CreateMaintenanceTables(),
 		// And more...
 	})
 

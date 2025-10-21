@@ -234,12 +234,6 @@ func GetAllUsers(c *fiber.Ctx) error {
 			"id":         user.UUID,
 			"name":       user.Name,
 			"created_at": user.CreatedAt,
-			"classification": func() string {
-				if user.Profile.ID != 0 && user.Profile.Village.ID != 0 && user.Profile.Village.Classification.ID != 0 {
-					return user.Profile.Village.Classification.Name
-				}
-				return "N/A"
-			}(),
 		})
 	}
 

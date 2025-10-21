@@ -36,3 +36,9 @@ type FullExportRecord struct {
 	CycleCategory  string `json:"cycle_category"`
 	Symptoms       string `json:"symptoms"`
 }
+
+// GenerateReportResponse adalah respons saat meminta tautan unduhan.
+type GenerateReportResponse struct {
+	DownloadURL string    `json:"download_url"`
+	ExpiresAt   time.Time `json:"expires_at"`
+}

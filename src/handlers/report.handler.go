@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 )
 
 // --- Helper functions for CSV Export ---
@@ -75,8 +76,37 @@ func getCycleCategory(length int16) string {
 	return "Normal"
 }
 
-// DownloadFullReportCSV generates a single CSV file combining all user and cycle data.
-func DownloadFullReportCSV(c *fiber.Ctx) error {
+// GenerateFullReportLink membuat token sekali pakai dan mengembalikan URL unduhan. (Admin only)
+func GenerateFullReportLink(c *fiber.Ctx) error {
+	token := uuid.New().String()
+	expiration := 5 * time.Minute // Tautan hanya valid selama 5 menit
+	expiresAt := time.Now().Add(expiration)
+
+	// Simpan token ke cache
+	utils.StoreReportToken(token, expiration)
+
+	// Buat URL lengkap
+	// Pastikan aplikasi Anda berjalan di belakang proxy yang mengatur X-Forwarded-Proto atau atur BaseURL secara manual jika perlu
+	downloadURL := fmt.Sprintf("%s/api/reports/download/%s", c.BaseURL(), token)
+
+	response := dto.GenerateReportResponse{
+		DownloadURL: downloadURL,
+		ExpiresAt:   expiresAt,
+	}
+
+	return utils.SendSuccess(c, fiber.StatusOK, "One-time download link generated successfully. Link expires in 5 minutes.", response)
+}
+
+// DownloadFullReportByToken menghasilkan CSV jika token valid.
+func DownloadFullReportByToken(c *fiber.Ctx) error {
+	// 1. Validasi token dari URL
+	token := c.Params("token")
+	if !utils.UseReportToken(token) {
+		// Jika token tidak ada (sudah dipakai/kedaluwarsa), kirim error
+		return utils.SendError(c, fiber.StatusNotFound, "Link is invalid, has expired, or has already been used.")
+	}
+
+	// 2. Jika token valid, lanjutkan dengan logika pembuatan CSV yang ada
 	subQuery := database.DB.Table("user_roles").
 		Select("user_id").
 		Joins("JOIN roles ON user_roles.role_id = roles.id").
@@ -196,7 +226,7 @@ func DownloadFullReportCSV(c *fiber.Ctx) error {
 	}
 	w.Flush()
 
-	filename := fmt.Sprintf("full_report_%s.csv", time.Now().Format("2006-01-02 15:04:05"))
+	filename := fmt.Sprintf("report_srikandi-sehat_%s.csv", time.Now().Format("2006-01-02_15-04-05")) // Ganti : dengan - agar aman di nama file
 	c.Set("Content-Type", "text/csv")
 	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
 	return c.Send(b.Bytes())

@@ -9,6 +9,7 @@ import (
 	"log"
 	"strconv"
 	"sync"
+	"time"
 )
 
 var (
@@ -25,6 +26,10 @@ var (
 	maintenanceMessage  string
 	whitelistedUserIDs  map[uint]struct{}
 	maintenanceMutex    = &sync.RWMutex{}
+
+	// Report Token Cache (BARU)
+	reportTokenCache map[string]struct{}
+	reportTokenMutex = &sync.RWMutex{}
 
 	cacheMutex = &sync.RWMutex{}
 )
@@ -88,6 +93,10 @@ func InitializeRoleCache() {
 	ReloadMaintenanceStatus()
 	ReloadMaintenanceWhitelist()
 	log.Println("Maintenance status and whitelist cache initialized.")
+
+	// Initialize Report Token Cache
+	reportTokenCache = make(map[string]struct{})
+	log.Println("Report token cache initialized.")
 }
 
 func GetRoleByName(name string) (models.Role, error) {
@@ -267,4 +276,38 @@ func IsUserWhitelisted(userUUID string) bool {
 
 	_, exists := whitelistedUserIDs[user.ID]
 	return exists
+}
+
+// --- Report Token Functions ---
+
+// StoreReportToken menyimpan token unik ke cache dan mengatur masa kedaluwarsa.
+func StoreReportToken(token string, expiration time.Duration) {
+	reportTokenMutex.Lock()
+	reportTokenCache[token] = struct{}{}
+	reportTokenMutex.Unlock()
+
+	// Menjadwalkan penghapusan token setelah kedaluwarsa
+	time.AfterFunc(expiration, func() {
+		reportTokenMutex.Lock()
+		delete(reportTokenCache, token)
+		reportTokenMutex.Unlock()
+		log.Printf("Report token %s expired and was deleted from cache.", token)
+	})
+}
+
+// UseReportToken mencoba menggunakan token.
+// Jika token ada, token akan dihapus (digunakan) dan mengembalikan true.
+// Jika token tidak ada, mengembalikan false.
+func UseReportToken(token string) bool {
+	reportTokenMutex.Lock()
+	defer reportTokenMutex.Unlock()
+
+	if _, found := reportTokenCache[token]; found {
+		// Token ditemukan, hapus (gunakan) dan kembalikan true
+		delete(reportTokenCache, token)
+		return true
+	}
+
+	// Token tidak ditemukan (sudah digunakan atau kedaluwarsa)
+	return false
 }

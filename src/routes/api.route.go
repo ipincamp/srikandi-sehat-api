@@ -37,7 +37,7 @@ func SetupRoutes(app *fiber.App) {
 	adminLimiter := middleware.CreateRateLimiter(100, 1*time.Minute)
 	admin := api.Group("/admin", middleware.AuthMiddleware, middleware.AdminMiddleware, adminLimiter)
 	admin.Get("/users/statistics", handlers.GetUserStatistics)
-	admin.Get("/reports/csv", handlers.DownloadFullReportCSV)
+	admin.Post("/reports/generate-csv-link", handlers.GenerateFullReportLink)
 	admin.Get("/users", middleware.ValidateQuery[dto.UserQuery], handlers.GetAllUsers)
 	admin.Get("/users/:id", middleware.ValidateParams[dto.UserParam], handlers.GetUserByID)
 
@@ -59,6 +59,9 @@ func SetupRoutes(app *fiber.App) {
 	// Notification routes
 	api.Get("/notifications", middleware.AuthMiddleware, handlers.GetNotificationHistory)
 	api.Patch("/notifications/:id/read", middleware.AuthMiddleware, handlers.MarkNotificationAsRead)
+
+	// Rute Unduhan Laporan
+	api.Get("/reports/download/:token", handlers.DownloadFullReportByToken)
 
 	// Menstrual health routes
 	menstrual := api.Group("/menstrual", middleware.AuthMiddleware)

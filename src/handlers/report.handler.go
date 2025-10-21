@@ -76,6 +76,26 @@ func getCycleCategory(length int16) string {
 	return "Normal"
 }
 
+// maskEmail masks the local part of an email for privacy.
+// Example: tknhtpX@luHbVdL.edu -> tkn***@luHbVdL.edu
+func maskEmail(email string) string {
+	parts := strings.SplitN(email, "@", 2)
+	if len(parts) != 2 {
+		return email // Not a valid email format, return as-is
+	}
+
+	localPart := parts[0]
+	domainPart := parts[1]
+
+	if len(localPart) <= 3 {
+		return localPart + "***@" + domainPart
+	}
+
+	return localPart[:3] + "***@" + domainPart
+}
+
+// --- Handlers ---
+
 // GenerateFullReportLink membuat token sekali pakai dan mengembalikan URL unduhan. (Admin only)
 func GenerateFullReportLink(c *fiber.Ctx) error {
 	token := uuid.New().String()
@@ -150,7 +170,7 @@ func DownloadFullReportByToken(c *fiber.Ctx) error {
 		record := dto.FullExportRecord{
 			// UserUUID:            user.UUID,
 			UserName:            user.Name,
-			UserEmail:           user.Email,
+			UserEmail:           maskEmail(user.Email),
 			UserRegisteredAt:    user.CreatedAt,
 			Age:                 calculateAge(profile.DateOfBirth),
 			PhoneNumber:         profile.PhoneNumber,

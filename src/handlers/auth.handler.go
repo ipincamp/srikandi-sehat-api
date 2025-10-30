@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"database/sql"
 	"errors"
 	"fmt"
 	"ipincamp/srikandi-sehat/config"
@@ -54,12 +53,6 @@ func Register(c *fiber.Ctx) error {
 	err := database.DB.First(&existingUser, "email = ?", input.Email).Error
 
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		if !existingUser.EmailVerifiedAt.Valid {
-			// User ada tapi belum verifikasi. Bisa kirim ulang OTP.
-			// Untuk simplicity, tolak dulu.
-			// TODO: Implementasikan kirim ulang OTP di sini jika mau.
-			return utils.SendError(c, fiber.StatusConflict, "Email sudah terdaftar tetapi belum diverifikasi.")
-		}
 		return utils.SendError(c, fiber.StatusConflict, "Email sudah terdaftar")
 	}
 
@@ -69,14 +62,6 @@ func Register(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Gagal memproses akun")
 	}
 
-	// Buat 6-digit OTP, kedaluwarsa 30 Menit
-	verificationToken, err := utils.GenerateOTP(6)
-	if err != nil {
-		utils.ErrorLogger.Printf("Gagal membuat OTP: %v", err)
-		return utils.SendError(c, fiber.StatusInternalServerError, "Gagal memproses akun")
-	}
-	verificationExpires := time.Now().Add(30 * time.Minute) // 30 Menit
-
 	defaultRole, err := utils.GetRoleByName(string(constants.UserRole))
 	if err != nil {
 		utils.ErrorLogger.Printf("FATAL: Default role '%s' not found", constants.UserRole)
@@ -84,12 +69,9 @@ func Register(c *fiber.Ctx) error {
 	}
 
 	user := models.User{
-		Name:                  input.Name,
-		Email:                 input.Email,
-		Password:              hashedPassword,
-		VerificationToken:     sql.NullString{String: verificationToken, Valid: true},
-		VerificationExpiresAt: sql.NullTime{Time: verificationExpires, Valid: true},
-		LastOTPSentAt:         sql.NullTime{Time: time.Now(), Valid: true},
+		Name:     input.Name,
+		Email:    input.Email,
+		Password: hashedPassword,
 	}
 
 	// 4. Lakukan transaksi Database
@@ -118,18 +100,11 @@ func Register(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Gagal memproses sesi login")
 	}
 
-	// Kirim email (Implementasi SMTP)
-	if err := utils.SendVerificationOTPEmail(user.Email, verificationToken, verificationExpires); err != nil {
-		utils.ErrorLogger.Printf("Gagal mengirim OTP ke %s: %v", user.Email, err)
-		// Jangan gagalkan registrasi, tapi beri pesan error
-		return utils.SendError(c, fiber.StatusInternalServerError, "Gagal mengirim email verifikasi. Silakan coba lagi nanti.")
-	}
-
 	utils.AddEmailToRegistrationFilter(user.Email)
 
 	responseData := dto.UserResponseJson(user, token)
 
-	return utils.SendSuccess(c, fiber.StatusCreated, "Registrasi sukses! Silakan cek email Anda untuk kode OTP verifikasi.", responseData)
+	return utils.SendSuccess(c, fiber.StatusCreated, "Registrasi sukses! Silakan verifikasi email Anda untuk mendapatkan akses penuh.", responseData)
 }
 
 func VerifyOTP(c *fiber.Ctx) error {

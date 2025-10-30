@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"errors"
+	"ipincamp/srikandi-sehat/config"
 	"ipincamp/srikandi-sehat/database"
 	"ipincamp/srikandi-sehat/src/constants"
 	"ipincamp/srikandi-sehat/src/dto"
@@ -14,36 +15,66 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
+
+// Helper untuk validasi domain
+func isDomainAllowed(email string) bool {
+	domainsStr := config.Get("ALLOWED_EMAIL_DOMAINS")
+	if domainsStr == "" {
+		// Jika tidak diset, izinkan semua (default aman)
+		return true
+	}
+
+	parts := strings.Split(email, "@")
+	if len(parts) != 2 {
+		return false // Format email tidak valid
+	}
+	domain := parts[1]
+
+	allowedDomainsList := strings.Split(domainsStr, ",")
+	allowedDomainsMap := make(map[string]bool)
+	for _, d := range allowedDomainsList {
+		allowedDomainsMap[strings.TrimSpace(d)] = true
+	}
+
+	return allowedDomainsMap[domain]
+}
 
 func Register(c *fiber.Ctx) error {
 	input := c.Locals("request_body").(*dto.RegisterRequest)
 
-	// 1. Cek email langsung ke Database (Source of Truth)
+	// Validasi Domain Email
+	if !isDomainAllowed(input.Email) {
+		return utils.SendError(c, fiber.StatusUnprocessableEntity, "Registrasi dari domain email ini tidak diizinkan.")
+	}
+
 	var existingUser models.User
 	err := database.DB.First(&existingUser, "email = ?", input.Email).Error
 
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		// Cek jika user ada tapi belum verifikasi
 		if !existingUser.EmailVerifiedAt.Valid {
-			return utils.SendError(c, fiber.StatusConflict, "Email already registered but not verified. Please check your email.")
+			// User ada tapi belum verifikasi. Bisa kirim ulang OTP.
+			// Untuk simplicity, tolak dulu.
+			// TODO: Implementasikan kirim ulang OTP di sini jika mau.
+			return utils.SendError(c, fiber.StatusConflict, "Email sudah terdaftar tetapi belum diverifikasi.")
 		}
-		// Jika sudah terverifikasi, kirim error biasa
-		return utils.SendError(c, fiber.StatusConflict, "Email is already registered")
+		return utils.SendError(c, fiber.StatusConflict, "Email sudah terdaftar")
 	}
 
-	// 2. Hash password
 	hashedPassword, err := utils.HashPassword(input.Password)
 	if err != nil {
 		utils.ErrorLogger.Printf("Failed to hash password for %s: %v", input.Email, err)
-		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to process account")
+		return utils.SendError(c, fiber.StatusInternalServerError, "Gagal memproses akun")
 	}
 
-	// 3. Buat token verifikasi dan waktu kedaluwarsa (1 jam)
-	verificationToken := uuid.New().String()
-	verificationExpires := time.Now().Add(1 * time.Hour)
+	// Buat 6-digit OTP, kedaluwarsa 30 Menit
+	verificationToken, err := utils.GenerateOTP(6)
+	if err != nil {
+		utils.ErrorLogger.Printf("Gagal membuat OTP: %v", err)
+		return utils.SendError(c, fiber.StatusInternalServerError, "Gagal memproses akun")
+	}
+	verificationExpires := time.Now().Add(30 * time.Minute) // 30 Menit
 
 	user := models.User{
 		Name:                  input.Name,
@@ -58,14 +89,12 @@ func Register(c *fiber.Ctx) error {
 		if err := tx.Create(&user).Error; err != nil {
 			return err
 		}
-
 		defaultRole, err := utils.GetRoleByName(string(constants.UserRole))
 		if err != nil {
 			// Jika role 'user' tidak ada, ini adalah kesalahan server
 			utils.ErrorLogger.Printf("FATAL: Default role '%s' not found", constants.UserRole)
 			return err
 		}
-
 		if err := tx.Model(&user).Association("Roles").Append(&defaultRole); err != nil {
 			return err
 		}
@@ -73,42 +102,55 @@ func Register(c *fiber.Ctx) error {
 	})
 
 	if err != nil {
-		utils.ErrorLogger.Printf("Failed to create user %s in db: %v", input.Email, err)
-		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to create account")
+		utils.ErrorLogger.Printf("Gagal membuat user %s di db: %v", input.Email, err)
+		return utils.SendError(c, fiber.StatusInternalServerError, "Gagal membuat akun")
 	}
 
-	// 4. Kirim email verifikasi (menggunakan placeholder util)
-	if err := utils.SendVerificationEmail(user.Email, verificationToken); err != nil {
-		utils.ErrorLogger.Printf("Failed to send verification email to %s: %v", user.Email, err)
+	// Kirim email (Implementasi SMTP)
+	if err := utils.SendVerificationOTPEmail(user.Email, verificationToken, verificationExpires); err != nil {
+		utils.ErrorLogger.Printf("Gagal mengirim OTP ke %s: %v", user.Email, err)
 		// Jangan gagalkan registrasi, tapi beri pesan error
-		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to send verification email. Please try again later.")
+		return utils.SendError(c, fiber.StatusInternalServerError, "Gagal mengirim email verifikasi. Silakan coba lagi nanti.")
 	}
 
 	utils.AddEmailToRegistrationFilter(user.Email)
 
-	// 6. Kembalikan respon sukses instan (201 Created)
-	return utils.SendSuccess(c, fiber.StatusCreated, "Registration successful! Please check your email to verify your account.", nil)
+	return utils.SendSuccess(c, fiber.StatusCreated, "Registrasi sukses! Silakan cek email Anda untuk kode OTP verifikasi.", nil)
 }
 
-func VerifyEmail(c *fiber.Ctx) error {
-	token := c.Query("token")
-	if token == "" {
-		return utils.SendError(c, fiber.StatusBadRequest, "Verification token is missing.")
+func VerifyOTP(c *fiber.Ctx) error {
+	userUUID, ok := c.Locals("user_id").(string)
+	if !ok {
+		return utils.SendError(c, fiber.StatusUnauthorized, "Unauthorized")
 	}
+	input := c.Locals("request_body").(*dto.VerifyOTPRequest)
 
 	var user models.User
-	// Cari user berdasarkan token DAN pastikan belum kedaluwarsa
-	err := database.DB.Where("verification_token = ? AND verification_expires_at > ?", token, time.Now()).
-		First(&user).Error
-
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return utils.SendError(c, fiber.StatusUnauthorized, "Invalid or expired verification token.")
-		}
-		return utils.SendError(c, fiber.StatusInternalServerError, "Database error")
+	if err := database.DB.First(&user, "uuid = ?", userUUID).Error; err != nil {
+		return utils.SendError(c, fiber.StatusNotFound, "User not found")
 	}
 
-	// Verifikasi pengguna
+	// Cek 1: Apakah sudah terverifikasi?
+	if user.EmailVerifiedAt.Valid {
+		return utils.SendError(c, fiber.StatusConflict, "Email Anda sudah terverifikasi.")
+	}
+
+	// Cek 2: Apakah token/waktu kedaluwarsa valid?
+	if !user.VerificationToken.Valid || !user.VerificationExpiresAt.Valid {
+		return utils.SendError(c, fiber.StatusForbidden, "Tidak ada OTP yang aktif. Silakan minta kirim ulang.")
+	}
+
+	// Cek 3: Apakah kedaluwarsa?
+	if time.Now().After(user.VerificationExpiresAt.Time) {
+		return utils.SendError(c, fiber.StatusForbidden, "Kode OTP telah kedaluwarsa. Silakan minta kirim ulang.")
+	}
+
+	// Cek 4: Apakah OTP cocok?
+	if user.VerificationToken.String != input.OTP {
+		return utils.SendError(c, fiber.StatusUnauthorized, "Kode OTP salah.")
+	}
+
+	// Sukses! Verifikasi pengguna.
 	updates := map[string]interface{}{
 		"email_verified_at":       time.Now(),
 		"verification_token":      nil,
@@ -116,10 +158,10 @@ func VerifyEmail(c *fiber.Ctx) error {
 	}
 
 	if err := database.DB.Model(&user).Updates(updates).Error; err != nil {
-		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to update account")
+		return utils.SendError(c, fiber.StatusInternalServerError, "Gagal memverifikasi akun")
 	}
 
-	return utils.SendSuccess(c, fiber.StatusOK, "Email verified successfully! You can now log in.", nil)
+	return utils.SendSuccess(c, fiber.StatusOK, "Email berhasil diverifikasi! Anda sekarang memiliki akses penuh.", nil)
 }
 
 func ResendVerification(c *fiber.Ctx) error {
@@ -130,14 +172,17 @@ func ResendVerification(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusNotFound, "User not found")
 	}
 
-	// Cek apakah sudah terverifikasi
 	if user.EmailVerifiedAt.Valid {
-		return utils.SendError(c, fiber.StatusConflict, "Email is already verified.")
+		return utils.SendError(c, fiber.StatusConflict, "Email sudah terverifikasi.")
 	}
 
-	// Buat token baru dan waktu kedaluwarsa (10 menit)
-	verificationToken := uuid.New().String()
-	verificationExpires := time.Now().Add(10 * time.Minute)
+	// Buat 6-digit OTP, kedaluwarsa 10 Menit
+	verificationToken, err := utils.GenerateOTP(6)
+	if err != nil {
+		utils.ErrorLogger.Printf("Gagal membuat OTP (resend): %v", err)
+		return utils.SendError(c, fiber.StatusInternalServerError, "Gagal memproses permintaan")
+	}
+	verificationExpires := time.Now().Add(10 * time.Minute) // 10 Menit
 
 	updates := map[string]interface{}{
 		"verification_token":      verificationToken,
@@ -145,16 +190,16 @@ func ResendVerification(c *fiber.Ctx) error {
 	}
 
 	if err := database.DB.Model(&user).Updates(updates).Error; err != nil {
-		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to update verification token")
+		return utils.SendError(c, fiber.StatusInternalServerError, "Gagal memperbarui token")
 	}
 
 	// Kirim email (lagi)
-	if err := utils.SendVerificationEmail(user.Email, verificationToken); err != nil {
-		utils.ErrorLogger.Printf("Failed to resend verification email to %s: %v", user.Email, err)
-		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to send verification email.")
+	if err := utils.SendVerificationOTPEmail(user.Email, verificationToken, verificationExpires); err != nil {
+		utils.ErrorLogger.Printf("Gagal mengirim ulang OTP ke %s: %v", user.Email, err)
+		return utils.SendError(c, fiber.StatusInternalServerError, "Gagal mengirim email verifikasi.")
 	}
 
-	return utils.SendSuccess(c, fiber.StatusOK, "A new verification email has been sent.", nil)
+	return utils.SendSuccess(c, fiber.StatusOK, "Kode OTP baru telah dikirim ke email Anda.", nil)
 }
 
 func Login(c *fiber.Ctx) error {

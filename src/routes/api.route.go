@@ -21,7 +21,13 @@ func SetupRoutes(app *fiber.App) {
 	auth.Post("/register", registerLimiter, middleware.ValidateBody[dto.RegisterRequest], handlers.Register)
 	auth.Post("/login", loginLimiter, middleware.ValidateBody[dto.LoginRequest], handlers.Login)
 	auth.Post("/logout", middleware.AuthMiddleware, handlers.Logout)
-	auth.Get("/verify-email", handlers.VerifyEmail)
+	auth.Post(
+		"/verify-otp",
+		middleware.AuthMiddleware,
+		middleware.ValidateBody[dto.VerifyOTPRequest],
+		handlers.VerifyOTP,
+	)
+
 	auth.Post("/resend-verification", middleware.AuthMiddleware, handlers.ResendVerification)
 
 	// User routes

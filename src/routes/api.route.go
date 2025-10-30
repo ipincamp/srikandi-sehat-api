@@ -21,6 +21,14 @@ func SetupRoutes(app *fiber.App) {
 	auth.Post("/register", registerLimiter, middleware.ValidateBody[dto.RegisterRequest], handlers.Register)
 	auth.Post("/login", loginLimiter, middleware.ValidateBody[dto.LoginRequest], handlers.Login)
 	auth.Post("/logout", middleware.AuthMiddleware, handlers.Logout)
+	auth.Post(
+		"/verify-otp",
+		middleware.AuthMiddleware,
+		middleware.ValidateBody[dto.VerifyOTPRequest],
+		handlers.VerifyOTP,
+	)
+
+	auth.Post("/resend-verification", middleware.AuthMiddleware, handlers.ResendVerification)
 
 	// User routes
 	user := api.Group("/me", middleware.AuthMiddleware)
@@ -64,7 +72,7 @@ func SetupRoutes(app *fiber.App) {
 	api.Get("/reports/download/:token", handlers.DownloadFullReportByToken)
 
 	// Menstrual health routes
-	menstrual := api.Group("/menstrual", middleware.AuthMiddleware)
+	menstrual := api.Group("/menstrual", middleware.AuthMiddleware, middleware.VerifiedMiddleware)
 	menstrual.Get("/cycles/status", menstrualHandler.GetCycleStatus)
 	menstrual.Post("/cycles", middleware.ValidateBody[dto.CycleRequest], menstrualHandler.RecordCycle)
 	menstrual.Get("/cycles", middleware.ValidateQuery[dto.PaginationQuery], menstrualHandler.GetCycleHistory)

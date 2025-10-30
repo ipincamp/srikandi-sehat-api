@@ -78,6 +78,29 @@ services:
       - srikandi-sehat
     entrypoint: /scripts/backup.sh
 
+  mailhog:
+    image: mailhog/mailhog
+    container_name: srikandisehat_mailhog
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+    networks:
+      - srikandi-sehat
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.10'
+          memory: 128M
+
 networks:
   srikandi-sehat:
     driver: bridge

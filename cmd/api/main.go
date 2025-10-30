@@ -21,22 +21,29 @@ import (
 )
 
 func main() {
+	config.LoadConfig()
+	config.SetTimeZone()
+
 	utils.InitLogger()
 
 	c := cron.New()
-	c.AddFunc("0 5 * * *", workers.CheckLongMenstrualCycles) // setiap jam 05:00 pagi
-	c.AddFunc("0 5 * * *", workers.CheckLateMenstrualCycles) // setiap jam 05:00 pagi
-
-	// c.AddFunc("5 3 * * *", workers.CheckLongMenstrualCycles) // setiap jam 03:05 (untuk testing)
-	// c.AddFunc("5 3 * * *", workers.CheckLateMenstrualCycles) // setiap jam 03:05 (untuk testing)
+	env := config.Get("APP_ENV")
+	if env == "production" {
+		log.Println("Running in production mode. Scheduling cron jobs accordingly.")
+		c.AddFunc("0 5 * * *", workers.CheckLongMenstrualCycles) // setiap jam 05:00 pagi
+		c.AddFunc("0 5 * * *", workers.CheckLateMenstrualCycles) // setiap jam 05:00 pagi
+		log.Println("Scheduled cron jobs for production at 05:00 AM daily.")
+	} else {
+		log.Println("Running in development mode. Scheduling cron jobs for testing.")
+		c.AddFunc("@every 1m", workers.CheckLongMenstrualCycles) // setiap 1 menit (testing)
+		c.AddFunc("@every 1m", workers.CheckLateMenstrualCycles) // setiap 1 menit (testing)
+		log.Println("Scheduled cron jobs for development every 1 minute.")
+	}
 	c.Start()
 	log.Println("Cron job for cycle checking has been scheduled.")
 	defer c.Stop()
 
 	utils.InitFCM()
-
-	config.SetTimeZone()
-	config.LoadConfig()
 	database.ConnectDB()
 
 	utils.SetupValidator()

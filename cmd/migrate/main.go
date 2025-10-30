@@ -84,6 +84,7 @@ func askForConfirmation(prompt string) bool {
 
 func main() {
 	config.LoadConfig()
+	config.SetTimeZone()
 	database.ConnectDB()
 	db := database.DB
 

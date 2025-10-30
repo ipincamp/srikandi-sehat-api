@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"ipincamp/srikandi-sehat/database"
+	"ipincamp/srikandi-sehat/src/constants"
 	"ipincamp/srikandi-sehat/src/dto"
 	"ipincamp/srikandi-sehat/src/models"
 	menstrual "ipincamp/srikandi-sehat/src/models/menstrual"
@@ -274,7 +275,7 @@ func GetCycleStatus(c *fiber.Ctx) error {
 	if err == nil {
 		today := time.Now()
 		currentPeriodDay := int(today.Sub(activeCycle.StartDate).Hours()/24) + 1
-		isPeriodNormal := currentPeriodDay >= 2 && currentPeriodDay <= 7
+		isPeriodNormal := int16(currentPeriodDay) >= constants.CyclePeriodMinNormalDays && int16(currentPeriodDay) <= constants.CyclePeriodMaxNormalDays
 
 		response := dto.CycleStatusResponse{
 			IsOnCycle:        true,
@@ -287,7 +288,7 @@ func GetCycleStatus(c *fiber.Ctx) error {
 		errPrev := database.DB.Where("user_id = ? AND end_date IS NOT NULL", user.ID).Order("start_date desc").First(&previousCycle).Error
 		if errPrev == nil {
 			currentCycleLength := int(activeCycle.StartDate.Sub(previousCycle.StartDate).Hours() / 24)
-			isCycleNormal := currentCycleLength >= 21 && currentCycleLength <= 35
+			isCycleNormal := int16(currentCycleLength) >= constants.CycleLengthMinNormalDays && int16(currentCycleLength) <= constants.CycleLengthMaxNormalDays
 			response.CurrentCycleLength = &currentCycleLength
 			response.IsCycleNormal = &isCycleNormal
 		}
@@ -322,7 +323,7 @@ func GetCycleStatus(c *fiber.Ctx) error {
 		// Calculate last cycle length if possible
 		if len(completedCycles) >= 2 {
 			lastCycleLength := int(completedCycles[0].StartDate.Sub(completedCycles[1].StartDate).Hours() / 24)
-			isCycleNormal := lastCycleLength >= 21 && lastCycleLength <= 35
+			isCycleNormal := int16(lastCycleLength) >= constants.CycleLengthMinNormalDays && int16(lastCycleLength) <= constants.CycleLengthMaxNormalDays
 			response.LastCycleLength = &lastCycleLength
 			response.IsCycleNormal = &isCycleNormal
 		}
@@ -421,7 +422,7 @@ func updatePreviousCycleLength(tx *gorm.DB, userID uint, newStartDate time.Time)
 
 	if err == nil {
 		cycleLength := int16(newStartDate.Sub(previousCycle.StartDate).Hours() / 24)
-		isNormal := cycleLength >= 21 && cycleLength <= 35
+		isNormal := cycleLength >= constants.CycleLengthMinNormalDays && cycleLength <= constants.CycleLengthMaxNormalDays
 
 		tx.Model(&previousCycle).Updates(map[string]interface{}{
 			"cycle_length":    cycleLength,
@@ -437,7 +438,7 @@ func updateCurrentCyclePeriod(tx *gorm.DB, currentCycle *menstrual.MenstrualCycl
 	endDay := time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 0, 0, 0, 0, loc)
 
 	periodLength := int16(endDay.Sub(startDay).Hours()/24) + 1
-	isNormal := periodLength >= 2 && periodLength <= 7
+	isNormal := periodLength >= constants.CyclePeriodMinNormalDays && periodLength <= constants.CyclePeriodMaxNormalDays
 
 	tx.Model(currentCycle).Updates(map[string]interface{}{
 		"end_date":         endDate,

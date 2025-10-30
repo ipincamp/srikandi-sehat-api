@@ -3,12 +3,11 @@ package workers
 import (
 	"fmt"
 	"ipincamp/srikandi-sehat/database"
+	"ipincamp/srikandi-sehat/src/constants"
 	"ipincamp/srikandi-sehat/src/models/menstrual"
 	"ipincamp/srikandi-sehat/src/utils"
 	"time"
 )
-
-const longPeriodThresholdDays = 7
 
 // CheckLongMenstrualCycles finds ongoing cycles longer than the threshold and sends a notification.
 func CheckLongMenstrualCycles() {
@@ -31,7 +30,7 @@ func CheckLongMenstrualCycles() {
 		days := int(duration.Hours() / 24)
 
 		// 3. Jika durasi > 7 hari, kirim notifikasi
-		if days > longPeriodThresholdDays {
+		if days > constants.CyclePeriodLongThresholdDays {
 			// Pastikan user punya FCM token
 			if cycle.User.FcmToken == "" {
 				utils.InfoLogger.Printf("User %d has no FCM token, skipping long cycle notification.", cycle.UserID)
@@ -40,7 +39,8 @@ func CheckLongMenstrualCycles() {
 
 			// Siapkan dan kirim notifikasi
 			title := "Peringatan Durasi Menstruasi"
-			body := fmt.Sprintf("Siklus menstruasi Anda saat ini sudah berlangsung selama %d hari. Batas normalnya adalah 3-7 hari.", days)
+			// Diperbarui agar menggunakan konstanta
+			body := fmt.Sprintf("Siklus menstruasi Anda saat ini sudah berlangsung selama %d hari. Batas normalnya adalah %d-%d hari.", days, constants.CyclePeriodMinNormalDays, constants.CyclePeriodMaxNormalDays)
 			err := utils.SendFCMNotification(cycle.UserID, cycle.User.FcmToken, title, body, nil)
 
 			if err != nil {

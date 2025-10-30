@@ -19,9 +19,11 @@ import (
 func Register(c *fiber.Ctx) error {
 	input := c.Locals("request_body").(*dto.RegisterRequest)
 
-	if utils.CheckEmailExistsInRegistrationFilter(input.Email) {
-		return utils.SendError(c, fiber.StatusUnprocessableEntity, "Email already registered")
-	}
+	/*
+		if utils.CheckEmailExistsInRegistrationFilter(input.Email) {
+			return utils.SendError(c, fiber.StatusUnprocessableEntity, "Email already registered")
+		}
+	*/
 
 	job := workers.Job{
 		RegistrationData: *input,

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/csv"
 	"fmt"
+	"ipincamp/srikandi-sehat/config"
 	"ipincamp/srikandi-sehat/database"
 	"ipincamp/srikandi-sehat/src/constants"
 	"ipincamp/srikandi-sehat/src/dto"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 )
 
 // --- Helper functions for CSV Export ---
@@ -54,9 +56,9 @@ func getPeriodCategory(length int16) string {
 	if length == 0 {
 		return "N/A"
 	}
-	if length < 2 {
+	if length < constants.CyclePeriodMinNormalDays {
 		return "Pendek (Hipomenorea)"
-	} else if length > 7 {
+	} else if length > constants.CyclePeriodMaxNormalDays {
 		return "Panjang (Menoragia)"
 	}
 	return "Normal"
@@ -67,16 +69,64 @@ func getCycleCategory(length int16) string {
 	if length == 0 {
 		return "N/A"
 	}
-	if length < 21 {
+	if length < constants.CycleLengthMinNormalDays {
 		return "Pendek (Polimenorea)"
-	} else if length > 35 {
+	} else if length > constants.CycleLengthMaxNormalDays {
 		return "Panjang (Oligomenorea)"
 	}
 	return "Normal"
 }
 
-// DownloadFullReportCSV generates a single CSV file combining all user and cycle data.
-func DownloadFullReportCSV(c *fiber.Ctx) error {
+// maskEmail masks the local part of an email for privacy.
+// Example: tknhtpX@luHbVdL.edu -> tkn***@luHbVdL.edu
+func maskEmail(email string) string {
+	parts := strings.SplitN(email, "@", 2)
+	if len(parts) != 2 {
+		return email // Not a valid email format, return as-is
+	}
+
+	localPart := parts[0]
+	domainPart := parts[1]
+
+	if len(localPart) <= 3 {
+		return localPart + "***@" + domainPart
+	}
+
+	return localPart[:3] + "***@" + domainPart
+}
+
+// --- Handlers ---
+
+// GenerateFullReportLink membuat token sekali pakai dan mengembalikan URL unduhan. (Admin only)
+func GenerateFullReportLink(c *fiber.Ctx) error {
+	token := uuid.New().String()
+	expiration := 5 * time.Minute // Tautan hanya valid selama 5 menit
+	expiresAt := time.Now().Add(expiration)
+
+	// Simpan token ke cache
+	utils.StoreReportToken(token, expiration)
+
+	// Buat URL lengkap
+	downloadURL := fmt.Sprintf("%s/api/reports/download/%s", config.Get("APP_BASE_URL"), token)
+
+	response := dto.GenerateReportResponse{
+		DownloadURL: downloadURL,
+		ExpiresAt:   expiresAt,
+	}
+
+	return utils.SendSuccess(c, fiber.StatusOK, "One-time download link generated successfully. Link expires in 5 minutes.", response)
+}
+
+// DownloadFullReportByToken menghasilkan CSV jika token valid.
+func DownloadFullReportByToken(c *fiber.Ctx) error {
+	// 1. Validasi token dari URL
+	token := c.Params("token")
+	if !utils.UseReportToken(token) {
+		// Jika token tidak ada (sudah dipakai/kedaluwarsa), kirim error
+		return utils.SendError(c, fiber.StatusNotFound, "Link is invalid, has expired, or has already been used.")
+	}
+
+	// 2. Jika token valid, lanjutkan dengan logika pembuatan CSV yang ada
 	subQuery := database.DB.Table("user_roles").
 		Select("user_id").
 		Joins("JOIN roles ON user_roles.role_id = roles.id").
@@ -120,7 +170,7 @@ func DownloadFullReportCSV(c *fiber.Ctx) error {
 		record := dto.FullExportRecord{
 			// UserUUID:            user.UUID,
 			UserName:            user.Name,
-			UserEmail:           user.Email,
+			UserEmail:           maskEmail(user.Email),
 			UserRegisteredAt:    user.CreatedAt,
 			Age:                 calculateAge(profile.DateOfBirth),
 			PhoneNumber:         profile.PhoneNumber,
@@ -196,7 +246,7 @@ func DownloadFullReportCSV(c *fiber.Ctx) error {
 	}
 	w.Flush()
 
-	filename := fmt.Sprintf("full_report_%s.csv", time.Now().Format("2006-01-02"))
+	filename := fmt.Sprintf("report_srikandi-sehat_%s.csv", time.Now().Format("2006-01-02_15-04-05")) // Ganti : dengan - agar aman di nama file
 	c.Set("Content-Type", "text/csv")
 	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
 	return c.Send(b.Bytes())

@@ -192,17 +192,20 @@ func GetAllUsers(c *fiber.Ctx) error {
 	var users []models.User
 
 	subQuery := database.DB.Table("user_roles").
-		Select("1").
+		Select("user_id").
 		Joins("JOIN roles ON user_roles.role_id = roles.id").
-		Where("user_roles.user_id = users.id AND roles.name = ?", string(constants.AdminRole))
+		Where("roles.name = ?", string(constants.AdminRole))
 
-	query := database.DB.Model(&models.User{}).
-		Joins("JOIN profiles ON users.id = profiles.user_id").
-		Joins("JOIN villages ON profiles.village_id = villages.id").
-		Joins("JOIN classifications ON villages.classification_id = classifications.id")
+	query := database.DB.Model(&models.User{})
 
-	// Updated logic to handle English parameters
+	query = query.Where("id NOT IN (?)", subQuery)
+
 	if queries.Classification != "" {
+		query = query.
+			Joins("JOIN profiles ON users.id = profiles.user_id").
+			Joins("JOIN villages ON profiles.village_id = villages.id").
+			Joins("JOIN classifications ON villages.classification_id = classifications.id")
+
 		var classificationDBValue string
 		switch queries.Classification {
 		case "urban":
@@ -212,9 +215,6 @@ func GetAllUsers(c *fiber.Ctx) error {
 		}
 		query = query.Where("classifications.name = ?", classificationDBValue)
 	}
-
-	query = query.Where("NOT EXISTS (?)", subQuery)
-
 	page := queries.Page
 	if page == 0 {
 		page = 1
@@ -261,9 +261,9 @@ func GetUserByID(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusNotFound, "User not found")
 	}
 
-	// 2. Fetch the user's menstrual cycle history
+	// 2. Fetch the user's menstrual cycle history, including soft-deleted records
 	var cycles []menstrual.MenstrualCycle
-	database.DB.Where("user_id = ?", user.ID).Order("start_date DESC").Find(&cycles)
+	database.DB.Unscoped().Where("user_id = ?", user.ID).Order("start_date DESC").Find(&cycles)
 
 	// 3. Format the cycle history into the DTO structure
 	var cycleHistoryDTO []dto.CycleHistoryEntry
@@ -275,12 +275,30 @@ func GetUserByID(c *fiber.Ctx) error {
 		if cycle.EndDate.Valid {
 			entry.FinishDate = &cycle.EndDate.Time
 		}
+
+		var periodLength int16
 		if cycle.PeriodLength.Valid {
-			entry.PeriodLengthDays = &cycle.PeriodLength.Int16
+			periodLength = cycle.PeriodLength.Int16
+		} else if !cycle.EndDate.Valid {
+			// Calculate period length for ongoing cycles (from start date to today)
+			periodLength = int16(time.Since(cycle.StartDate).Hours()/24) + 1
 		}
+		entry.PeriodLengthDays = &periodLength
+
+		var cycleLength *int16
 		if cycle.CycleLength.Valid {
-			entry.CycleLengthDays = &cycle.CycleLength.Int16
+			cycleLength = &cycle.CycleLength.Int16
 		}
+		entry.CycleLengthDays = cycleLength
+
+		// Include deletion info if the record is soft-deleted
+		if !cycle.DeletedAt.Time.IsZero() {
+			entry.DeletedAt = &cycle.DeletedAt.Time
+			if cycle.DeletionReason.Valid {
+				entry.DeletionReason = &cycle.DeletionReason.String
+			}
+		}
+
 		cycleHistoryDTO = append(cycleHistoryDTO, entry)
 	}
 
@@ -393,4 +411,27 @@ func GetUserStatistics(c *fiber.Ctx) error {
 	}
 
 	return utils.SendSuccess(c, fiber.StatusOK, "User statistics fetched successfully", stats)
+}
+
+func UpdateFcmToken(c *fiber.Ctx) error {
+	userUUID := c.Locals("user_id").(string)
+
+	var payload struct {
+		FcmToken string `json:"fcm_token"`
+	}
+
+	if err := c.BodyParser(&payload); err != nil {
+		return utils.SendError(c, fiber.StatusBadRequest, "Invalid request body")
+	}
+
+	if payload.FcmToken == "" {
+		return utils.SendError(c, fiber.StatusBadRequest, "fcm_token is required")
+	}
+
+	result := database.DB.Model(&models.User{}).Where("uuid = ?", userUUID).Update("fcm_token", payload.FcmToken)
+	if result.Error != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to update FCM token")
+	}
+
+	return utils.SendSuccess(c, fiber.StatusOK, "FCM token updated successfully", nil)
 }

@@ -17,15 +17,33 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/robfig/cron/v3"
 )
 
 func main() {
+	config.LoadConfig()
+	config.SetTimeZone()
+
 	utils.InitLogger()
 
-	utils.InitFCM()
+	c := cron.New()
+	env := config.Get("APP_ENV")
+	if env == "production" {
+		utils.InfoLogger.Println("Running in production mode. Scheduling cron jobs accordingly.")
+		c.AddFunc("0 5 * * *", workers.CheckLongMenstrualCycles) // setiap jam 05:00 pagi
+		c.AddFunc("0 5 * * *", workers.CheckLateMenstrualCycles) // setiap jam 05:00 pagi
+		utils.InfoLogger.Println("Scheduled cron jobs for production at 05:00 AM daily.")
+	} else {
+		utils.InfoLogger.Println("Running in development mode. Scheduling cron jobs for testing.")
+		c.AddFunc("@every 1m", workers.CheckLongMenstrualCycles) // setiap 1 menit (testing)
+		c.AddFunc("@every 1m", workers.CheckLateMenstrualCycles) // setiap 1 menit (testing)
+		utils.InfoLogger.Println("Scheduled cron jobs for development every 1 minute.")
+	}
+	c.Start()
+	utils.InfoLogger.Println("Cron job for cycle checking has been scheduled.")
+	defer c.Stop()
 
-	config.SetTimeZone()
-	config.LoadConfig()
+	utils.InitFCM()
 	database.ConnectDB()
 
 	utils.SetupValidator()
@@ -34,7 +52,6 @@ func main() {
 	utils.InitializeRoleCache()
 	utils.InitializeBlocklistCache()
 
-	workers.StartWorkerPool()
 	go utils.CleanupExpiredTokens()
 
 	app := fiber.New(fiber.Config{
@@ -42,11 +59,7 @@ func main() {
 		ServerHeader:   "SrikandiSehat",
 		TrustedProxies: []string{config.Get("TRUSTED_PROXIES")},
 	})
-	app.Use(func(c *fiber.Ctx) error {
-		log.Printf("Header X-Real-IP: %s", c.Get("X-Real-IP"))
-		log.Printf("Header X-Forwarded-For: %s", c.Get("X-Forwarded-For"))
-		return c.Next()
-	})
+
 	app.Use(middleware.RecoverMiddleware())
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: config.Get("CORS_ALLOWED_ORIGINS"),
@@ -54,6 +67,7 @@ func main() {
 		AllowMethods: "GET, POST, PUT, DELETE, PATCH",
 	}))
 	app.Use(logger.New())
+	app.Use(middleware.MaintenanceMiddleware())
 
 	routes.SetupRoutes(app)
 

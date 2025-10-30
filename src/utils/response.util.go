@@ -17,6 +17,11 @@ func SendSuccess(c *fiber.Ctx, statusCode int, message string, data interface{})
 }
 
 func SendError(c *fiber.Ctx, statusCode int, message string) error {
+	if statusCode >= 500 {
+	} else if statusCode >= 400 {
+		InfoLogger.Printf("Client Error (Status %d): %s - Path: %s", statusCode, message, c.Path())
+	}
+
 	return c.Status(statusCode).JSON(ResponseJson{
 		Status:  false,
 		Message: message,

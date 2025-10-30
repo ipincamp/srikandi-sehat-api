@@ -1,9 +1,11 @@
 package menstrual
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"ipincamp/srikandi-sehat/database"
+	"ipincamp/srikandi-sehat/src/constants"
 	"ipincamp/srikandi-sehat/src/dto"
 	"ipincamp/srikandi-sehat/src/models"
 	menstrual "ipincamp/srikandi-sehat/src/models/menstrual"
@@ -67,6 +69,8 @@ func RecordCycle(c *fiber.Ctx) error {
 
 		newCycle := menstrual.MenstrualCycle{UserID: user.ID, StartDate: startDate}
 		if err := tx.Create(&newCycle).Error; err != nil {
+			// tampilkan errornya
+			log.Printf("Error creating new cycle: %v", err)
 			return utils.SendError(c, fiber.StatusInternalServerError, "Failed to record new cycle")
 		}
 
@@ -271,7 +275,7 @@ func GetCycleStatus(c *fiber.Ctx) error {
 	if err == nil {
 		today := time.Now()
 		currentPeriodDay := int(today.Sub(activeCycle.StartDate).Hours()/24) + 1
-		isPeriodNormal := currentPeriodDay >= 2 && currentPeriodDay <= 7
+		isPeriodNormal := int16(currentPeriodDay) >= constants.CyclePeriodMinNormalDays && int16(currentPeriodDay) <= constants.CyclePeriodMaxNormalDays
 
 		response := dto.CycleStatusResponse{
 			IsOnCycle:        true,
@@ -284,7 +288,7 @@ func GetCycleStatus(c *fiber.Ctx) error {
 		errPrev := database.DB.Where("user_id = ? AND end_date IS NOT NULL", user.ID).Order("start_date desc").First(&previousCycle).Error
 		if errPrev == nil {
 			currentCycleLength := int(activeCycle.StartDate.Sub(previousCycle.StartDate).Hours() / 24)
-			isCycleNormal := currentCycleLength >= 21 && currentCycleLength <= 35
+			isCycleNormal := int16(currentCycleLength) >= constants.CycleLengthMinNormalDays && int16(currentCycleLength) <= constants.CycleLengthMaxNormalDays
 			response.CurrentCycleLength = &currentCycleLength
 			response.IsCycleNormal = &isCycleNormal
 		}
@@ -319,7 +323,7 @@ func GetCycleStatus(c *fiber.Ctx) error {
 		// Calculate last cycle length if possible
 		if len(completedCycles) >= 2 {
 			lastCycleLength := int(completedCycles[0].StartDate.Sub(completedCycles[1].StartDate).Hours() / 24)
-			isCycleNormal := lastCycleLength >= 21 && lastCycleLength <= 35
+			isCycleNormal := int16(lastCycleLength) >= constants.CycleLengthMinNormalDays && int16(lastCycleLength) <= constants.CycleLengthMaxNormalDays
 			response.LastCycleLength = &lastCycleLength
 			response.IsCycleNormal = &isCycleNormal
 		}
@@ -358,6 +362,50 @@ func GetCycleStatus(c *fiber.Ctx) error {
 	return utils.SendError(c, fiber.StatusInternalServerError, "Failed to retrieve cycle data")
 }
 
+func DeleteCycleByID(c *fiber.Ctx) error {
+	userUUID := c.Locals("user_id").(string)
+	params := c.Locals("request_params").(*dto.CycleParam)
+	input := c.Locals("request_body").(*dto.DeleteCycleRequest)
+
+	tx := database.DB.Begin()
+	if tx.Error != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to start transaction")
+	}
+	defer tx.Rollback()
+
+	var user models.User
+	if err := tx.First(&user, "uuid = ?", userUUID).Error; err != nil {
+		return utils.SendError(c, fiber.StatusNotFound, "User not found")
+	}
+
+	var cycle menstrual.MenstrualCycle
+	err := tx.
+		Where("id = ? AND user_id = ?", params.ID, user.ID).
+		First(&cycle).Error
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return utils.SendError(c, fiber.StatusNotFound, "Cycle not found")
+		}
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to retrieve cycle data")
+	}
+
+	cycle.DeletionReason = sql.NullString{String: input.Reason, Valid: true}
+	if err := tx.Save(&cycle).Error; err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to save deletion reason")
+	}
+
+	if err := tx.Delete(&cycle).Error; err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to delete cycle")
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to commit transaction")
+	}
+
+	return utils.SendSuccess(c, fiber.StatusOK, "Cycle deleted successfully", nil)
+}
+
 func findActiveCycle(tx *gorm.DB, userID uint) (menstrual.MenstrualCycle, error) {
 	var activeCycle menstrual.MenstrualCycle
 	err := tx.Where("user_id = ? AND end_date IS NULL", userID).
@@ -374,7 +422,7 @@ func updatePreviousCycleLength(tx *gorm.DB, userID uint, newStartDate time.Time)
 
 	if err == nil {
 		cycleLength := int16(newStartDate.Sub(previousCycle.StartDate).Hours() / 24)
-		isNormal := cycleLength >= 21 && cycleLength <= 35
+		isNormal := cycleLength >= constants.CycleLengthMinNormalDays && cycleLength <= constants.CycleLengthMaxNormalDays
 
 		tx.Model(&previousCycle).Updates(map[string]interface{}{
 			"cycle_length":    cycleLength,
@@ -390,7 +438,7 @@ func updateCurrentCyclePeriod(tx *gorm.DB, currentCycle *menstrual.MenstrualCycl
 	endDay := time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 0, 0, 0, 0, loc)
 
 	periodLength := int16(endDay.Sub(startDay).Hours()/24) + 1
-	isNormal := periodLength >= 2 && periodLength <= 7
+	isNormal := periodLength >= constants.CyclePeriodMinNormalDays && periodLength <= constants.CyclePeriodMaxNormalDays
 
 	tx.Model(currentCycle).Updates(map[string]interface{}{
 		"end_date":         endDate,

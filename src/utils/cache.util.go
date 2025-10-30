@@ -7,7 +7,9 @@ import (
 	"ipincamp/srikandi-sehat/src/models"
 	"ipincamp/srikandi-sehat/src/models/region"
 	"log"
+	"strconv"
 	"sync"
+	"time"
 )
 
 var (
@@ -18,6 +20,16 @@ var (
 	regenciesCache map[string][]dto.RegionResponse
 	districtsCache map[string][]dto.RegionResponse
 	villagesCache  map[string][]dto.RegionResponse
+
+	// Maintenance Cache
+	isMaintenanceActive bool
+	maintenanceMessage  string
+	whitelistedUserIDs  map[uint]struct{}
+	maintenanceMutex    = &sync.RWMutex{}
+
+	// Report Token Cache (BARU)
+	reportTokenCache map[string]struct{}
+	reportTokenMutex = &sync.RWMutex{}
 
 	cacheMutex = &sync.RWMutex{}
 )
@@ -76,6 +88,15 @@ func InitializeRoleCache() {
 
 	log.Printf("Region data cached: %d provinces, %d regencies, %d districts, %d villages",
 		len(provincesCache), len(regenciesCache), len(districtsCache), len(villagesCache))
+
+	// Initialize Maintenance Cache
+	ReloadMaintenanceStatus()
+	ReloadMaintenanceWhitelist()
+	log.Println("Maintenance status and whitelist cache initialized.")
+
+	// Initialize Report Token Cache
+	reportTokenCache = make(map[string]struct{})
+	log.Println("Report token cache initialized.")
 }
 
 func GetRoleByName(name string) (models.Role, error) {
@@ -121,21 +142,6 @@ func GetUserRoles(userUUID string) ([]string, error) {
 	return roleNames, nil
 }
 
-// InvalidateUserRolesCache menghapus data role user dari cache.
-/*
-func AssignRoleToUser(c *fiber.Ctx) error {
-	// ... (logika untuk mencari user dan role)
-
-	// Setelah berhasil menetapkan role:
-	database.DB.Model(&user).Association("Roles").Append(&role)
-
-	// ===== INVALIDASI CACHE DI SINI =====
-	utils.InvalidateUserRolesCache(user.UUID)
-	// =====================================
-
-	return utils.SendSuccess(c, fiber.StatusOK, "Role assigned successfully", nil)
-}
-*/
 func InvalidateUserRolesCache(userUUID string) {
 	cacheMutex.Lock()
 	defer cacheMutex.Unlock()
@@ -180,4 +186,128 @@ func GetVillagesByDistrictCodeFromCache(districtCode string) ([]dto.RegionRespon
 	defer cacheMutex.RUnlock()
 	data, found := villagesCache[districtCode]
 	return data, found
+}
+
+// ReloadMaintenanceStatus fetches the latest maintenance status from the DB, creating defaults if missing.
+func ReloadMaintenanceStatus() {
+	maintenanceMutex.Lock()
+	defer maintenanceMutex.Unlock()
+
+	// Gunakan FirstOrCreate untuk memastikan record 'maintenance_mode_active' selalu ada
+	activeSetting := models.Setting{Key: "maintenance_mode_active"}
+	// Mencari record dengan key 'maintenance_mode_active'.
+	// Jika tidak ada, buat record baru dengan Key tersebut dan Value default "false".
+	err := database.DB.Attrs(models.Setting{Value: "false"}).FirstOrCreate(&activeSetting).Error
+
+	if err != nil {
+		// Jika FirstOrCreate gagal (error DB selain record not found), log error serius
+		log.Printf("ERROR: Failed to ensure maintenance_mode_active setting exists: %v. Defaulting to false.", err)
+		isMaintenanceActive = false
+	} else {
+		// Jika berhasil (baik menemukan atau membuat), parse nilainya
+		parsedValue, parseErr := strconv.ParseBool(activeSetting.Value)
+		if parseErr != nil {
+			// Jika nilai di DB tidak valid (bukan true/false), log warning dan default ke false
+			log.Printf("Warning: Invalid boolean value '%s' for maintenance_mode_active in database. Defaulting to false.", activeSetting.Value)
+			isMaintenanceActive = false
+		} else {
+			isMaintenanceActive = parsedValue
+		}
+	}
+
+	// Lakukan hal yang sama untuk message (FirstOrCreate dengan default message)
+	messageSetting := models.Setting{Key: "maintenance_message"}
+	defaultMessage := "Server is currently under maintenance. Please try again later."
+	// Mencari record 'maintenance_message'.
+	// Jika tidak ada, buat dengan Value defaultMessage.
+	err = database.DB.Attrs(models.Setting{Value: defaultMessage}).FirstOrCreate(&messageSetting).Error
+
+	if err != nil {
+		// Jika FirstOrCreate gagal, log error dan gunakan default message
+		log.Printf("ERROR: Failed to ensure maintenance_message setting exists: %v. Using default message.", err)
+		maintenanceMessage = defaultMessage
+	} else {
+		// Jika berhasil, gunakan nilai dari DB (yang mungkin baru saja dibuat defaultnya)
+		maintenanceMessage = messageSetting.Value
+	}
+
+	log.Printf("Maintenance status cache reloaded: Active=%v, Message=%s", isMaintenanceActive, maintenanceMessage)
+}
+
+// ReloadMaintenanceWhitelist fetches the latest whitelisted user IDs from the DB.
+func ReloadMaintenanceWhitelist() {
+	maintenanceMutex.Lock()
+	defer maintenanceMutex.Unlock()
+
+	var whitelistEntries []models.MaintenanceWhitelist
+	err := database.DB.Find(&whitelistEntries).Error
+	if err != nil {
+		log.Printf("Error reloading maintenance whitelist: %v", err)
+		whitelistedUserIDs = make(map[uint]struct{}) // Reset on error
+		return
+	}
+
+	newWhitelist := make(map[uint]struct{}, len(whitelistEntries))
+	for _, entry := range whitelistEntries {
+		newWhitelist[entry.UserID] = struct{}{}
+	}
+	whitelistedUserIDs = newWhitelist
+	log.Printf("Maintenance whitelist cache reloaded: %d users whitelisted.", len(whitelistedUserIDs))
+}
+
+// GetMaintenanceStatus returns the cached maintenance status and message.
+func GetMaintenanceStatus() (bool, string) {
+	maintenanceMutex.RLock()
+	defer maintenanceMutex.RUnlock()
+	return isMaintenanceActive, maintenanceMessage
+}
+
+// IsUserWhitelisted checks if a user UUID is in the cached whitelist.
+func IsUserWhitelisted(userUUID string) bool {
+	maintenanceMutex.RLock()
+	defer maintenanceMutex.RUnlock()
+
+	// Need to get user ID from UUID first (could be optimized with another cache if needed)
+	var user models.User
+	err := database.DB.Select("id").First(&user, "uuid = ?", userUUID).Error
+	if err != nil {
+		return false // User not found, definitely not whitelisted
+	}
+
+	_, exists := whitelistedUserIDs[user.ID]
+	return exists
+}
+
+// --- Report Token Functions ---
+
+// StoreReportToken menyimpan token unik ke cache dan mengatur masa kedaluwarsa.
+func StoreReportToken(token string, expiration time.Duration) {
+	reportTokenMutex.Lock()
+	reportTokenCache[token] = struct{}{}
+	reportTokenMutex.Unlock()
+
+	// Menjadwalkan penghapusan token setelah kedaluwarsa
+	time.AfterFunc(expiration, func() {
+		reportTokenMutex.Lock()
+		delete(reportTokenCache, token)
+		reportTokenMutex.Unlock()
+		log.Printf("Report token %s expired and was deleted from cache.", token)
+	})
+}
+
+// UseReportToken mencoba menggunakan token.
+// Jika token ada, token akan dihapus (digunakan) dan mengembalikan true.
+// Jika token tidak ada, mengembalikan false.
+func UseReportToken(token string) bool {
+	reportTokenMutex.Lock()
+	defer reportTokenMutex.Unlock()
+
+	if _, found := reportTokenCache[token]; found {
+		// Token ditemukan, hapus (gunakan) dan kembalikan true
+		delete(reportTokenCache, token)
+		return true
+	}
+
+	// Token tidak ditemukan (sudah digunakan atau kedaluwarsa)
+	return false
 }

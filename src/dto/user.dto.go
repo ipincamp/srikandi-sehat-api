@@ -46,8 +46,10 @@ type CycleHistoryEntry struct {
 	ID               uint       `json:"id"`
 	StartDate        time.Time  `json:"start_date"`
 	FinishDate       *time.Time `json:"finish_date,omitempty"`
-	PeriodLengthDays *int16     `json:"period_length_days,omitempty"`
-	CycleLengthDays  *int16     `json:"cycle_length_days,omitempty"`
+	PeriodLengthDays *int16     `json:"period_length_days"`
+	CycleLengthDays  *int16     `json:"cycle_length_days"`
+	DeletedAt        *time.Time `json:"deleted_at"`
+	DeletionReason   *string    `json:"deletion_reason"`
 }
 
 type ProfileResponse struct {
@@ -72,6 +74,7 @@ type UserResponse struct {
 	Role              string              `json:"role,omitempty"`
 	Token             string              `json:"token,omitempty"`
 	IsProfileComplete bool                `json:"profile_complete"`
+	IsVerified        bool                `json:"is_verified"`
 	Profile           *ProfileResponse    `json:"profile,omitempty"`
 	CycleHistory      []CycleHistoryEntry `json:"cycle_history,omitempty"`
 	CreatedAt         time.Time           `json:"created_at"`
@@ -142,6 +145,8 @@ func UserResponseJson(user models.User, token ...string) UserResponse {
 		}
 	}
 
+	isVerified := user.EmailVerifiedAt.Valid
+
 	var response UserResponse
 	if len(token) > 0 {
 		response = UserResponse{
@@ -151,6 +156,7 @@ func UserResponseJson(user models.User, token ...string) UserResponse {
 			Role:              roleName,
 			Token:             token[0],
 			IsProfileComplete: isProfileComplete,
+			IsVerified:        isVerified,
 			CreatedAt:         user.CreatedAt,
 		}
 	} else {
@@ -160,6 +166,7 @@ func UserResponseJson(user models.User, token ...string) UserResponse {
 			Email:             user.Email,
 			Role:              roleName,
 			IsProfileComplete: isProfileComplete,
+			IsVerified:        isVerified,
 			Profile:           profileData,
 			CreatedAt:         user.CreatedAt,
 		}

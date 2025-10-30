@@ -42,7 +42,8 @@ func seedClassifications(tx *gorm.DB) (region.Classification, region.Classificat
 
 func seedBanyumasRegion(tx *gorm.DB, perkotaan, perdesaan region.Classification) error {
 	log.Println("[DB] [SEED] [REGION] [BANYUMAS] Seeding Banyumas region...")
-	province := region.Province{
+
+	provinceData := region.Province{
 		Code: "33",
 		Name: "JAWA TENGAH",
 		Regencies: []region.Regency{
@@ -575,12 +576,62 @@ func seedBanyumasRegion(tx *gorm.DB, perkotaan, perdesaan region.Classification)
 		},
 	}
 
-	if err := tx.FirstOrCreate(&province, region.Province{Code: "33"}).Error; err != nil {
+	// 1. Buat atau Cari Provinsi
+	provinceDB := region.Province{Code: provinceData.Code, Name: provinceData.Name}
+	if err := tx.FirstOrCreate(&provinceDB, region.Province{Code: provinceDB.Code}).Error; err != nil {
+		log.Printf("[DB] [SEED] [REGION] Error on Province %s: %v", provinceDB.Name, err)
 		return err
 	}
 
-	if err := tx.Model(&province).Association("Regencies").Replace(province.Regencies); err != nil {
-		return err
+	// 2. Iterasi data Regencies (dari struct provinceData)
+	for _, regData := range provinceData.Regencies {
+		regDB := region.Regency{
+			Code:       regData.Code,
+			Name:       regData.Name,
+			ProvinceID: provinceDB.ID,
+		}
+		// Cari atau buat Regency
+		if err := tx.FirstOrCreate(&regDB, region.Regency{Code: regDB.Code}).Error; err != nil {
+			log.Printf("[DB] [SEED] [REGION] Error on Regency %s: %v", regDB.Name, err)
+			continue // Lanjut ke regency berikutnya jika error
+		}
+
+		// 3. Iterasi data Districts (dari struct regData)
+		for _, distData := range regData.Districts {
+			distDB := region.District{
+				Code:      distData.Code,
+				Name:      distData.Name,
+				RegencyID: regDB.ID,
+			}
+			// Cari atau buat District
+			if err := tx.FirstOrCreate(&distDB, region.District{Code: distDB.Code}).Error; err != nil {
+				log.Printf("[DB] [SEED] [REGION] Error on District %s: %v", distDB.Name, err)
+				continue // Lanjut ke district berikutnya jika error
+			}
+
+			// 4. Cek apakah villages untuk district ini sudah ada
+			var count int64
+			tx.Model(&region.Village{}).Where("district_id = ?", distDB.ID).Count(&count)
+
+			if count == 0 {
+				// Belum ada, lakukan "1 query" (bulk insert)
+				villagesToCreate := distData.Villages
+				// Set Foreign Key untuk semua village di batch ini
+				for i := range villagesToCreate {
+					villagesToCreate[i].DistrictID = distDB.ID
+					// ClassificationID sudah di-set saat struct dibuat
+				}
+
+				// Lakukan CreateInBatches
+				if err := tx.CreateInBatches(villagesToCreate, 50).Error; err != nil {
+					// Jika gagal di sini, ini adalah error serius
+					log.Printf("[DB] [SEED] [REGION] FAILED to bulk insert villages for District %s: %v", distDB.Name, err)
+				} else {
+					log.Printf("[DB] [SEED] [REGION] [BANYUMAS] Bulk inserted %d villages for District %s", len(villagesToCreate), distDB.Name)
+				}
+			}
+			// Jika count > 0, desa sudah ada, jadi lewati (idempotent)
+		}
 	}
 
 	log.Println("[DB] [SEED] [REGION] [BANYUMAS] Banyumas region seeded successfully.")

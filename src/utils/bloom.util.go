@@ -66,7 +66,7 @@ func AddEmailToRegistrationFilter(email string) {
 	registrationMutex.Lock()
 	defer registrationMutex.Unlock()
 	registrationEmailFilter.AddString(email)
-	saveRegistrationFilter()
+	// saveRegistrationFilter()
 }
 
 func CheckEmailExistsInRegistrationFilter(email string) bool {

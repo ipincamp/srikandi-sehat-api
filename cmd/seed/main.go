@@ -10,8 +10,8 @@ import (
 )
 
 func main() {
-	config.SetTimeZone()
 	config.LoadConfig()
+	config.SetTimeZone()
 	database.ConnectDB()
 	log.Println("[DB] [SEED] Starting seeding process...")
 

@@ -21,22 +21,29 @@ import (
 )
 
 func main() {
+	config.LoadConfig()
+	config.SetTimeZone()
+
 	utils.InitLogger()
 
 	c := cron.New()
-	c.AddFunc("0 5 * * *", workers.CheckLongMenstrualCycles) // setiap jam 05:00 pagi
-	c.AddFunc("0 5 * * *", workers.CheckLateMenstrualCycles) // setiap jam 05:00 pagi
-
-	// c.AddFunc("5 3 * * *", workers.CheckLongMenstrualCycles) // setiap jam 03:05 (untuk testing)
-	// c.AddFunc("5 3 * * *", workers.CheckLateMenstrualCycles) // setiap jam 03:05 (untuk testing)
+	env := config.Get("APP_ENV")
+	if env == "production" {
+		utils.InfoLogger.Println("Running in production mode. Scheduling cron jobs accordingly.")
+		c.AddFunc("0 5 * * *", workers.CheckLongMenstrualCycles) // setiap jam 05:00 pagi
+		c.AddFunc("0 5 * * *", workers.CheckLateMenstrualCycles) // setiap jam 05:00 pagi
+		utils.InfoLogger.Println("Scheduled cron jobs for production at 05:00 AM daily.")
+	} else {
+		utils.InfoLogger.Println("Running in development mode. Scheduling cron jobs for testing.")
+		c.AddFunc("@every 1m", workers.CheckLongMenstrualCycles) // setiap 1 menit (testing)
+		c.AddFunc("@every 1m", workers.CheckLateMenstrualCycles) // setiap 1 menit (testing)
+		utils.InfoLogger.Println("Scheduled cron jobs for development every 1 minute.")
+	}
 	c.Start()
-	log.Println("Cron job for cycle checking has been scheduled.")
+	utils.InfoLogger.Println("Cron job for cycle checking has been scheduled.")
 	defer c.Stop()
 
 	utils.InitFCM()
-
-	config.SetTimeZone()
-	config.LoadConfig()
 	database.ConnectDB()
 
 	utils.SetupValidator()
@@ -45,7 +52,6 @@ func main() {
 	utils.InitializeRoleCache()
 	utils.InitializeBlocklistCache()
 
-	workers.StartWorkerPool()
 	go utils.CleanupExpiredTokens()
 
 	app := fiber.New(fiber.Config{
@@ -53,11 +59,7 @@ func main() {
 		ServerHeader:   "SrikandiSehat",
 		TrustedProxies: []string{config.Get("TRUSTED_PROXIES")},
 	})
-	app.Use(func(c *fiber.Ctx) error {
-		log.Printf("Header X-Real-IP: %s", c.Get("X-Real-IP"))
-		log.Printf("Header X-Forwarded-For: %s", c.Get("X-Forwarded-For"))
-		return c.Next()
-	})
+
 	app.Use(middleware.RecoverMiddleware())
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: config.Get("CORS_ALLOWED_ORIGINS"),

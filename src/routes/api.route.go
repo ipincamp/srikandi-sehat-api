@@ -16,11 +16,30 @@ func SetupRoutes(app *fiber.App) {
 
 	// Auth routes
 	auth := api.Group("/auth")
-	loginLimiter := middleware.CreateRateLimiter(5, 1*time.Minute)
-	registerLimiter := middleware.CreateRateLimiter(10, 5*time.Minute)
-	auth.Post("/register", registerLimiter, middleware.ValidateBody[dto.RegisterRequest], handlers.Register)
-	auth.Post("/login", loginLimiter, middleware.ValidateBody[dto.LoginRequest], handlers.Login)
+	registerLimiter := middleware.IPRateLimiter(50, 5*time.Minute)
+	loginLimiter := middleware.LoginRateLimiter(5, 1*time.Minute)
+	auth.Post("/register",
+		registerLimiter,
+		middleware.ValidateBody[dto.RegisterRequest],
+		handlers.Register,
+	)
+	auth.Post("/login",
+		loginLimiter,
+		middleware.ValidateBody[dto.LoginRequest],
+		handlers.Login,
+	)
 	auth.Post("/logout", middleware.AuthMiddleware, handlers.Logout)
+	auth.Post(
+		"/verify-otp",
+		middleware.AuthMiddleware,
+		middleware.ValidateBody[dto.VerifyOTPRequest],
+		handlers.VerifyOTP,
+	)
+	auth.Post(
+		"/resend-verification",
+		middleware.AuthMiddleware,
+		handlers.ResendVerification,
+	)
 
 	// User routes
 	user := api.Group("/me", middleware.AuthMiddleware)
@@ -34,7 +53,7 @@ func SetupRoutes(app *fiber.App) {
 	)
 
 	// Admin routes
-	adminLimiter := middleware.CreateRateLimiter(100, 1*time.Minute)
+	adminLimiter := middleware.UserRateLimiter(100, 1*time.Minute)
 	admin := api.Group("/admin", middleware.AuthMiddleware, middleware.AdminMiddleware, adminLimiter)
 	admin.Get("/users/statistics", handlers.GetUserStatistics)
 	admin.Post("/reports/generate-csv-link", handlers.GenerateFullReportLink)
@@ -64,7 +83,7 @@ func SetupRoutes(app *fiber.App) {
 	api.Get("/reports/download/:token", handlers.DownloadFullReportByToken)
 
 	// Menstrual health routes
-	menstrual := api.Group("/menstrual", middleware.AuthMiddleware)
+	menstrual := api.Group("/menstrual", middleware.AuthMiddleware, middleware.VerifiedMiddleware)
 	menstrual.Get("/cycles/status", menstrualHandler.GetCycleStatus)
 	menstrual.Post("/cycles", middleware.ValidateBody[dto.CycleRequest], menstrualHandler.RecordCycle)
 	menstrual.Get("/cycles", middleware.ValidateQuery[dto.PaginationQuery], menstrualHandler.GetCycleHistory)

@@ -192,17 +192,20 @@ func GetAllUsers(c *fiber.Ctx) error {
 	var users []models.User
 
 	subQuery := database.DB.Table("user_roles").
-		Select("1").
+		Select("user_id").
 		Joins("JOIN roles ON user_roles.role_id = roles.id").
-		Where("user_roles.user_id = users.id AND roles.name = ?", string(constants.AdminRole))
+		Where("roles.name = ?", string(constants.AdminRole))
 
-	query := database.DB.Model(&models.User{}).
-		Joins("JOIN profiles ON users.id = profiles.user_id").
-		Joins("JOIN villages ON profiles.village_id = villages.id").
-		Joins("JOIN classifications ON villages.classification_id = classifications.id")
+	query := database.DB.Model(&models.User{})
 
-	// Updated logic to handle English parameters
+	query = query.Where("id NOT IN (?)", subQuery)
+
 	if queries.Classification != "" {
+		query = query.
+			Joins("JOIN profiles ON users.id = profiles.user_id").
+			Joins("JOIN villages ON profiles.village_id = villages.id").
+			Joins("JOIN classifications ON villages.classification_id = classifications.id")
+
 		var classificationDBValue string
 		switch queries.Classification {
 		case "urban":
@@ -212,9 +215,6 @@ func GetAllUsers(c *fiber.Ctx) error {
 		}
 		query = query.Where("classifications.name = ?", classificationDBValue)
 	}
-
-	query = query.Where("NOT EXISTS (?)", subQuery)
-
 	page := queries.Page
 	if page == 0 {
 		page = 1

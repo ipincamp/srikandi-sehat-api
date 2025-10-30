@@ -55,9 +55,9 @@ func getPeriodCategory(length int16) string {
 	if length == 0 {
 		return "N/A"
 	}
-	if length < 2 {
+	if length < constants.CyclePeriodMinNormalDays {
 		return "Pendek (Hipomenorea)"
-	} else if length > 7 {
+	} else if length > constants.CyclePeriodMaxNormalDays {
 		return "Panjang (Menoragia)"
 	}
 	return "Normal"
@@ -68,9 +68,9 @@ func getCycleCategory(length int16) string {
 	if length == 0 {
 		return "N/A"
 	}
-	if length < 21 {
+	if length < constants.CycleLengthMinNormalDays {
 		return "Pendek (Polimenorea)"
-	} else if length > 35 {
+	} else if length > constants.CycleLengthMaxNormalDays {
 		return "Panjang (Oligomenorea)"
 	}
 	return "Normal"

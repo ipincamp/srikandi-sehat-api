@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"ipincamp/srikandi-sehat/database"
+	"ipincamp/srikandi-sehat/src/constants"
 	"ipincamp/srikandi-sehat/src/models"
 	"ipincamp/srikandi-sehat/src/models/menstrual"
 	"ipincamp/srikandi-sehat/src/utils"
@@ -11,8 +12,6 @@ import (
 
 	"gorm.io/gorm"
 )
-
-const latePeriodThresholdDays = 32
 
 // CheckLateMenstrualCycles finds users whose next cycle is late and sends a notification.
 func CheckLateMenstrualCycles() {
@@ -40,7 +39,7 @@ func CheckLateMenstrualCycles() {
 			durationSinceEnd := time.Since(latestCycle.EndDate.Time)
 			daysSinceEnd := int(durationSinceEnd.Hours() / 24)
 
-			if daysSinceEnd > latePeriodThresholdDays {
+			if daysSinceEnd > constants.CycleLateThresholdDays {
 				title := "Peringatan Keterlambatan Siklus"
 				body := fmt.Sprintf("Sudah %d hari sejak siklus terakhir Anda selesai dan siklus baru belum dimulai. Segera periksakan diri jika Anda khawatir.", daysSinceEnd)
 

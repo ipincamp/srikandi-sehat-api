@@ -16,10 +16,10 @@ func SetupRoutes(app *fiber.App) {
 
 	// Auth routes
 	auth := api.Group("/auth")
-	loginLimiter := middleware.CreateRateLimiter(5, 1*time.Minute)
-	registerLimiter := middleware.CreateRateLimiter(10, 5*time.Minute)
+	registerLimiter := middleware.IPRateLimiter(50, 5*time.Minute)
+	loginLimiter := middleware.LoginRateLimiter(5, 1*time.Minute)
 	auth.Post("/register", registerLimiter, middleware.ValidateBody[dto.RegisterRequest], handlers.Register)
-	auth.Post("/login", loginLimiter, middleware.ValidateBody[dto.LoginRequest], handlers.Login)
+	auth.Post("/login", middleware.ValidateBody[dto.LoginRequest], loginLimiter, handlers.Login)
 	auth.Post("/logout", middleware.AuthMiddleware, handlers.Logout)
 	auth.Post(
 		"/verify-otp",
@@ -27,7 +27,6 @@ func SetupRoutes(app *fiber.App) {
 		middleware.ValidateBody[dto.VerifyOTPRequest],
 		handlers.VerifyOTP,
 	)
-
 	auth.Post("/resend-verification", middleware.AuthMiddleware, handlers.ResendVerification)
 
 	// User routes
@@ -42,7 +41,7 @@ func SetupRoutes(app *fiber.App) {
 	)
 
 	// Admin routes
-	adminLimiter := middleware.CreateRateLimiter(100, 1*time.Minute)
+	adminLimiter := middleware.UserRateLimiter(100, 1*time.Minute)
 	admin := api.Group("/admin", middleware.AuthMiddleware, middleware.AdminMiddleware, adminLimiter)
 	admin.Get("/users/statistics", handlers.GetUserStatistics)
 	admin.Post("/reports/generate-csv-link", handlers.GenerateFullReportLink)

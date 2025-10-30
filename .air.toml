@@ -6,19 +6,19 @@
 # options here: https://github.com/cosmtrek/air/blob/master/air_example.toml
 
 root = "."
-tmp_dir = "tmp"
+tmp_dir = "bin"
 
 [build]
 # Command to build your app.
 # The `main.go` file is in `cmd/api/main.go`.
-cmd = "go build -o ./tmp/srikandisehat ./cmd/api/main.go"
+cmd = "go build -o ./bin/srikandisehat-dev ./cmd/api/main.go"
 
 # Binary file to run.
-bin = "tmp/srikandisehat"
+bin = "bin/srikandisehat-dev"
 
 # Command to run the binary.
 # We pass the environment variables here, similar to your `run-dev` command.
-full_bin = "ENV=development TZ=Asia/Jakarta ./tmp/srikandisehat"
+full_bin = "ENV=development TZ=Asia/Jakarta ./bin/srikandisehat-dev"
 
 # Watch these file extensions.
 include_ext = ["go", "tpl", "tmpl", "html"]
@@ -56,5 +56,5 @@ build = "yellow"
 runner = "green"
 
 [misc]
-# Delete tmp directory on exit
-clean_on_exit = true
+# Delete bin directory on exit
+clean_on_exit = false

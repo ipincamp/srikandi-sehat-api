@@ -33,9 +33,9 @@ help: ## ℹ️ Tampilkan semua perintah yang tersedia
 build-run: ## --- Build & Run ---
 	@# Target palsu ini hanya untuk pengelompokan di 'make help'
 
-clean: ## 🧹 Bersihkan artefak build (direktori ./bin, ./tmp)
+clean: ## 🧹 Bersihkan artefak build (direktori ./bin)
 	@echo "Membersihkan artefak build..."
-	@rm -rf ./bin/* ./tmp
+	@rm -rf ./bin/*
 
 build: ## 🏗️ Kompilasi aplikasi Go ke binary di ./bin
 	@echo "Mem-build binary..."

@@ -8,7 +8,6 @@
 *.so
 *.dylib
 bin/
-tmp/
 
 # Test binary, built with `go test -c`
 *.test
@@ -36,9 +35,7 @@ database/*bin
 
 # Debugging files
 __debug*
-srikandi-sehat
 *.js
-tmp/main
 
 # Logs
 *.log

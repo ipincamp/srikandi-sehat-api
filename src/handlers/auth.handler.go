@@ -3,10 +3,10 @@ package handlers
 import (
 	"errors"
 	"ipincamp/srikandi-sehat/database"
+	"ipincamp/srikandi-sehat/src/constants"
 	"ipincamp/srikandi-sehat/src/dto"
 	"ipincamp/srikandi-sehat/src/models"
 	"ipincamp/srikandi-sehat/src/utils"
-	"ipincamp/srikandi-sehat/src/workers"
 
 	"strings"
 	"time"
@@ -19,19 +19,57 @@ import (
 func Register(c *fiber.Ctx) error {
 	input := c.Locals("request_body").(*dto.RegisterRequest)
 
-	/*
-		if utils.CheckEmailExistsInRegistrationFilter(input.Email) {
-			return utils.SendError(c, fiber.StatusUnprocessableEntity, "Email already registered")
-		}
-	*/
-
-	job := workers.Job{
-		RegistrationData: *input,
-		FCMToken:         input.FCMToken,
+	// 1. Cek email langsung ke Database (Source of Truth)
+	var existingUser models.User
+	err := database.DB.First(&existingUser, "email = ?", input.Email).Error
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		// Email sudah ada di database.
+		return utils.SendError(c, fiber.StatusConflict, "Email is already registered")
 	}
-	workers.JobQueue <- job
 
-	return utils.SendSuccess(c, fiber.StatusAccepted, "Your account is being processed. Please try logging in after a while.", nil)
+	// 2. Hash password
+	hashedPassword, err := utils.HashPassword(input.Password)
+	if err != nil {
+		utils.ErrorLogger.Printf("Failed to hash password for %s: %v", input.Email, err)
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to process account")
+	}
+
+	// 3. Buat user baru
+	user := models.User{
+		Name:     input.Name,
+		Email:    input.Email,
+		Password: hashedPassword,
+	}
+
+	// 4. Lakukan transaksi Database
+	err = database.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&user).Error; err != nil {
+			return err
+		}
+
+		defaultRole, err := utils.GetRoleByName(string(constants.UserRole))
+		if err != nil {
+			// Jika role 'user' tidak ada, ini adalah kesalahan server
+			utils.ErrorLogger.Printf("FATAL: Default role '%s' not found in database", constants.UserRole)
+			return err
+		}
+
+		if err := tx.Model(&user).Association("Roles").Append(&defaultRole); err != nil {
+			return err
+		}
+		return nil
+	})
+
+	if err != nil {
+		utils.ErrorLogger.Printf("Failed to create user %s in database transaction: %v", input.Email, err)
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to create account")
+	}
+
+	// 5. Tambahkan ke Bloom Filter (di memori)
+	utils.AddEmailToRegistrationFilter(user.Email)
+
+	// 6. Kembalikan respon sukses instan (201 Created)
+	return utils.SendSuccess(c, fiber.StatusCreated, "Registration successful! Please log in.", nil)
 }
 
 func Login(c *fiber.Ctx) error {

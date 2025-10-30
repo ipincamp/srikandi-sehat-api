@@ -45,7 +45,6 @@ func main() {
 	utils.InitializeRoleCache()
 	utils.InitializeBlocklistCache()
 
-	workers.StartWorkerPool()
 	go utils.CleanupExpiredTokens()
 
 	app := fiber.New(fiber.Config{

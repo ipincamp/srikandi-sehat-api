@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/csv"
 	"fmt"
+	"ipincamp/srikandi-sehat/config"
 	"ipincamp/srikandi-sehat/database"
 	"ipincamp/srikandi-sehat/src/constants"
 	"ipincamp/srikandi-sehat/src/dto"
@@ -106,8 +107,7 @@ func GenerateFullReportLink(c *fiber.Ctx) error {
 	utils.StoreReportToken(token, expiration)
 
 	// Buat URL lengkap
-	// Pastikan aplikasi Anda berjalan di belakang proxy yang mengatur X-Forwarded-Proto atau atur BaseURL secara manual jika perlu
-	downloadURL := fmt.Sprintf("%s/api/reports/download/%s", c.BaseURL(), token)
+	downloadURL := fmt.Sprintf("%s/api/reports/download/%s", config.Get("APP_BASE_URL"), token)
 
 	response := dto.GenerateReportResponse{
 		DownloadURL: downloadURL,

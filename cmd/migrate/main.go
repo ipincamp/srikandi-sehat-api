@@ -105,6 +105,7 @@ func main() {
 		migrations.AddLongPeriodNotifiedToMenstrualCycles(),
 		migrations.AddLatePeriodNotifiedToMenstrualCycles(),
 		migrations.CreateMaintenanceTables(),
+		migrations.AddEmailVerification(),
 		// And more...
 	})
 

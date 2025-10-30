@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"ipincamp/srikandi-sehat/config"
 	"ipincamp/srikandi-sehat/database"
 	"ipincamp/srikandi-sehat/src/constants"
@@ -88,6 +89,7 @@ func Register(c *fiber.Ctx) error {
 		Password:              hashedPassword,
 		VerificationToken:     sql.NullString{String: verificationToken, Valid: true},
 		VerificationExpiresAt: sql.NullTime{Time: verificationExpires, Valid: true},
+		LastOTPSentAt:         sql.NullTime{Time: time.Now(), Valid: true},
 	}
 
 	// 4. Lakukan transaksi Database
@@ -188,6 +190,28 @@ func ResendVerification(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusConflict, "Email sudah terverifikasi.")
 	}
 
+	if user.LastOTPSentAt.Valid {
+		// Tentukan kapan user boleh request lagi
+		nextAllowedTime := user.LastOTPSentAt.Time.Add(15 * time.Minute)
+
+		if time.Now().Before(nextAllowedTime) {
+			// Jika sekarang SEBELUM waktu yang diizinkan, tolak request
+			remaining := time.Until(nextAllowedTime)
+
+			// Format sisa waktu agar lebih ramah
+			remainingMinutes := int(remaining.Minutes())
+			remainingSeconds := int(remaining.Seconds()) % 60
+
+			errMsg := fmt.Sprintf(
+				"Harap tunggu %d menit %d detik lagi sebelum meminta kode baru.",
+				remainingMinutes,
+				remainingSeconds,
+			)
+			// Kirim status 429 Too Many Requests
+			return utils.SendError(c, fiber.StatusTooManyRequests, errMsg)
+		}
+	}
+
 	// Buat 6-digit OTP, kedaluwarsa 10 Menit
 	verificationToken, err := utils.GenerateOTP(6)
 	if err != nil {
@@ -199,6 +223,7 @@ func ResendVerification(c *fiber.Ctx) error {
 	updates := map[string]interface{}{
 		"verification_token":      verificationToken,
 		"verification_expires_at": verificationExpires,
+		"last_otp_sent_at":        time.Now(),
 	}
 
 	if err := database.DB.Model(&user).Updates(updates).Error; err != nil {

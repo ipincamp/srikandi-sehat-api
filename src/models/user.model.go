@@ -19,6 +19,7 @@ type User struct {
 	EmailVerifiedAt       sql.NullTime   `gorm:"column:email_verified_at"`
 	VerificationToken     sql.NullString `gorm:"column:verification_token"`
 	VerificationExpiresAt sql.NullTime   `gorm:"column:verification_expires_at"`
+	LastOTPSentAt         sql.NullTime   `gorm:"column:last_otp_sent_at"`
 
 	Roles       []*Role       `gorm:"many2many:user_roles;"`
 	Permissions []*Permission `gorm:"many2many:user_permissions;"`

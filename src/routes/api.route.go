@@ -18,8 +18,16 @@ func SetupRoutes(app *fiber.App) {
 	auth := api.Group("/auth")
 	registerLimiter := middleware.IPRateLimiter(50, 5*time.Minute)
 	loginLimiter := middleware.LoginRateLimiter(5, 1*time.Minute)
-	auth.Post("/register", registerLimiter, middleware.ValidateBody[dto.RegisterRequest], handlers.Register)
-	auth.Post("/login", middleware.ValidateBody[dto.LoginRequest], loginLimiter, handlers.Login)
+	auth.Post("/register",
+		registerLimiter,
+		middleware.ValidateBody[dto.RegisterRequest],
+		handlers.Register,
+	)
+	auth.Post("/login",
+		loginLimiter,
+		middleware.ValidateBody[dto.LoginRequest],
+		handlers.Login,
+	)
 	auth.Post("/logout", middleware.AuthMiddleware, handlers.Logout)
 	auth.Post(
 		"/verify-otp",
@@ -27,7 +35,11 @@ func SetupRoutes(app *fiber.App) {
 		middleware.ValidateBody[dto.VerifyOTPRequest],
 		handlers.VerifyOTP,
 	)
-	auth.Post("/resend-verification", middleware.AuthMiddleware, handlers.ResendVerification)
+	auth.Post(
+		"/resend-verification",
+		middleware.AuthMiddleware,
+		handlers.ResendVerification,
+	)
 
 	// User routes
 	user := api.Group("/me", middleware.AuthMiddleware)

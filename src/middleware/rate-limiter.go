@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"encoding/json"
 	"ipincamp/srikandi-sehat/src/dto"
 	"ipincamp/srikandi-sehat/src/utils"
 	"time"
@@ -44,10 +45,24 @@ func LoginRateLimiter(max int, expiration time.Duration) fiber.Handler {
 		Max:        max,
 		Expiration: expiration,
 		KeyGenerator: func(c *fiber.Ctx) string {
-			input, ok := c.Locals("request_body").(*dto.LoginRequest)
-			if !ok {
-				return c.IP()
+			var input dto.LoginRequest
+
+			// Ambil body mentah
+			body := c.Body()
+			if len(body) == 0 {
+				return c.IP() // Fallback ke IP jika body kosong
 			}
+
+			// Unmarshal JSON body ke struct
+			if err := json.Unmarshal(body, &input); err != nil {
+				return c.IP() // Fallback ke IP jika JSON tidak valid
+			}
+
+			if input.Email == "" {
+				return c.IP() // Fallback ke IP jika email kosong
+			}
+
+			// Kunci limiter sekarang adalah alamat email
 			return input.Email
 		},
 		LimitReached: func(c *fiber.Ctx) error {

@@ -64,7 +64,7 @@ func Register(c *fiber.Ctx) error {
 
 	hashedPassword, err := utils.HashPassword(input.Password)
 	if err != nil {
-		utils.ErrorLogger.Printf("Failed to hash password for %s: %v", input.Email, err)
+		utils.ErrorLogger.Printf("Gagal hash password untuk %s: %v", input.Email, err)
 		return utils.SendError(c, fiber.StatusInternalServerError, "Gagal memproses akun")
 	}
 
@@ -75,6 +75,12 @@ func Register(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Gagal memproses akun")
 	}
 	verificationExpires := time.Now().Add(30 * time.Minute) // 30 Menit
+
+	defaultRole, err := utils.GetRoleByName(string(constants.UserRole))
+	if err != nil {
+		utils.ErrorLogger.Printf("FATAL: Default role '%s' not found", constants.UserRole)
+		return utils.SendError(c, fiber.StatusInternalServerError, "Konfigurasi server error")
+	}
 
 	user := models.User{
 		Name:                  input.Name,
@@ -89,12 +95,7 @@ func Register(c *fiber.Ctx) error {
 		if err := tx.Create(&user).Error; err != nil {
 			return err
 		}
-		defaultRole, err := utils.GetRoleByName(string(constants.UserRole))
-		if err != nil {
-			// Jika role 'user' tidak ada, ini adalah kesalahan server
-			utils.ErrorLogger.Printf("FATAL: Default role '%s' not found", constants.UserRole)
-			return err
-		}
+		// Gunakan defaultRole yang sudah diambil
 		if err := tx.Model(&user).Association("Roles").Append(&defaultRole); err != nil {
 			return err
 		}
@@ -106,6 +107,15 @@ func Register(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Gagal membuat akun")
 	}
 
+	user.Roles = []*models.Role{&defaultRole}
+	user.Profile = models.Profile{} // Profile baru, ID-nya 0
+
+	token, err := utils.GenerateJWT(user)
+	if err != nil {
+		utils.ErrorLogger.Printf("Gagal membuat JWT untuk user baru %s: %v", user.Email, err)
+		return utils.SendError(c, fiber.StatusInternalServerError, "Gagal memproses sesi login")
+	}
+
 	// Kirim email (Implementasi SMTP)
 	if err := utils.SendVerificationOTPEmail(user.Email, verificationToken, verificationExpires); err != nil {
 		utils.ErrorLogger.Printf("Gagal mengirim OTP ke %s: %v", user.Email, err)
@@ -115,7 +125,9 @@ func Register(c *fiber.Ctx) error {
 
 	utils.AddEmailToRegistrationFilter(user.Email)
 
-	return utils.SendSuccess(c, fiber.StatusCreated, "Registrasi sukses! Silakan cek email Anda untuk kode OTP verifikasi.", nil)
+	responseData := dto.UserResponseJson(user, token)
+
+	return utils.SendSuccess(c, fiber.StatusCreated, "Registrasi sukses! Silakan cek email Anda untuk kode OTP verifikasi.", responseData)
 }
 
 func VerifyOTP(c *fiber.Ctx) error {

@@ -46,6 +46,7 @@ func Register(c *fiber.Ctx) error {
 
 	// Validasi Domain Email
 	if !isDomainAllowed(input.Email) {
+		utils.AuthLogger.Printf("Registration failed (domain not allowed): %s", input.Email)
 		return utils.SendError(c, fiber.StatusUnprocessableEntity, "Registrasi dari domain email ini tidak diizinkan.")
 	}
 
@@ -53,6 +54,7 @@ func Register(c *fiber.Ctx) error {
 	err := database.DB.First(&existingUser, "email = ?", input.Email).Error
 
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		utils.AuthLogger.Printf("Registration failed (email exists): %s", input.Email)
 		return utils.SendError(c, fiber.StatusConflict, "Email sudah terdaftar")
 	}
 
@@ -104,6 +106,7 @@ func Register(c *fiber.Ctx) error {
 
 	responseData := dto.UserResponseJson(user, token)
 
+	utils.AuthLogger.Printf("User registered successfully: %s (UUID: %s)", responseData.Email, responseData.ID)
 	return utils.SendSuccess(c, fiber.StatusCreated, "Registrasi sukses! Silakan verifikasi email Anda untuk mendapatkan akses penuh.", responseData)
 }
 
@@ -121,21 +124,25 @@ func VerifyOTP(c *fiber.Ctx) error {
 
 	// Cek 1: Apakah sudah terverifikasi?
 	if user.EmailVerifiedAt.Valid {
+		utils.AuthLogger.Printf("OTP verification skipped (already verified): %s", userUUID)
 		return utils.SendError(c, fiber.StatusConflict, "Email Anda sudah terverifikasi.")
 	}
 
 	// Cek 2: Apakah token/waktu kedaluwarsa valid?
 	if !user.VerificationToken.Valid || !user.VerificationExpiresAt.Valid {
+		utils.AuthLogger.Printf("OTP verification failed (no active OTP): %s", userUUID)
 		return utils.SendError(c, fiber.StatusForbidden, "Tidak ada OTP yang aktif. Silakan minta kirim ulang.")
 	}
 
 	// Cek 3: Apakah kedaluwarsa?
 	if time.Now().After(user.VerificationExpiresAt.Time) {
+		utils.AuthLogger.Printf("OTP verification failed (expired): %s", userUUID)
 		return utils.SendError(c, fiber.StatusForbidden, "Kode OTP telah kedaluwarsa. Silakan minta kirim ulang.")
 	}
 
 	// Cek 4: Apakah OTP cocok?
 	if user.VerificationToken.String != input.OTP {
+		utils.AuthLogger.Printf("OTP verification failed (wrong OTP): %s", userUUID)
 		return utils.SendError(c, fiber.StatusUnauthorized, "Kode OTP salah.")
 	}
 
@@ -150,6 +157,7 @@ func VerifyOTP(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Gagal memverifikasi akun")
 	}
 
+	utils.AuthLogger.Printf("OTP verification successful: %s", userUUID)
 	return utils.SendSuccess(c, fiber.StatusOK, "Email berhasil diverifikasi! Anda sekarang memiliki akses penuh.", nil)
 }
 
@@ -182,6 +190,7 @@ func ResendVerification(c *fiber.Ctx) error {
 				remainingMinutes,
 				remainingSeconds,
 			)
+			utils.AuthLogger.Printf("Resend OTP failed (429 Too Many Requests): %s", userUUID)
 			// Kirim status 429 Too Many Requests
 			return utils.SendError(c, fiber.StatusTooManyRequests, errMsg)
 		}
@@ -211,6 +220,7 @@ func ResendVerification(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Gagal mengirim email verifikasi.")
 	}
 
+	utils.AuthLogger.Printf("Resent verification OTP successful: %s", userUUID)
 	return utils.SendSuccess(c, fiber.StatusOK, "Kode OTP baru telah dikirim ke email Anda.", nil)
 }
 
@@ -221,6 +231,7 @@ func Login(c *fiber.Ctx) error {
 	err := database.DB.Preload("Roles").Preload("Profile").First(&user, "email = ?", input.Email).Error
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
+		utils.AuthLogger.Printf("Login failed (user not found): %s", input.Email)
 		return utils.SendError(c, fiber.StatusUnauthorized, "Invalid credentials")
 	}
 	if err != nil {
@@ -229,6 +240,7 @@ func Login(c *fiber.Ctx) error {
 
 	match, err := utils.CheckPasswordHash(input.Password, user.Password)
 	if err != nil || !match {
+		utils.AuthLogger.Printf("Login failed (invalid credentials): %s", input.Email)
 		return utils.SendError(c, fiber.StatusUnauthorized, "Invalid credentials")
 	}
 
@@ -240,10 +252,12 @@ func Login(c *fiber.Ctx) error {
 	go utils.AddUserToFrequentLoginFilter(user)
 	responseData := dto.UserResponseJson(user, token)
 
+	utils.AuthLogger.Printf("User login successful: %s (UUID: %s)", responseData.Email, responseData.ID)
 	return utils.SendSuccess(c, fiber.StatusOK, "Login successful", responseData)
 }
 
 func Logout(c *fiber.Ctx) error {
+	userUUID, _ := c.Locals("user_id").(string)
 	authHeader := c.Get("Authorization")
 	tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 
@@ -268,6 +282,7 @@ func Logout(c *fiber.Ctx) error {
 	expiresAt := time.Unix(int64(exp), 0)
 
 	if time.Now().After(expiresAt) {
+		utils.AuthLogger.Printf("Logout skipped (token already expired): %s", userUUID)
 		return utils.SendSuccess(c, fiber.StatusOK, "Token already expired", nil)
 	}
 
@@ -287,5 +302,6 @@ func Logout(c *fiber.Ctx) error {
 	// remainingDuration := time.Until(expiresAt)
 	// utils.AddToBlocklistCache(tokenString, remainingDuration)
 
+	utils.AuthLogger.Printf("Logout successful: %s", userUUID)
 	return utils.SendSuccess(c, fiber.StatusOK, "Logout successful", nil)
 }

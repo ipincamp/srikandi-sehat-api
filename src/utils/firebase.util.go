@@ -4,7 +4,6 @@ import (
 	"context"
 	"ipincamp/srikandi-sehat/database"
 	"ipincamp/srikandi-sehat/src/models"
-	"log"
 
 	firebase "firebase.google.com/go/v4"
 	"firebase.google.com/go/v4/messaging"
@@ -17,12 +16,12 @@ func InitFCM() {
 	opt := option.WithCredentialsFile("serviceAccountKey.json")
 	app, err := firebase.NewApp(context.Background(), nil, opt)
 	if err != nil {
-		log.Fatalf("error initializing app: %v\n", err)
+		ErrorLogger.Fatalf("error initializing app: %v\n", err)
 	}
 
 	client, err := app.Messaging(context.Background())
 	if err != nil {
-		log.Fatalf("error getting Messaging client: %v\n", err)
+		ErrorLogger.Fatalf("error getting Messaging client: %v\n", err)
 	}
 
 	fcmClient = client

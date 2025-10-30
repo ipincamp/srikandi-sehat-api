@@ -3,7 +3,6 @@ package utils
 import (
 	"fmt"
 	"ipincamp/srikandi-sehat/config"
-	"log"
 	"strconv"
 	"time"
 
@@ -22,7 +21,7 @@ func SendEmail(to, subject, htmlBody string) error {
 	// 2. Konversi port string ke integer
 	port, err := strconv.Atoi(portStr)
 	if err != nil {
-		log.Printf("ERROR: Invalid SMTP_PORT value: %v", err)
+		ErrorLogger.Printf("ERROR: Invalid SMTP_PORT value: %v", err)
 		return err
 	}
 

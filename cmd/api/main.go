@@ -63,7 +63,7 @@ func main() {
 	app.Use(middleware.RecoverMiddleware())
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: config.Get("CORS_ALLOWED_ORIGINS"),
-		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
+		AllowHeaders: "Origin, Content-Type, Accept, Authorization, X-Api-Key",
 		AllowMethods: "GET, POST, PUT, DELETE, PATCH",
 	}))
 	app.Use(logger.New())

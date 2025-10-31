@@ -334,7 +334,7 @@ func LoginWithGoogle(c *fiber.Ctx) error {
 			authProvider = models.UserAuthProvider{
 				UserID:     user.ID,
 				Provider:   "google",
-				ProviderID: googleID,
+				ProviderID: sql.NullString{String: googleID, Valid: true},
 				Password:   sql.NullString{Valid: false},
 			}
 			if err := tx.Create(&authProvider).Error; err != nil {
@@ -367,7 +367,7 @@ func LoginWithGoogle(c *fiber.Ctx) error {
 			authProvider = models.UserAuthProvider{
 				UserID:     user.ID,
 				Provider:   "google",
-				ProviderID: googleID,
+				ProviderID: sql.NullString{String: googleID, Valid: true},
 				Password:   sql.NullString{Valid: false},
 			}
 			if err := tx.Create(&authProvider).Error; err != nil {

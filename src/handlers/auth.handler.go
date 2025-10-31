@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"errors"
 	"fmt"
 	"ipincamp/srikandi-sehat/config"
@@ -50,9 +51,9 @@ func Register(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusUnprocessableEntity, "Registrasi dari domain email ini tidak diizinkan.")
 	}
 
+	// Cek apakah email sudah ada di tabel users
 	var existingUser models.User
 	err := database.DB.First(&existingUser, "email = ?", input.Email).Error
-
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		utils.AuthLogger.Printf("Registration failed (email exists): %s", input.Email)
 		return utils.SendError(c, fiber.StatusConflict, "Email sudah terdaftar")
@@ -70,18 +71,29 @@ func Register(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Konfigurasi server error")
 	}
 
-	user := models.User{
-		Name:     input.Name,
-		Email:    input.Email,
-		Password: hashedPassword,
-	}
-
-	// 4. Lakukan transaksi Database
+	// Buat user baru dan provider auth 'local' dalam satu transaksi
+	var user models.User
 	err = database.DB.Transaction(func(tx *gorm.DB) error {
+		// 1. Buat User
+		user = models.User{
+			Name:  input.Name,
+			Email: input.Email,
+		}
 		if err := tx.Create(&user).Error; err != nil {
 			return err
 		}
-		// Gunakan defaultRole yang sudah diambil
+
+		// 2. Buat Auth Provider
+		authProvider := models.UserAuthProvider{
+			UserID:   user.ID,
+			Provider: "local",
+			Password: sql.NullString{String: hashedPassword, Valid: true},
+		}
+		if err := tx.Create(&authProvider).Error; err != nil {
+			return err
+		}
+
+		// 3. Tetapkan Role
 		if err := tx.Model(&user).Association("Roles").Append(&defaultRole); err != nil {
 			return err
 		}
@@ -93,8 +105,9 @@ func Register(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Gagal membuat akun")
 	}
 
+	// Siapkan response
 	user.Roles = []*models.Role{&defaultRole}
-	user.Profile = models.Profile{} // Profile baru, ID-nya 0
+	user.Profile = models.Profile{}
 
 	token, err := utils.GenerateJWT(user)
 	if err != nil {
@@ -227,9 +240,9 @@ func ResendVerification(c *fiber.Ctx) error {
 func Login(c *fiber.Ctx) error {
 	input := c.Locals("request_body").(*dto.LoginRequest)
 
+	// 1. Cari user berdasarkan email
 	var user models.User
 	err := database.DB.Preload("Roles").Preload("Profile").First(&user, "email = ?", input.Email).Error
-
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		utils.AuthLogger.Printf("Login failed (user not found): %s", input.Email)
 		return utils.SendError(c, fiber.StatusUnauthorized, "Invalid credentials")
@@ -238,12 +251,25 @@ func Login(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Database query error")
 	}
 
-	match, err := utils.CheckPasswordHash(input.Password, user.Password)
+	// 2. Cari provider auth 'local' untuk user ini
+	var authProvider models.UserAuthProvider
+	err = database.DB.Where("user_id = ? AND provider = ?", user.ID, "local").First(&authProvider).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		utils.AuthLogger.Printf("Login failed (local auth not found): %s", input.Email)
+		return utils.SendError(c, fiber.StatusUnauthorized, "Akun ini terdaftar melalui metode lain (misal: Google). Silakan login dengan metode tersebut.")
+	}
+	if err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Database auth query error")
+	}
+
+	// 3. Verifikasi password
+	match, err := utils.CheckPasswordHash(input.Password, authProvider.Password.String)
 	if err != nil || !match {
 		utils.AuthLogger.Printf("Login failed (invalid credentials): %s", input.Email)
 		return utils.SendError(c, fiber.StatusUnauthorized, "Invalid credentials")
 	}
 
+	// 4. Generate JWT
 	token, err := utils.GenerateJWT(user)
 	if err != nil {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to generate JWT token")
@@ -254,6 +280,133 @@ func Login(c *fiber.Ctx) error {
 
 	utils.AuthLogger.Printf("User login successful: %s (UUID: %s)", responseData.Email, responseData.ID)
 	return utils.SendSuccess(c, fiber.StatusOK, "Login successful", responseData)
+}
+
+func LoginWithGoogle(c *fiber.Ctx) error {
+	input := c.Locals("request_body").(*dto.GoogleLoginRequest)
+
+	// 1. Verifikasi ID Token dengan Google
+	userInfo, err := utils.VerifyGoogleIDToken(input.IDToken)
+	if err != nil {
+		utils.AuthLogger.Printf("Google login failed (token verification error): %v", err)
+		return utils.SendError(c, fiber.StatusUnauthorized, err.Error())
+	}
+
+	googleEmail := userInfo.Email
+	googleID := userInfo.Sub
+	googleName := userInfo.Name
+
+	if googleEmail == "" || googleID == "" {
+		return utils.SendError(c, fiber.StatusUnauthorized, "Token Google tidak valid (data hilang)")
+	}
+
+	var user models.User
+	var authProvider models.UserAuthProvider
+
+	// Mulai Transaksi
+	tx := database.DB.Begin()
+	if tx.Error != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Gagal memulai transaksi")
+	}
+	defer tx.Rollback() // Rollback jika ada panic atau error
+
+	// 2. Cari auth provider berdasarkan Google ID
+	err = tx.Where("provider = ? AND provider_id = ?", "google", googleID).First(&authProvider).Error
+
+	if err == nil {
+		// --- KASUS 1: User ditemukan (Sudah pernah login via Google) ---
+		if err = tx.Preload("Roles").Preload("Profile").First(&user, authProvider.UserID).Error; err != nil {
+			return utils.SendError(c, fiber.StatusNotFound, "Data user terkait auth provider tidak ditemukan")
+		}
+		// Opsional: Update nama jika berubah di Google
+		if user.Name != googleName {
+			tx.Model(&user).Update("name", googleName)
+		}
+
+	} else if errors.Is(err, gorm.ErrRecordNotFound) {
+
+		// 3. Cari user berdasarkan email (mungkin sudah punya akun 'local')
+		err = tx.Preload("Roles").Preload("Profile").Where("email = ?", googleEmail).First(&user).Error
+
+		if err == nil {
+			// --- KASUS 2: User ditemukan berdasarkan Email (Akun 'local' ada) ---
+			// Tautkan akun ini dengan Google ID
+			authProvider = models.UserAuthProvider{
+				UserID:     user.ID,
+				Provider:   "google",
+				ProviderID: googleID,
+				Password:   sql.NullString{Valid: false},
+			}
+			if err := tx.Create(&authProvider).Error; err != nil {
+				return utils.SendError(c, fiber.StatusInternalServerError, "Gagal menautkan akun Google")
+			}
+			// Update nama dan status verifikasi email
+			tx.Model(&user).Updates(map[string]interface{}{
+				"name":              googleName,
+				"email_verified_at": sql.NullTime{Time: time.Now(), Valid: true},
+			})
+
+		} else if errors.Is(err, gorm.ErrRecordNotFound) {
+			// --- KASUS 3: User tidak ditemukan (Akun baru) ---
+			defaultRole, err := utils.GetRoleByName(string(constants.UserRole))
+			if err != nil {
+				return utils.SendError(c, fiber.StatusInternalServerError, "Konfigurasi server error")
+			}
+
+			// 3a. Buat User baru
+			user = models.User{
+				Name:            googleName,
+				Email:           googleEmail,
+				EmailVerifiedAt: sql.NullTime{Time: time.Now(), Valid: true}, // Email dari Google sudah terverifikasi
+			}
+			if err := tx.Create(&user).Error; err != nil {
+				return utils.SendError(c, fiber.StatusInternalServerError, "Gagal membuat akun user baru")
+			}
+
+			// 3b. Buat Auth Provider untuk Google
+			authProvider = models.UserAuthProvider{
+				UserID:     user.ID,
+				Provider:   "google",
+				ProviderID: googleID,
+				Password:   sql.NullString{Valid: false},
+			}
+			if err := tx.Create(&authProvider).Error; err != nil {
+				return utils.SendError(c, fiber.StatusInternalServerError, "Gagal membuat auth provider")
+			}
+
+			// 3c. Tetapkan Role
+			if err := tx.Model(&user).Association("Roles").Append(&defaultRole); err != nil {
+				return utils.SendError(c, fiber.StatusInternalServerError, "Gagal menetapkan role")
+			}
+			user.Roles = []*models.Role{&defaultRole}
+			user.Profile = models.Profile{}
+
+			utils.AddEmailToRegistrationFilter(user.Email)
+
+		} else {
+			// Error database lain saat mencari by email
+			return utils.SendError(c, fiber.StatusInternalServerError, "Database error (email lookup)")
+		}
+
+	} else {
+		// Error database lain saat mencari by provider
+		return utils.SendError(c, fiber.StatusInternalServerError, "Database error (provider lookup)")
+	}
+
+	// 5. Commit Transaksi
+	if err := tx.Commit().Error; err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Gagal menyimpan data")
+	}
+
+	// 6. Generate JWT
+	token, err := utils.GenerateJWT(user)
+	if err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to generate JWT token")
+	}
+
+	responseData := dto.UserResponseJson(user, token)
+	utils.AuthLogger.Printf("User login (Google) successful: %s (UUID: %s)", responseData.Email, responseData.ID)
+	return utils.SendSuccess(c, fiber.StatusOK, "Login Google sukses", responseData)
 }
 
 func Logout(c *fiber.Ctx) error {

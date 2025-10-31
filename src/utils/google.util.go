@@ -3,37 +3,47 @@ package utils
 import (
 	"context"
 	"errors"
-	"fmt"
 	"ipincamp/srikandi-sehat/config"
+	"strings"
 
-	"google.golang.org/api/oauth2/v2"
-	"google.golang.org/api/option"
+	"google.golang.org/api/idtoken"
 )
 
-func VerifyGoogleIDToken(idToken string) (*oauth2.Tokeninfo, error) {
+type GoogleTokenPayload struct {
+	Email string
+	Name  string
+	Sub   string // Ini adalah Google User ID
+}
+
+// VerifyGoogleIDToken memverifikasi idToken yang diberikan dan mengembalikan info token
+func VerifyGoogleIDToken(idToken string) (*GoogleTokenPayload, error) {
 	ctx := context.Background()
-	oauth2Service, err := oauth2.NewService(ctx, option.WithoutAuthentication())
-	if err != nil {
-		ErrorLogger.Printf("Gagal membuat service oauth2: %v", err)
-		return nil, errors.New("gagal memvalidasi token")
-	}
+	googleClientID := config.Get("GOOGLE_CLIENT_ID")
 
-	tokenInfoCall := oauth2Service.Tokeninfo()
-	tokenInfoCall.IdToken(idToken)
-
-	tokenInfo, err := tokenInfoCall.Do()
+	// Validasi token menggunakan library idtoken
+	payload, err := idtoken.Validate(ctx, idToken, googleClientID)
 	if err != nil {
-		ErrorLogger.Printf("Gagal memverifikasi token: %v", err)
+		ErrorLogger.Printf("Gagal memverifikasi id token google: %v", err)
 		return nil, errors.New("token tidak valid atau kedaluwarsa")
 	}
 
-	// Verifikasi Audience (Client ID)
-	googleClientID := config.Get("GOOGLE_CLIENT_ID")
-	if tokenInfo.Audience != googleClientID {
-		errMsg := fmt.Sprintf("Token audience tidak cocok. Diharapkan: %s, Didapat: %s", googleClientID, tokenInfo.Audience)
-		ErrorLogger.Println(errMsg)
-		return nil, errors.New("token tidak valid (audience mismatch)")
+	// Payload valid, ekstrak data yang kita butuhkan dari Claims
+	claims := payload.Claims
+
+	email, ok := claims["email"].(string)
+	if !ok || email == "" {
+		return nil, errors.New("token tidak mengandung email")
 	}
 
-	return tokenInfo, nil
+	name, ok := claims["name"].(string)
+	if !ok || name == "" {
+		// Kadang 'name' tidak ada, fallback ke bagian email
+		name = strings.Split(email, "@")[0]
+	}
+
+	return &GoogleTokenPayload{
+		Email: email,
+		Name:  name,
+		Sub:   payload.Subject, // payload.Subject adalah Google User ID (Sub = Subject)
+	}, nil
 }

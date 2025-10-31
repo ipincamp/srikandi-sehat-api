@@ -28,6 +28,10 @@ func SetupRoutes(app *fiber.App) {
 		middleware.ValidateBody[dto.LoginRequest],
 		handlers.Login,
 	)
+	auth.Post("/google",
+		middleware.ValidateBody[dto.GoogleLoginRequest],
+		handlers.LoginWithGoogle,
+	)
 	auth.Post("/logout", middleware.AuthMiddleware, handlers.Logout)
 	auth.Post(
 		"/verify-otp",

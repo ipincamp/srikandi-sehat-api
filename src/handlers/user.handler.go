@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"errors"
 	"ipincamp/srikandi-sehat/config"
 	"ipincamp/srikandi-sehat/database"
@@ -155,7 +156,6 @@ func UpdateOrCreateProfile(c *fiber.Ctx) error {
 
 func ChangeMyPassword(c *fiber.Ctx) error {
 	userUUID := c.Locals("user_id").(string)
-
 	input := c.Locals("request_body").(*dto.ChangePasswordRequest)
 
 	var user models.User
@@ -166,7 +166,18 @@ func ChangeMyPassword(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Database error")
 	}
 
-	match, err := utils.CheckPasswordHash(input.OldPassword, user.Password)
+	// Cari provider 'local'
+	var authProvider models.UserAuthProvider
+	err := database.DB.Where("user_id = ? AND provider = ?", user.ID, "local").First(&authProvider).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return utils.SendError(c, fiber.StatusForbidden, "Tidak dapat mengubah password untuk akun yang terdaftar via Google.")
+	}
+	if err != nil {
+		return utils.SendError(c, fiber.StatusInternalServerError, "Gagal mengambil data autentikasi")
+	}
+
+	// Verifikasi password lama
+	match, err := utils.CheckPasswordHash(input.OldPassword, authProvider.Password.String)
 	if err != nil {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to verify old password")
 	}
@@ -174,12 +185,14 @@ func ChangeMyPassword(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusUnauthorized, "Old password is incorrect")
 	}
 
+	// Buat hash password baru
 	newHashedPassword, err := utils.HashPassword(input.NewPassword)
 	if err != nil {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to process new password")
 	}
 
-	if err := database.DB.Model(&user).Update("password", newHashedPassword).Error; err != nil {
+	// Update password di tabel authProvider
+	if err := database.DB.Model(&authProvider).Update("password", sql.NullString{String: newHashedPassword, Valid: true}).Error; err != nil {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to update password")
 	}
 

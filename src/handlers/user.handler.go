@@ -204,30 +204,45 @@ func GetAllUsers(c *fiber.Ctx) error {
 
 	var users []models.User
 
-	subQuery := database.DB.Table("user_roles").
-		Select("user_id").
+	// Subquery to find all user IDs with 'admin' role
+	adminSubQuery := database.DB.Table("user_roles").
+		Select("user_roles.user_id").
 		Joins("JOIN roles ON user_roles.role_id = roles.id").
 		Where("roles.name = ?", string(constants.AdminRole))
 
-	query := database.DB.Model(&models.User{})
+	// Subquery to find all user IDs with 'user' role
+	userRoleSubQuery := database.DB.Table("user_roles").
+		Select("user_roles.user_id").
+		Joins("JOIN roles ON user_roles.role_id = roles.id").
+		Where("roles.name = ?", string(constants.UserRole))
 
-	query = query.Where("id NOT IN (?)", subQuery)
+	// Base query: only users with 'user' role and NOT admin
+	query := database.DB.Model(&models.User{}).
+		Where("users.id IN (?)", userRoleSubQuery).
+		Where("users.id NOT IN (?)", adminSubQuery)
 
+	// Always use LEFT JOINs to include users without profiles
+	query = query.
+		Joins("LEFT JOIN profiles ON users.id = profiles.user_id").
+		Joins("LEFT JOIN villages ON profiles.village_id = villages.id").
+		Joins("LEFT JOIN classifications ON villages.classification_id = classifications.id")
+
+	// Apply classification filter only if specified
 	if queries.Classification != "" {
-		query = query.
-			Joins("JOIN profiles ON users.id = profiles.user_id").
-			Joins("JOIN villages ON profiles.village_id = villages.id").
-			Joins("JOIN classifications ON villages.classification_id = classifications.id")
-
-		var classificationDBValue string
+		var classificationDBValue constants.ClassificationName
 		switch queries.Classification {
 		case "urban":
-			classificationDBValue = "Perkotaan"
+			classificationDBValue = constants.UrbanClassification // "perkotaan"
 		case "rural":
-			classificationDBValue = "Perdesaan"
+			classificationDBValue = constants.RuralClassification // "perdesaan"
+		default:
+			return utils.SendError(c, fiber.StatusBadRequest, "Invalid classification value. Use 'urban' or 'rural'")
 		}
+		// Filter by classification name (will exclude users without profiles)
 		query = query.Where("classifications.name = ?", classificationDBValue)
 	}
+
+	// Pagination settings
 	page := queries.Page
 	if page == 0 {
 		page = 1
@@ -237,10 +252,68 @@ func GetAllUsers(c *fiber.Ctx) error {
 		limit = 10
 	}
 
-	pagination, paginateScope := utils.GeneratePagination(page, limit, query, &models.User{})
+	// Count total records with the same filters
+	var totalRows int64
+	countQuery := database.DB.Model(&models.User{}).
+		Where("users.id IN (?)", userRoleSubQuery).
+		Where("users.id NOT IN (?)", adminSubQuery).
+		Joins("LEFT JOIN profiles ON users.id = profiles.user_id").
+		Joins("LEFT JOIN villages ON profiles.village_id = villages.id").
+		Joins("LEFT JOIN classifications ON villages.classification_id = classifications.id")
 
-	query.Select("users.uuid, users.name, users.created_at").Scopes(paginateScope).Find(&users)
+	if queries.Classification != "" {
+		var classificationDBValue constants.ClassificationName
+		switch queries.Classification {
+		case "urban":
+			classificationDBValue = constants.UrbanClassification
+		case "rural":
+			classificationDBValue = constants.RuralClassification
+		}
+		countQuery = countQuery.Where("classifications.name = ?", classificationDBValue)
+	}
 
+	countQuery.Distinct("users.id").Count(&totalRows)
+
+	// Build pagination metadata
+	totalPages := int(totalRows+int64(limit)-1) / limit // Ceiling division
+	if totalPages == 0 {
+		totalPages = 1
+	}
+
+	var prevPage *int
+	if page > 1 && page <= totalPages {
+		p := page - 1
+		prevPage = &p
+	}
+
+	var nextPage *int
+	if page < totalPages {
+		n := page + 1
+		nextPage = &n
+	}
+
+	pagination := dto.Pagination{
+		Limit:        limit,
+		TotalRows:    totalRows,
+		TotalPages:   totalPages,
+		CurrentPage:  page,
+		PreviousPage: prevPage,
+		NextPage:     nextPage,
+	}
+
+	// Execute query with pagination
+	offset := (page - 1) * limit
+	if err := query.
+		Select("DISTINCT users.uuid, users.name, users.created_at").
+		Order("users.created_at DESC").
+		Offset(offset).
+		Limit(limit).
+		Find(&users).Error; err != nil {
+		utils.ErrorLogger.Println("Failed to fetch users:", err)
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to fetch users")
+	}
+
+	// Format response
 	var responseData []fiber.Map
 	for _, user := range users {
 		responseData = append(responseData, fiber.Map{
@@ -341,7 +414,7 @@ func GetUserStatistics(c *fiber.Ctx) error {
 			Joins("JOIN profiles ON users.id = profiles.user_id").
 			Joins("JOIN villages ON profiles.village_id = villages.id").
 			Joins("JOIN classifications ON villages.classification_id = classifications.id").
-			Where("classifications.name = ?", "Perdesaan").
+			Where("classifications.name = ?", constants.RuralClassification).
 			Count(&count).Error
 		if err != nil {
 			errChan <- err
@@ -359,7 +432,7 @@ func GetUserStatistics(c *fiber.Ctx) error {
 			Joins("JOIN profiles ON users.id = profiles.user_id").
 			Joins("JOIN villages ON profiles.village_id = villages.id").
 			Joins("JOIN classifications ON villages.classification_id = classifications.id").
-			Where("classifications.name = ?", "Perkotaan").
+			Where("classifications.name = ?", constants.UrbanClassification).
 			Count(&count).Error
 		if err != nil {
 			errChan <- err

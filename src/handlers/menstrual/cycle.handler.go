@@ -57,8 +57,13 @@ func RecordCycle(c *fiber.Ctx) error {
 			return utils.SendError(c, fiber.StatusBadRequest, "Invalid StartDate format")
 		}
 
+		// Requirement 5: Check last completed cycle (excluding soft-deleted cycles)
+		// This allows users to restart cycles within the date range of deleted cycles
 		var lastCompletedCycle menstrual.MenstrualCycle
-		errLastCompleted := tx.Where("user_id = ? AND end_date IS NOT NULL", user.ID).Order("end_date desc").First(&lastCompletedCycle).Error
+		errLastCompleted := tx.Where("user_id = ? AND end_date IS NOT NULL AND deleted_at IS NULL", user.ID).
+			Order("end_date desc").
+			First(&lastCompletedCycle).Error
+
 		if errLastCompleted == nil {
 			if !startDate.After(lastCompletedCycle.EndDate.Time) {
 				formattedDate := lastCompletedCycle.EndDate.Time.Format("2 January 2006 15:04:05")
@@ -69,7 +74,6 @@ func RecordCycle(c *fiber.Ctx) error {
 
 		newCycle := menstrual.MenstrualCycle{UserID: user.ID, StartDate: startDate}
 		if err := tx.Create(&newCycle).Error; err != nil {
-			// tampilkan errornya
 			log.Printf("Error creating new cycle: %v", err)
 			return utils.SendError(c, fiber.StatusInternalServerError, "Failed to record new cycle")
 		}
@@ -126,7 +130,8 @@ func GetCycleHistory(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusNotFound, "User not found")
 	}
 
-	baseQuery := database.DB.Model(&menstrual.MenstrualCycle{}).Where("user_id = ? AND end_date IS NOT NULL", user.ID)
+	// Include soft-deleted records using Unscoped()
+	baseQuery := database.DB.Unscoped().Model(&menstrual.MenstrualCycle{}).Where("user_id = ?", user.ID)
 
 	pagination, paginateScope := utils.GeneratePagination(page, limit, baseQuery, &menstrual.MenstrualCycle{})
 
@@ -146,6 +151,7 @@ func GetCycleHistory(c *fiber.Ctx) error {
 		dto := dto.CycleResponse{
 			ID:        cycle.ID,
 			StartDate: cycle.StartDate,
+			IsDeleted: cycle.DeletedAt.Valid,
 		}
 
 		if cycle.EndDate.Valid {
@@ -162,6 +168,13 @@ func GetCycleHistory(c *fiber.Ctx) error {
 		}
 		if cycle.IsCycleNormal.Valid {
 			dto.IsCycleNormal = &cycle.IsCycleNormal.Bool
+		}
+		if cycle.DeletionReason.Valid {
+			dto.DeletionReason = &cycle.DeletionReason.String
+		}
+		if cycle.DeletedAt.Valid {
+			deletedAt := cycle.DeletedAt.Time
+			dto.DeletedAt = &deletedAt
 		}
 		responseData = append(responseData, dto)
 	}
@@ -183,8 +196,9 @@ func GetCycleByID(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusNotFound, "User not found")
 	}
 
+	// Requirement 3: Include soft-deleted cycles (view only)
 	var cycle menstrual.MenstrualCycle
-	if err := database.DB.Where("id = ? AND user_id = ?", params.ID, user.ID).First(&cycle).Error; err != nil {
+	if err := database.DB.Unscoped().Where("id = ? AND user_id = ?", params.ID, user.ID).First(&cycle).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return utils.SendError(c, fiber.StatusNotFound, "Cycle not found")
 		}
@@ -378,6 +392,7 @@ func DeleteCycleByID(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusNotFound, "User not found")
 	}
 
+	// Check if cycle exists and belongs to user (without soft-deleted records)
 	var cycle menstrual.MenstrualCycle
 	err := tx.
 		Where("id = ? AND user_id = ?", params.ID, user.ID).
@@ -385,16 +400,44 @@ func DeleteCycleByID(c *fiber.Ctx) error {
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return utils.SendError(c, fiber.StatusNotFound, "Cycle not found")
+			return utils.SendError(c, fiber.StatusNotFound, "Cycle not found or already deleted")
 		}
 		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to retrieve cycle data")
 	}
 
+	// Requirement 2: Prevent deletion if cycle is currently ongoing (no end date)
+	if !cycle.EndDate.Valid {
+		return utils.SendError(c, fiber.StatusConflict, "Cannot delete an ongoing cycle. Please end the cycle first before deleting.")
+	}
+
+	// Requirement 4: Save deletion reason before deleting
 	cycle.DeletionReason = sql.NullString{String: input.Reason, Valid: true}
 	if err := tx.Save(&cycle).Error; err != nil {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to save deletion reason")
 	}
 
+	// Requirement 6: Delete associated symptom logs
+	// First, get all symptom log IDs for this cycle
+	var symptomLogIDs []uint
+	tx.Model(&menstrual.SymptomLog{}).
+		Where("menstrual_cycle_id = ?", cycle.ID).
+		Pluck("id", &symptomLogIDs)
+
+	// Delete symptom log details first (foreign key constraint)
+	if len(symptomLogIDs) > 0 {
+		if err := tx.Where("symptom_log_id IN ?", symptomLogIDs).Delete(&menstrual.SymptomLogDetail{}).Error; err != nil {
+			utils.ErrorLogger.Printf("Failed to delete symptom log details for cycle %d: %v", cycle.ID, err)
+			return utils.SendError(c, fiber.StatusInternalServerError, "Failed to delete associated symptom log details")
+		}
+
+		// Then delete symptom logs
+		if err := tx.Where("menstrual_cycle_id = ?", cycle.ID).Delete(&menstrual.SymptomLog{}).Error; err != nil {
+			utils.ErrorLogger.Printf("Failed to delete symptom logs for cycle %d: %v", cycle.ID, err)
+			return utils.SendError(c, fiber.StatusInternalServerError, "Failed to delete associated symptom logs")
+		}
+	}
+
+	// Soft delete the cycle
 	if err := tx.Delete(&cycle).Error; err != nil {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to delete cycle")
 	}
@@ -403,7 +446,7 @@ func DeleteCycleByID(c *fiber.Ctx) error {
 		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to commit transaction")
 	}
 
-	return utils.SendSuccess(c, fiber.StatusOK, "Cycle deleted successfully", nil)
+	return utils.SendSuccess(c, fiber.StatusOK, "Cycle and associated symptom logs deleted successfully", nil)
 }
 
 func findActiveCycle(tx *gorm.DB, userID uint) (menstrual.MenstrualCycle, error) {
@@ -416,7 +459,8 @@ func findActiveCycle(tx *gorm.DB, userID uint) (menstrual.MenstrualCycle, error)
 
 func updatePreviousCycleLength(tx *gorm.DB, userID uint, newStartDate time.Time) {
 	var previousCycle menstrual.MenstrualCycle
-	err := tx.Where("user_id = ? AND start_date < ?", userID, newStartDate).
+	// Exclude soft-deleted cycles when calculating cycle length
+	err := tx.Where("user_id = ? AND start_date < ? AND deleted_at IS NULL", userID, newStartDate).
 		Order("start_date desc").
 		First(&previousCycle).Error
 

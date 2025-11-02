@@ -27,12 +27,22 @@ var (
 	whitelistedUserIDs  map[uint]struct{}
 	maintenanceMutex    = &sync.RWMutex{}
 
-	// Report Token Cache (BARU)
-	reportTokenCache map[string]struct{}
+	// Report Token Cache - stores metadata for report downloads
+	reportTokenCache = make(map[string]ReportMetadata)
 	reportTokenMutex = &sync.RWMutex{}
 
 	cacheMutex = &sync.RWMutex{}
 )
+
+// ReportMetadata stores information about a generated report
+type ReportMetadata struct {
+	Filename  string
+	Password  string
+	Token     string
+	ExpiresAt time.Time
+	FilePath  string
+	Used      bool
+}
 
 func InitializeRoleCache() {
 	cacheMutex.Lock()
@@ -95,7 +105,7 @@ func InitializeRoleCache() {
 	log.Println("Maintenance status and whitelist cache initialized.")
 
 	// Initialize Report Token Cache
-	reportTokenCache = make(map[string]struct{})
+	reportTokenCache = make(map[string]ReportMetadata)
 	log.Println("Report token cache initialized.")
 }
 
@@ -280,34 +290,56 @@ func IsUserWhitelisted(userUUID string) bool {
 
 // --- Report Token Functions ---
 
-// StoreReportToken menyimpan token unik ke cache dan mengatur masa kedaluwarsa.
-func StoreReportToken(token string, expiration time.Duration) {
+// StoreReportMetadata stores report metadata with expiration
+func StoreReportMetadata(encryptedToken string, metadata ReportMetadata) {
 	reportTokenMutex.Lock()
-	reportTokenCache[token] = struct{}{}
+	reportTokenCache[encryptedToken] = metadata
 	reportTokenMutex.Unlock()
 
-	// Menjadwalkan penghapusan token setelah kedaluwarsa
+	// Schedule cleanup after expiration
+	expiration := time.Until(metadata.ExpiresAt)
 	time.AfterFunc(expiration, func() {
 		reportTokenMutex.Lock()
-		delete(reportTokenCache, token)
+		delete(reportTokenCache, encryptedToken)
 		reportTokenMutex.Unlock()
-		log.Printf("Report token %s expired and was deleted from cache.", token)
+		log.Printf("Report token %s expired and was deleted from cache.", encryptedToken[:10]+"...")
 	})
 }
 
-// UseReportToken mencoba menggunakan token.
-// Jika token ada, token akan dihapus (digunakan) dan mengembalikan true.
-// Jika token tidak ada, mengembalikan false.
-func UseReportToken(token string) bool {
+// GetReportMetadata retrieves report metadata by encrypted token
+func GetReportMetadata(encryptedToken string) (ReportMetadata, bool) {
+	reportTokenMutex.RLock()
+	defer reportTokenMutex.RUnlock()
+
+	metadata, found := reportTokenCache[encryptedToken]
+	return metadata, found
+}
+
+// MarkReportAsUsed marks a report as used (downloaded)
+func MarkReportAsUsed(encryptedToken string) bool {
 	reportTokenMutex.Lock()
 	defer reportTokenMutex.Unlock()
 
-	if _, found := reportTokenCache[token]; found {
-		// Token ditemukan, hapus (gunakan) dan kembalikan true
-		delete(reportTokenCache, token)
-		return true
+	metadata, found := reportTokenCache[encryptedToken]
+	if !found || metadata.Used {
+		return false
 	}
 
-	// Token tidak ditemukan (sudah digunakan atau kedaluwarsa)
-	return false
+	metadata.Used = true
+	reportTokenCache[encryptedToken] = metadata
+	return true
+}
+
+// DeleteReportMetadata removes report metadata and optionally deletes the file
+func DeleteReportMetadata(encryptedToken string, deleteFile bool) {
+	reportTokenMutex.Lock()
+	defer reportTokenMutex.Unlock()
+
+	if metadata, found := reportTokenCache[encryptedToken]; found {
+		if deleteFile && metadata.FilePath != "" {
+			// Note: File deletion should be handled by the caller with proper error handling
+			log.Printf("Report file should be deleted: %s", metadata.FilePath)
+		}
+		delete(reportTokenCache, encryptedToken)
+	}
 }

@@ -1,8 +1,6 @@
 package handlers
 
 import (
-	"bytes"
-	"encoding/csv"
 	"fmt"
 	"ipincamp/srikandi-sehat/config"
 	"ipincamp/srikandi-sehat/database"
@@ -11,6 +9,8 @@ import (
 	"ipincamp/srikandi-sehat/src/models/menstrual"
 	"ipincamp/srikandi-sehat/src/utils"
 	"math"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -97,36 +97,15 @@ func maskEmail(email string) string {
 
 // --- Handlers ---
 
-// GenerateFullReportLink membuat token sekali pakai dan mengembalikan URL unduhan. (Admin only)
+// GenerateFullReportLink generates XLSX report, saves it as a static file, and returns an encrypted token (Admin only)
 func GenerateFullReportLink(c *fiber.Ctx) error {
+	// 1. Generate unique token and password
 	token := uuid.New().String()
-	expiration := 5 * time.Minute // Tautan hanya valid selama 5 menit
+	password := utils.GenerateRandomPassword()
+	expiration := 30 * time.Minute // Link valid for 30 minutes
 	expiresAt := time.Now().Add(expiration)
 
-	// Simpan token ke cache
-	utils.StoreReportToken(token, expiration)
-
-	// Buat URL lengkap
-	downloadURL := fmt.Sprintf("%s/api/reports/download/%s", config.Get("APP_BASE_URL"), token)
-
-	response := dto.GenerateReportResponse{
-		DownloadURL: downloadURL,
-		ExpiresAt:   expiresAt,
-	}
-
-	return utils.SendSuccess(c, fiber.StatusOK, "One-time download link generated successfully. Link expires in 5 minutes.", response)
-}
-
-// DownloadFullReportByToken menghasilkan CSV jika token valid.
-func DownloadFullReportByToken(c *fiber.Ctx) error {
-	// 1. Validasi token dari URL
-	token := c.Params("token")
-	if !utils.UseReportToken(token) {
-		// Jika token tidak ada (sudah dipakai/kedaluwarsa), kirim error
-		return utils.SendError(c, fiber.StatusNotFound, "Link is invalid, has expired, or has already been used.")
-	}
-
-	// 2. Jika token valid, lanjutkan dengan logika pembuatan CSV yang ada
+	// 2. Query report data
 	subQuery := database.DB.Table("user_roles").
 		Select("user_id").
 		Joins("JOIN roles ON user_roles.role_id = roles.id").
@@ -141,10 +120,11 @@ func DownloadFullReportByToken(c *fiber.Ctx) error {
 		Find(&cycles).Error
 
 	if err != nil {
-		utils.ErrorLogger.Println("Failed to fetch cycle data for full export:", err)
+		utils.ErrorLogger.Println("Failed to fetch cycle data for report:", err)
 		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to fetch cycle data")
 	}
 
+	// 3. Fetch symptoms
 	var allSymptomLogs []menstrual.SymptomLog
 	database.DB.Preload("Details.Symptom").
 		Where("menstrual_cycle_id IS NOT NULL").
@@ -159,6 +139,7 @@ func DownloadFullReportByToken(c *fiber.Ctx) error {
 		}
 	}
 
+	// 4. Build report records
 	var records []dto.FullExportRecord
 	userCycleCount := make(map[uint]int64)
 
@@ -168,7 +149,6 @@ func DownloadFullReportByToken(c *fiber.Ctx) error {
 		profile := user.Profile
 
 		record := dto.FullExportRecord{
-			// UserUUID:            user.UUID,
 			UserName:            user.Name,
 			UserEmail:           maskEmail(user.Email),
 			UserRegisteredAt:    user.CreatedAt,
@@ -182,6 +162,7 @@ func DownloadFullReportByToken(c *fiber.Ctx) error {
 			ParentLastJob:       profile.ParentLastJob,
 			InternetAccess:      string(profile.InternetAccess),
 		}
+
 		if profile.Village.ID > 0 {
 			record.Village = profile.Village.Name
 			record.District = profile.Village.District.Name
@@ -189,6 +170,7 @@ func DownloadFullReportByToken(c *fiber.Ctx) error {
 			record.Province = profile.Village.District.Regency.Province.Name
 			record.Classification = profile.Village.Classification.Name
 		}
+
 		if record.HeightCM > 0 && record.WeightKG > 0 {
 			heightInMeters := float32(record.HeightCM) / 100
 			bmi := record.WeightKG / (heightInMeters * heightInMeters)
@@ -200,6 +182,7 @@ func DownloadFullReportByToken(c *fiber.Ctx) error {
 		if cycle.EndDate.Valid {
 			endDate = cycle.EndDate.Time.Format("2006-01-02")
 		}
+
 		symptoms := "Tidak ada gejala tercatat"
 		if symptomNames, found := symptomsByCycleID[int64(cycle.ID)]; found {
 			uniqueSymptoms := make(map[string]bool)
@@ -212,6 +195,7 @@ func DownloadFullReportByToken(c *fiber.Ctx) error {
 			}
 			symptoms = strings.Join(uniqueNames, "; ")
 		}
+
 		record.CycleNumber = userCycleCount[cycle.UserID]
 		record.StartDate = cycle.StartDate.Format("2006-01-02")
 		record.EndDate = endDate
@@ -224,30 +208,114 @@ func DownloadFullReportByToken(c *fiber.Ctx) error {
 		records = append(records, record)
 	}
 
-	b := new(bytes.Buffer)
-	w := csv.NewWriter(b)
-	header := []string{
-		"Nama Pengguna", "Email", "Tanggal Registrasi", "Umur", "No. Telepon",
-		"Tinggi (cm)", "Berat (kg)", "IMT", "Kategori IMT", "Usia Menarche", "Pendidikan Terakhir",
-		"Pendidikan Ortu", "Pekerjaan Ortu", "Akses Internet", "Desa/Kelurahan", "Kecamatan",
-		"Kabupaten/Kota", "Provinsi", "Klasifikasi Alamat", "Siklus Ke-", "Tanggal Mulai", "Tanggal Selesai",
-		"Lama Haid (Hari)", "Kategori Lama Haid", "Panjang Siklus (Hari)", "Kategori Panjang Siklus", "Gejala yang Dirasakan",
+	// 5. Create reports directory if not exists
+	reportsDir := "./reports"
+	if err := os.MkdirAll(reportsDir, 0755); err != nil {
+		utils.ErrorLogger.Println("Failed to create reports directory:", err)
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to create reports directory")
 	}
-	w.Write(header)
-	for _, rec := range records {
-		row := []string{
-			rec.UserName, rec.UserEmail, rec.UserRegisteredAt.Format("2006-01-02 15:04:05"), fmt.Sprintf("%d", rec.Age), rec.PhoneNumber,
-			fmt.Sprintf("%d", rec.HeightCM), fmt.Sprintf("%.2f", rec.WeightKG), fmt.Sprintf("%.2f", rec.BMI), rec.BMICategory, fmt.Sprintf("%d", rec.MenarcheAge), rec.LastEducation,
-			rec.ParentLastEducation, rec.ParentLastJob, rec.InternetAccess, rec.Village, rec.District,
-			rec.Regency, rec.Province, rec.Classification, fmt.Sprintf("%d", rec.CycleNumber), rec.StartDate, rec.EndDate,
-			fmt.Sprintf("%d", rec.PeriodLength), rec.PeriodCategory, fmt.Sprintf("%d", rec.CycleLength), rec.CycleCategory, rec.Symptoms,
-		}
-		w.Write(row)
-	}
-	w.Flush()
 
-	filename := fmt.Sprintf("report_srikandi-sehat_%s.csv", time.Now().Format("2006-01-02_15-04-05")) // Ganti : dengan - agar aman di nama file
-	c.Set("Content-Type", "text/csv")
-	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
-	return c.Send(b.Bytes())
+	// 6. Generate XLSX file
+	filename := fmt.Sprintf("report_srikandi-sehat_%s.xlsx", time.Now().Format("2006-01-02_15-04-05"))
+	filePath := filepath.Join(reportsDir, filename)
+
+	if err := utils.GenerateReportXLSX(records, filePath); err != nil {
+		utils.ErrorLogger.Println("Failed to generate XLSX:", err)
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to generate report file")
+	}
+
+	// 7. Encrypt token with password
+	encryptedToken, err := utils.EncryptToken(token, password)
+	if err != nil {
+		utils.ErrorLogger.Println("Failed to encrypt token:", err)
+		os.Remove(filePath) // Clean up the file
+		return utils.SendError(c, fiber.StatusInternalServerError, "Failed to generate secure token")
+	}
+
+	// 8. Store metadata in cache
+	metadata := utils.ReportMetadata{
+		Filename:  filename,
+		Password:  password,
+		Token:     token,
+		ExpiresAt: expiresAt,
+		FilePath:  filePath,
+		Used:      false,
+	}
+	utils.StoreReportMetadata(encryptedToken, metadata)
+
+	// 9. Build download URL
+	downloadURL := fmt.Sprintf("%s/api/reports/download", config.Get("APP_BASE_URL"))
+
+	response := dto.GenerateReportResponse{
+		DownloadURL:    downloadURL,
+		EncryptedToken: encryptedToken,
+		ExpiresAt:      expiresAt,
+	}
+
+	return utils.SendSuccess(c, fiber.StatusOK,
+		fmt.Sprintf("Report generated successfully. Use the encrypted token and password to download. Password: %s", password),
+		response)
+}
+
+// DownloadFullReport validates password and encrypted token, then downloads the XLSX file
+func DownloadFullReport(c *fiber.Ctx) error {
+	// 1. Parse and validate request body
+	input := c.Locals("request_body").(*dto.ValidateReportRequest)
+	token := input.Token
+
+	// 2. Get metadata from cache
+	metadata, found := utils.GetReportMetadata(token)
+	if !found {
+		return utils.SendError(c, fiber.StatusNotFound, "Link is invalid, has expired, or has already been used")
+	}
+
+	// 3. Check if already used
+	if metadata.Used {
+		return utils.SendError(c, fiber.StatusGone, "This download link has already been used")
+	}
+
+	// 4. Check expiration
+	if time.Now().After(metadata.ExpiresAt) {
+		utils.DeleteReportMetadata(token, true)
+		os.Remove(metadata.FilePath) // Clean up expired file
+		return utils.SendError(c, fiber.StatusGone, "Download link has expired")
+	}
+
+	// 5. Decrypt and validate token using password
+	decryptedToken, err := utils.DecryptToken(token, input.Password)
+	if err != nil {
+		return utils.SendError(c, fiber.StatusUnauthorized, "Invalid password")
+	}
+
+	if decryptedToken != metadata.Token {
+		return utils.SendError(c, fiber.StatusUnauthorized, "Token validation failed")
+	}
+
+	// 6. Check if file exists
+	if _, err := os.Stat(metadata.FilePath); os.IsNotExist(err) {
+		utils.DeleteReportMetadata(token, false)
+		return utils.SendError(c, fiber.StatusNotFound, "Report file not found")
+	}
+
+	// 7. Mark as used
+	if !utils.MarkReportAsUsed(token) {
+		return utils.SendError(c, fiber.StatusConflict, "Failed to mark report as used")
+	}
+
+	// 8. Send the file
+	c.Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", metadata.Filename))
+
+	// Schedule file deletion after successful download
+	go func() {
+		time.Sleep(5 * time.Second)
+		if err := os.Remove(metadata.FilePath); err != nil {
+			utils.ErrorLogger.Printf("Failed to delete report file %s: %v", metadata.FilePath, err)
+		} else {
+			utils.InfoLogger.Printf("Report file deleted: %s", metadata.FilePath)
+		}
+		utils.DeleteReportMetadata(token, false)
+	}()
+
+	return c.SendFile(metadata.FilePath)
 }

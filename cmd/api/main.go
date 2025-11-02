@@ -35,9 +35,9 @@ func main() {
 		utils.InfoLogger.Println("Scheduled cron jobs for production at 05:00 AM daily.")
 	} else {
 		utils.InfoLogger.Println("Running in development mode. Scheduling cron jobs for testing.")
-		c.AddFunc("@every 1m", workers.CheckLongMenstrualCycles) // setiap 1 menit (testing)
-		c.AddFunc("@every 1m", workers.CheckLateMenstrualCycles) // setiap 1 menit (testing)
-		utils.InfoLogger.Println("Scheduled cron jobs for development every 1 minute.")
+		c.AddFunc("@every 5m", workers.CheckLongMenstrualCycles) // setiap 5 menit (testing)
+		c.AddFunc("@every 5m", workers.CheckLateMenstrualCycles) // setiap 5 menit (testing)
+		utils.InfoLogger.Println("Scheduled cron jobs for development every 5 minute.")
 	}
 	c.Start()
 	utils.InfoLogger.Println("Cron job for cycle checking has been scheduled.")
@@ -63,7 +63,7 @@ func main() {
 	app.Use(middleware.RecoverMiddleware())
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: config.Get("CORS_ALLOWED_ORIGINS"),
-		AllowHeaders: "Origin, Content-Type, Accept, Authorization, X-Api-Key",
+		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
 		AllowMethods: "GET, POST, PUT, DELETE, PATCH",
 	}))
 	app.Use(logger.New())

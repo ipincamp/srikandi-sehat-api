@@ -5,7 +5,8 @@
 ### Quick Navigation
 
 - [Version History](#version-history)
-- [Current Release (v1.0.0)](#version-100)
+- [Current Release (v1.0.1)](#version-101)
+- [Previous Release (v1.0.0)](#version-100)
 
 ### Version 1.0.0 Documentation
 
@@ -14,10 +15,58 @@
     - [Quick Navigation](#quick-navigation)
     - [Version 1.0.0 Documentation](#version-100-documentation)
   - [Version History](#version-history)
+    - [Version 1.0.1](#version-101)
     - [Version 1.0.0](#version-100)
-  - [Version 1.0.0](#version-100-1)
+  - [Version 1.0.1](#version-101-1)
     - [📅 Release Date](#-release-date)
     - [🎯 Overview](#-overview)
+  - [✨ New Features](#-new-features)
+    - [1. **Email Verification System**](#1-email-verification-system)
+    - [2. **Maintenance Mode Management**](#2-maintenance-mode-management)
+    - [3. **Push Notification System**](#3-push-notification-system)
+      - [Long Period Detection](#long-period-detection)
+      - [Late Period Detection](#late-period-detection)
+    - [4. **Menstrual Cycle Soft Delete**](#4-menstrual-cycle-soft-delete)
+    - [5. **Report Generation Improvements**](#5-report-generation-improvements)
+    - [6. **Development Environment Improvements**](#6-development-environment-improvements)
+  - [🔧 Improvements \& Refactoring](#-improvements--refactoring)
+    - [Code Quality](#code-quality)
+    - [Performance Optimizations](#performance-optimizations)
+    - [Rate Limiting](#rate-limiting)
+    - [Database Management](#database-management)
+    - [Authentication Improvements](#authentication-improvements)
+  - [🐛 Bug Fixes](#-bug-fixes)
+    - [Critical Fixes](#critical-fixes)
+    - [Minor Fixes](#minor-fixes)
+  - [🗄️ Database Changes](#️-database-changes)
+    - [New Tables](#new-tables)
+    - [Schema Modifications](#schema-modifications)
+  - [📦 Dependencies](#-dependencies)
+    - [New Packages](#new-packages)
+    - [Updated Packages](#updated-packages)
+  - [🚀 Deployment Notes](#-deployment-notes)
+    - [Environment Variables](#environment-variables)
+    - [Database Migrations](#database-migrations)
+    - [Post-Deployment Steps](#post-deployment-steps)
+  - [📊 Statistics](#-statistics)
+    - [Code Changes](#code-changes)
+    - [Feature Breakdown](#feature-breakdown)
+  - [🔒 Security Enhancements](#-security-enhancements)
+  - [🧪 Testing](#-testing)
+    - [Email Testing](#email-testing)
+    - [Maintenance Mode Testing](#maintenance-mode-testing)
+    - [Notification Testing](#notification-testing)
+  - [📝 Breaking Changes](#-breaking-changes)
+    - [API Changes](#api-changes)
+    - [Behavioral Changes](#behavioral-changes)
+  - [🔄 Migration from v1.0.0](#-migration-from-v100)
+    - [Automatic Migration](#automatic-migration)
+    - [Manual Steps](#manual-steps)
+  - [🐛 Known Issues](#-known-issues)
+  - [📌 Version Information](#-version-information)
+  - [Version 1.0.0](#version-100-1)
+    - [📅 Release Date](#-release-date-1)
+    - [🎯 Overview](#-overview-1)
   - [✨ Features](#-features)
     - [1. **Authentication \& Authorization System**](#1-authentication--authorization-system)
       - [Registration Process](#registration-process)
@@ -51,14 +100,14 @@
       - [Download Full Report CSV (Admin Only)](#download-full-report-csv-admin-only)
   - [🛡️ Security Features](#️-security-features)
     - [Authentication \& Authorization](#authentication--authorization)
-    - [Rate Limiting](#rate-limiting)
+    - [Rate Limiting](#rate-limiting-1)
     - [Data Protection](#data-protection)
-    - [Performance Optimizations](#performance-optimizations)
+    - [Performance Optimizations](#performance-optimizations-1)
   - [🔧 Technical Architecture](#-technical-architecture)
     - [Technology Stack](#technology-stack)
     - [Project Structure](#project-structure)
     - [Key Design Patterns](#key-design-patterns)
-    - [Database Migrations](#database-migrations)
+    - [Database Migrations](#database-migrations-1)
   - [📊 Data Models](#-data-models)
     - [Core Entities](#core-entities)
     - [Relationships](#relationships)
@@ -67,7 +116,7 @@
     - [Graceful Shutdown](#graceful-shutdown)
     - [Logging](#logging)
     - [Docker Support](#docker-support)
-    - [Database Management](#database-management)
+    - [Database Management](#database-management-1)
   - [📱 Push Notifications (FCM)](#-push-notifications-fcm)
     - [Integration](#integration)
     - [Notification Events](#notification-events)
@@ -89,18 +138,35 @@
     - [Planned Features](#planned-features)
   - [📝 License](#-license)
   - [🙏 Acknowledgments](#-acknowledgments)
-  - [📌 Version Information](#-version-information)
+  - [📌 Version Information](#-version-information-1)
   - [🔗 Quick Links](#-quick-links)
 
 ---
 
 ## Version History
 
+### Version 1.0.1
+
+**Release Date:** October 31, 2025  
+**Status:** Current Release
+
+**Highlights:**
+
+- Email verification system for user registration
+- Maintenance mode management with whitelist support
+- Push notification system for menstrual cycle monitoring
+- Soft delete functionality for menstrual cycles
+- Report generation improvements with token-based downloads
+- Enhanced rate limiting and error handling
+- Performance optimizations and refactoring
+- Development environment improvements with Air live reload
+
+[View detailed release notes →](#version-101)
+
 ### Version 1.0.0
 
-**Release Date:** September 15, 2025
-
-**Status:** Current Release
+**Release Date:** September 15, 2025  
+**Status:** Initial Release
 
 **Highlights:**
 
@@ -114,6 +180,437 @@
 - Asynchronous user registration system
 
 [View detailed release notes →](#version-100)
+
+---
+
+## Version 1.0.1
+
+### 📅 Release Date
+
+October 31, 2025
+
+### 🎯 Overview
+
+Version 1.0.1 introduces significant enhancements to the Srikandi Sehat API, focusing on user experience improvements, system reliability, and operational flexibility. This release includes email verification, maintenance mode management, automated menstrual cycle monitoring with push notifications, and various performance optimizations.
+
+---
+
+## ✨ New Features
+
+### 1. **Email Verification System**
+
+**Implementation:**
+
+- Added email verification fields to user model (`is_verified`, `verification_token`, `verification_token_expires_at`)
+- Added `last_otp_sent_at` field for rate limiting OTP requests
+- Implemented OTP generation and email delivery system
+- Created verification middleware to protect authenticated endpoints
+- Integrated MailHog service for email testing in development
+
+**Flow:**
+
+1. User registers and receives OTP via email
+2. OTP valid for 15 minutes
+3. Rate limit: One OTP per minute
+4. User verifies email using OTP code
+5. Account becomes fully activated
+6. JWT token generated upon successful verification
+
+**Benefits:**
+
+- Prevents fake email registrations
+- Ensures valid contact information
+- Improved account security
+- Better user engagement tracking
+
+### 2. **Maintenance Mode Management**
+
+**Features:**
+
+- System-wide maintenance mode toggle
+- IP-based whitelist for admin access during maintenance
+- Cached maintenance status for performance
+- Middleware to block non-whitelisted requests during maintenance
+- Admin endpoints for managing maintenance settings
+
+**Endpoints:**
+
+- `GET /api/v1/maintenance/status` - Check maintenance status
+- `POST /api/v1/maintenance/status` - Toggle maintenance mode (Admin)
+- `GET /api/v1/maintenance/whitelist` - List whitelisted IPs (Admin)
+- `POST /api/v1/maintenance/whitelist` - Add IP to whitelist (Admin)
+- `DELETE /api/v1/maintenance/whitelist/:id` - Remove IP from whitelist (Admin)
+
+**Use Cases:**
+
+- Scheduled system maintenance
+- Emergency downtime
+- Database migrations
+- Testing in production environment
+
+### 3. **Push Notification System**
+
+**Implementation:**
+
+- Added FCM token to users table
+- Created notifications table for history tracking
+- Implemented notification handlers and routes
+- Added endpoint to update FCM token
+- Endpoint to mark notifications as read
+- Get notification history with pagination
+
+**Automated Notifications:**
+
+#### Long Period Detection
+
+- Cron job runs every day at 5 AM
+- Detects cycles lasting more than 7 days
+- Sends notification to user
+- Marks cycle as `long_period_notified` to prevent duplicates
+
+#### Late Period Detection
+
+- Cron job runs every day at 5 AM
+- Detects when expected period is 7+ days late
+- Calculates based on previous cycle average
+- Sends reminder notification
+- Marks cycle as `late_period_notified`
+
+**Endpoints:**
+
+- `POST /api/v1/users/fcm-token` - Update FCM token
+- `GET /api/v1/notifications` - Get notification history
+- `PUT /api/v1/notifications/:id/read` - Mark as read
+- `POST /api/v1/notifications/test` - Test notification (Admin)
+
+**Benefits:**
+
+- Proactive health monitoring
+- Improved user engagement
+- Early detection of potential health issues
+- Better cycle awareness
+
+### 4. **Menstrual Cycle Soft Delete**
+
+**Implementation:**
+
+- Added soft delete fields to menstrual cycles table
+- `deleted_at`, `deleted_by`, `deletion_reason`
+- API endpoint to delete cycles with reason
+- Enhanced cycle history to include deleted records
+- Filter option to exclude deleted cycles
+
+**Flow:**
+
+1. User requests cycle deletion with reason
+2. System marks cycle as deleted (soft delete)
+3. Records deletion timestamp, user ID, and reason
+4. Cycle remains in database for audit trail
+5. Excluded from active queries by default
+6. Can be viewed in history with `include_deleted=true` parameter
+
+**Benefits:**
+
+- Data preservation for analytics
+- Audit trail for cycle management
+- Ability to restore if needed
+- Better data integrity
+
+### 5. **Report Generation Improvements**
+
+**Enhancements:**
+
+- Token-based download system for CSV reports
+- Email masking in reports for privacy
+- Timestamp in filename for uniqueness
+- Improved download URL generation
+- Base URL configuration from environment
+
+**Flow:**
+
+1. Admin requests report generation
+2. System generates unique token
+3. Returns download link with token
+4. Token valid for limited time
+5. User downloads via authenticated link
+6. Emails masked in CSV export
+
+**Example Filename:**
+
+```
+full_report_2025_10_31_143022.csv
+```
+
+### 6. **Development Environment Improvements**
+
+**Additions:**
+
+- Air configuration for live reload during development
+- Improved Makefile with separate build targets
+- Binary output to `bin/` directory
+- Enhanced development mode setup
+- Better project structure with `cmd/` directory
+
+**New Commands:**
+
+```bash
+make dev          # Run with Air live reload
+make build-api    # Build API binary
+make build-migrate # Build migration tool
+make build-seed   # Build seeder tool
+make install-air  # Install Air for development
+```
+
+---
+
+## 🔧 Improvements & Refactoring
+
+### Code Quality
+
+- **Centralized Constants**: Menstrual cycle thresholds moved to constants package
+- **Enhanced Logging**: Improved logging across all components for better debugging
+- **Logger Refactoring**: Better logger initialization and file handling
+- **Error Handling**: More descriptive error messages and better error tracking
+
+### Performance Optimizations
+
+- **Query Optimization**: Improved `GetAllUsers` subquery logic and join conditions
+- **Caching Enhancements**: Maintenance status and whitelist caching
+- **Symptom ID Caching**: Improved menstrual data seeding performance
+- **Batch Inserts**: Enhanced simulation seeder with batch operations
+
+### Rate Limiting
+
+- **Login Rate Limiter**: Added email fallback for better tracking
+- **Function Renaming**: Clearer rate limiter function names
+- **Improved Route Formatting**: Better organization and readability
+
+### Database Management
+
+- **Migration Tool**: Standalone binary in `cmd/migrate/`
+- **Reset Commands**: `make reset-db` with confirmation prompts
+- **Drop All**: `make drop-db` for clean database reset
+- **Better Seeding**: Enhanced seeders for regions and simulation data
+
+### Authentication Improvements
+
+- **Streamlined Registration**: Removed OTP logic from initial registration
+- **Default Role Assignment**: Automatic user role assignment
+- **JWT Generation**: Improved token generation process
+- **Response Enhancement**: Added `is_verified` field to user responses
+
+---
+
+## 🐛 Bug Fixes
+
+### Critical Fixes
+
+- **Bloom Filter Fix**: Resolved false positive issue in duplicate detection
+- **Worker Bottleneck**: Fixed I/O bottleneck in registration worker
+- **Download Report Link**: Adjusted to bind with base_url correctly
+- **Cron Schedule**: Restored proper cron job schedule (5 AM daily)
+
+### Minor Fixes
+
+- **Route Formatting**: Improved clarity in API route definitions
+- **Validation**: Enhanced request body validation across endpoints
+- **Error Messages**: More descriptive error responses
+
+---
+
+## 🗄️ Database Changes
+
+### New Tables
+
+1. **notifications**
+   - User notifications history
+   - Fields: title, message, data, read status, timestamps
+
+2. **settings**
+   - System-wide configuration
+   - Maintenance mode flag
+
+3. **maintenance_whitelist**
+   - IP addresses allowed during maintenance
+   - Fields: IP address, description, timestamps
+
+### Schema Modifications
+
+1. **users**
+   - Added: `fcm_token`, `is_verified`, `verification_token`, `verification_token_expires_at`, `last_otp_sent_at`
+
+2. **menstrual_cycles**
+   - Added: `deleted_at`, `deleted_by`, `deletion_reason`
+   - Added: `long_period_notified`, `late_period_notified`
+
+---
+
+## 📦 Dependencies
+
+### New Packages
+
+- Email utilities (OTP generation and delivery)
+- Enhanced Firebase Cloud Messaging integration
+- Improved caching mechanisms
+
+### Updated Packages
+
+- Go modules updated for compatibility
+- Enhanced logging dependencies
+
+---
+
+## 🚀 Deployment Notes
+
+### Environment Variables
+
+**New Required Variables:**
+
+```env
+# Email Configuration (for development with MailHog)
+MAILHOG_HOST=localhost:1025
+
+# Base URL for report downloads
+BASE_URL=https://api.example.com
+```
+
+### Database Migrations
+
+Run migrations to update schema:
+
+```bash
+make migrate-up
+```
+
+Or using the standalone binary:
+
+```bash
+./bin/migrate up
+```
+
+### Post-Deployment Steps
+
+1. Run database migrations
+2. Configure MailHog or SMTP for email delivery
+3. Update BASE_URL in environment configuration
+4. Restart application to load new configuration
+5. Test email verification flow
+6. Verify cron jobs are running (check at 5 AM)
+
+---
+
+## 📊 Statistics
+
+### Code Changes
+
+- **Files Changed**: 53 files
+- **Additions**: +2,235 lines
+- **Deletions**: -374 lines
+- **Net Change**: +1,861 lines
+
+### Feature Breakdown
+
+- **New Migrations**: 8 database migrations
+- **New Endpoints**: 10+ new API endpoints
+- **New Models**: 3 new database models
+- **New Workers**: 2 cron job workers
+- **Removed Components**: Registration worker (simplified)
+
+---
+
+## 🔒 Security Enhancements
+
+- Email verification prevents fake accounts
+- Maintenance mode whitelist for controlled access
+- Token-based report downloads
+- Email masking in exported data
+- Rate limiting improvements
+- Enhanced validation across endpoints
+
+---
+
+## 🧪 Testing
+
+### Email Testing
+
+Use MailHog for local email testing:
+
+```bash
+docker-compose up mailhog
+```
+
+Access MailHog UI: `http://localhost:8025`
+
+### Maintenance Mode Testing
+
+1. Enable maintenance mode via admin endpoint
+2. Verify non-whitelisted requests are blocked
+3. Add test IP to whitelist
+4. Verify whitelisted IP can access
+5. Disable maintenance mode
+
+### Notification Testing
+
+Use the test notification endpoint:
+
+```bash
+POST /api/v1/notifications/test
+Authorization: Bearer <admin_token>
+{
+  "user_id": "uuid",
+  "title": "Test",
+  "message": "Test notification"
+}
+```
+
+---
+
+## 📝 Breaking Changes
+
+### API Changes
+
+**None** - This release is backward compatible with v1.0.0
+
+### Behavioral Changes
+
+1. **Registration Flow**: Users must verify email before accessing protected endpoints
+2. **Cycle Queries**: Soft-deleted cycles excluded by default (use `include_deleted=true` to include)
+3. **Rate Limiting**: Enhanced login rate limiting may affect high-frequency users
+
+---
+
+## 🔄 Migration from v1.0.0
+
+### Automatic Migration
+
+Run database migrations:
+
+```bash
+make migrate-up
+```
+
+### Manual Steps
+
+1. Update environment variables (add new required vars)
+2. Existing users are automatically marked as verified
+3. No data migration required for existing cycles
+4. FCM tokens can be updated via new endpoint
+
+---
+
+## 🐛 Known Issues
+
+**None reported** at the time of release
+
+---
+
+## 📌 Version Information
+
+**Version:** 1.0.1  
+**Release Date:** October 31, 2025  
+**Git Tag:** v1.0.1  
+**Commit:** 5f2961243703903129fd81e3a4db6ee0f65267b5  
+**Previous Version:** v1.0.0 (7eb045e91811d12914240474f9bf6d05803cdbdf)
 
 ---
 

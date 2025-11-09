@@ -21,45 +21,54 @@ var _ ports.AuthService = (*authService)(nil)
 
 // authService implements the ports.AuthService interface.
 type authService struct {
-	userRepo ports.UserRepository
-	maker    token.Maker
-	hasher   password.Hasher
-	tokenCfg config.Token
-	logger   zerolog.Logger
+	userRepo  ports.UserRepository
+	userCache ports.UserCache
+	maker     token.Maker
+	hasher    password.Hasher
+	tokenCfg  config.Token
+	logger    zerolog.Logger
 }
 
 // NewAuthService is the constructor for authService.
 func NewAuthService(
 	userRepo ports.UserRepository,
+	userCache ports.UserCache,
 	maker token.Maker,
 	hasher password.Hasher,
 	tokenCfg config.Token,
 	logger zerolog.Logger,
 ) ports.AuthService {
 	return &authService{
-		userRepo: userRepo,
-		maker:    maker,
-		hasher:   hasher,
-		tokenCfg: tokenCfg,
-		logger:   logger,
+		userRepo:  userRepo,
+		userCache: userCache,
+		maker:     maker,
+		hasher:    hasher,
+		tokenCfg:  tokenCfg,
+		logger:    logger,
 	}
 }
 
 // Register creates a new user, hashes their password,
 // saves them, and returns a new set of auth tokens.
 func (s *authService) Register(ctx context.Context, name, email, passwordStr string) (*ports.AuthResponse, error) {
-	// 1. Check if user already exists (pre-check)
-	_, err := s.userRepo.FindByEmail(ctx, email)
-	if err == nil {
-		// User found, email is taken
-		s.logger.Warn().Str("email", email).Msg("Registration failed: email already exists (pre-check)")
-		return nil, ErrEmailExists
+	// 1. Check if user *might* exist using the bloom filter
+	if s.userCache.Test(email) {
+		// Email *might* exist. We must fallback to the DB for a definitive check.
+		_, err := s.userRepo.FindByEmail(ctx, email)
+		if err == nil {
+			// User found, email is taken
+			s.logger.Warn().Str("email", email).Msg("Registration failed: email already exists (pre-check)")
+			return nil, ErrEmailExists
+		}
+		if !errors.Is(err, db.ErrUserNotFound) {
+			// A different, unexpected database error occurred during find
+			s.logger.Error().Err(err).Str("email", email).Msg("Failed to check user existence")
+			return nil, err
+		}
+		// If we are here, it was a false positive. We can proceed.
 	}
-	if !errors.Is(err, db.ErrUserNotFound) {
-		// A different, unexpected database error occurred during find
-		s.logger.Error().Err(err).Str("email", email).Msg("Failed to check user existence")
-		return nil, err
-	}
+	// If filter.Test() was false, email *definitely does not exist*,
+	// so we skip the FindByEmail check entirely, saving a DB query.
 
 	// 2. Hash the password
 	hashedPassword, err := s.hasher.Hash(passwordStr)
@@ -92,13 +101,25 @@ func (s *authService) Register(ctx context.Context, name, email, passwordStr str
 
 	s.logger.Info().Str("email", email).Str("uuid", user.UUID).Msg("User registered successfully")
 
-	// 5. Generate tokens
+	// 5. Add new user to our in-memory cache
+	s.userCache.Add(user.Email)
+
+	// 6. Generate tokens
 	return s.createTokenSet(user)
 }
 
 // Login validates user credentials and returns a new set of auth tokens.
 func (s *authService) Login(ctx context.Context, email, passwordStr string) (*ports.AuthResponse, error) {
-	// 1. Find user by email
+	// 1. Check bloom filter
+	if !s.userCache.Test(email) {
+		// Email *definitely does not exist*.
+		// We can short-circuit without hitting the DB.
+		// This is a very cheap way to reject invalid login attempts.
+		s.logger.Warn().Str("email", email).Msg("Login failed: invalid credentials (user not found via bloom filter)")
+		return nil, ErrInvalidCredentials
+	}
+
+	// 2. Find user by email (filter reported a *possible* match)
 	user, err := s.userRepo.FindByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, db.ErrUserNotFound) {
@@ -109,13 +130,13 @@ func (s *authService) Login(ctx context.Context, email, passwordStr string) (*po
 		return nil, err
 	}
 
-	// 2. Compare password
+	// 3. Compare password
 	if !s.hasher.Compare(user.Password, passwordStr) {
 		s.logger.Warn().Str("email", email).Msg("Login failed: invalid credentials (password mismatch)")
 		return nil, ErrInvalidCredentials
 	}
 
-	// 3. Generate tokens
+	// 4. Generate tokens
 	s.logger.Info().Str("email", email).Str("uuid", user.UUID).Msg("User logged in successfully")
 	return s.createTokenSet(user)
 }

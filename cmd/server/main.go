@@ -11,8 +11,10 @@ import (
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/playground"
 
+	"github.com/ipincamp/srikandi-sehat/internal/adapters/driven/inmemory"
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driven/postgres"
 	"github.com/ipincamp/srikandi-sehat/internal/core/service"
+	"github.com/ipincamp/srikandi-sehat/pkg/bloomfilter"
 	"github.com/ipincamp/srikandi-sehat/pkg/config"
 	"github.com/ipincamp/srikandi-sehat/pkg/logger"
 	"github.com/ipincamp/srikandi-sehat/pkg/password"
@@ -68,17 +70,51 @@ func main() {
 	userRepoLogger := log.With().Str("component", "UserRepository").Logger()
 	userRepo := postgres.NewUserRepository(dbPool, userRepoLogger)
 
-	// 4c. Initialize Core Services
-	// Inject dependencies (repo, helpers, and logger)
-	authServiceLogger := log.With().Str("component", "AuthService").Logger()
-	authService := service.NewAuthService(userRepo, tokenMaker, hasher, cfg.Token, authServiceLogger)
+	// 4c. Initialize & Populate In-Memory Cache
+	log.Info().Msg("Loading user emails for in-memory cache...")
+	allEmails, err := userRepo.GetAllUserEmails(ctx)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to load user emails for cache")
+	}
 
-	// 4d. Initialize Driving Adapters (GraphQL)
+	// Configure bloom filter.
+	const (
+		expectedUsers     = 1000000
+		falsePositiveRate = 0.001
+	)
+
+	// Calculate optimal parameters
+	m, k := bloomfilter.CalculateParams(uint64(expectedUsers), falsePositiveRate)
+
+	// Create the adapter
+	userCache := inmemory.NewUserBloomCache(m, k)
+
+	// Populate the filter
+	userCache.Populate(allEmails)
+
+	log.Info().
+		Int("loaded_emails", len(allEmails)).
+		Uint64("filter_bits_m", m).
+		Uint("filter_hashes_k", k).
+		Msg("In-memory user cache (Bloom filter) populated")
+
+	// 4d. Initialize Core Services
+	authServiceLogger := log.With().Str("component", "AuthService").Logger()
+	authService := service.NewAuthService(
+		userRepo,
+		userCache,
+		tokenMaker,
+		hasher,
+		cfg.Token,
+		authServiceLogger,
+	)
+
+	// 4e. Initialize Driving Adapters (GraphQL)
 	// Inject the service and a logger
 	resolverLogger := log.With().Str("component", "GraphQLResolver").Logger()
 	gqlResolver := resolvers.NewResolver(authService, resolverLogger)
 
-	// 4e. Create GraphQL server configuration
+	// 4f. Create GraphQL server configuration (sebelumnya 4e)
 	gqlConfig := generated.Config{Resolvers: gqlResolver}
 	gqlServer := handler.NewDefaultServer(generated.NewExecutableSchema(gqlConfig))
 

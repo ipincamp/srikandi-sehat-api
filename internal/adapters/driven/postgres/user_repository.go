@@ -159,6 +159,8 @@ func (r *userRepository) FindByEmail(ctx context.Context, email string) (*domain
 	return dbUser.toDomain(), nil
 }
 
+/*
+// DEPRECATED
 // GetAllUserEmails retrieves all user emails from the database.
 func (r *userRepository) GetAllUserEmails(ctx context.Context) ([]string, error) {
 	query := `SELECT email FROM users`
@@ -190,3 +192,4 @@ func (r *userRepository) GetAllUserEmails(ctx context.Context) ([]string, error)
 	r.logger.Debug().Int("count", len(emails)).Msg("Loaded all user emails")
 	return emails, nil
 }
+*/

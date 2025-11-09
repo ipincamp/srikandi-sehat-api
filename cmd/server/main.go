@@ -11,10 +11,11 @@ import (
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/playground"
 
-	"github.com/ipincamp/srikandi-sehat/internal/adapters/driven/inmemory"
+	// "github.com/ipincamp/srikandi-sehat/internal/adapters/driven/inmemory"
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driven/postgres"
 	"github.com/ipincamp/srikandi-sehat/internal/core/service"
-	"github.com/ipincamp/srikandi-sehat/pkg/bloomfilter"
+
+	// "github.com/ipincamp/srikandi-sehat/pkg/bloomfilter"
 	"github.com/ipincamp/srikandi-sehat/pkg/config"
 	"github.com/ipincamp/srikandi-sehat/pkg/logger"
 	"github.com/ipincamp/srikandi-sehat/pkg/password"
@@ -79,34 +80,37 @@ func main() {
 	// Create the Unit of Work factory, passing the pool
 	uow := postgres.NewUnitOfWork(dbPool, uowLogger)
 
-	// 4d. Initialize & Populate In-Memory Cache
-	log.Info().Msg("Loading user emails for in-memory cache...")
-	// We can use the non-transactional repo to populate the cache
-	allEmails, err := userRepo.GetAllUserEmails(ctx)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to load user emails for cache")
-	}
+	/*
+		// DEPRECATED
+		// 4d. Initialize & Populate In-Memory Cache
+		log.Info().Msg("Loading user emails for in-memory cache...")
+		// We can use the non-transactional repo to populate the cache
+		allEmails, err := userRepo.GetAllUserEmails(ctx)
+		if err != nil {
+			log.Fatal().Err(err).Msg("Failed to load user emails for cache")
+		}
 
-	// Configure bloom filter.
-	const (
-		expectedUsers     = 1000000
-		falsePositiveRate = 0.001
-	)
+		// Configure bloom filter.
+		const (
+			expectedUsers     = 1000000
+			falsePositiveRate = 0.001
+		)
 
-	// Calculate optimal parameters
-	m, k := bloomfilter.CalculateParams(uint64(expectedUsers), falsePositiveRate)
+		// Calculate optimal parameters
+		m, k := bloomfilter.CalculateParams(uint64(expectedUsers), falsePositiveRate)
 
-	// Create the adapter
-	userCache := inmemory.NewUserBloomCache(m, k)
+		// Create the adapter
+		userCache := inmemory.NewUserBloomCache(m, k)
 
-	// Populate the filter
-	userCache.Populate(allEmails)
+		// Populate the filter
+		userCache.Populate(allEmails)
 
-	log.Info().
-		Int("loaded_emails", len(allEmails)).
-		Uint64("filter_bits_m", m).
-		Uint("filter_hashes_k", k).
-		Msg("In-memory user cache (Bloom filter) populated")
+		log.Info().
+			Int("loaded_emails", len(allEmails)).
+			Uint64("filter_bits_m", m).
+			Uint("filter_hashes_k", k).
+			Msg("In-memory user cache (Bloom filter) populated")
+	*/
 
 	// 4e. Initialize Core Services
 	authServiceLogger := log.With().Str("component", "AuthService").Logger()
@@ -118,7 +122,8 @@ func main() {
 	)
 	authService := service.NewAuthService(
 		userRepo, // Pass the non-tx repo for reads
-		userCache,
+		// DEPRECATED
+		// userCache,
 		tokenMaker,
 		hasher,
 		cfg.Token,

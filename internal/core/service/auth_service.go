@@ -21,19 +21,21 @@ var _ ports.AuthService = (*authService)(nil)
 
 // authService implements the ports.AuthService interface.
 type authService struct {
-	userRepo  ports.UserRepository // For non-transactional reads (e.g., Login)
-	userCache ports.UserCache
-	maker     token.Maker
-	hasher    password.Hasher
-	tokenCfg  config.Token
-	logger    zerolog.Logger
-	uow       ports.UnitOfWork
+	userRepo ports.UserRepository // For non-transactional reads (e.g., Login)
+	// DEPRECATED
+	// userCache ports.UserCache
+	maker    token.Maker
+	hasher   password.Hasher
+	tokenCfg config.Token
+	logger   zerolog.Logger
+	uow      ports.UnitOfWork
 }
 
 // NewAuthService is the constructor for authService.
 func NewAuthService(
 	userRepo ports.UserRepository, // This is the non-transactional repo
-	userCache ports.UserCache,
+	// DEPRECATED
+	// userCache ports.UserCache,
 	maker token.Maker,
 	hasher password.Hasher,
 	tokenCfg config.Token,
@@ -41,13 +43,14 @@ func NewAuthService(
 	uow ports.UnitOfWork,
 ) ports.AuthService {
 	return &authService{
-		userRepo:  userRepo,
-		userCache: userCache,
-		maker:     maker,
-		hasher:    hasher,
-		tokenCfg:  tokenCfg,
-		logger:    logger,
-		uow:       uow,
+		userRepo: userRepo,
+		// DEPRECATED
+		// userCache: userCache,
+		maker:    maker,
+		hasher:   hasher,
+		tokenCfg: tokenCfg,
+		logger:   logger,
+		uow:      uow,
 	}
 }
 
@@ -55,25 +58,19 @@ func NewAuthService(
 // saves them, and returns a new set of auth tokens.
 // This operation is now transactional.
 func (s *authService) Register(ctx context.Context, name, email, passwordStr string) (*ports.AuthResponse, error) {
-	// 1. Check if user *might* exist using the bloom filter
-	if s.userCache.Test(email) {
-		// Email *might* exist. We must fallback to the DB for a definitive check.
-		// We use the non-transactional repo for this read-only check.
-		_, err := s.userRepo.FindByEmail(ctx, email)
-		if err == nil {
-			// User found, email is taken
-			s.logger.Warn().Str("email", email).Msg("Registration failed: email already exists (pre-check)")
-			return nil, ErrEmailExists
-		}
-		if !errors.Is(err, db.ErrUserNotFound) {
-			// A different, unexpected database error occurred during find
-			s.logger.Error().Err(err).Str("email", email).Msg("Failed to check user existence")
-			return nil, err
-		}
-		// If we are here, it was a false positive. We can proceed.
+	// 1. Check if user already exists using the non-transactional repo.
+	_, err := s.userRepo.FindByEmail(ctx, email)
+	if err == nil {
+		// User found, email is taken
+		s.logger.Warn().Str("email", email).Msg("Registration failed: email already exists (pre-check)")
+		return nil, ErrEmailExists
 	}
-	// If filter.Test() was false, email *definitely does not exist*,
-	// so we skip the FindByEmail check entirely, saving a DB query.
+	if !errors.Is(err, db.ErrUserNotFound) {
+		// A different, unexpected database error occurred during find
+		s.logger.Error().Err(err).Str("email", email).Msg("Failed to check user existence")
+		return nil, err
+	}
+	// If we are here, the user (correctly) was not found. We can proceed.
 
 	// 2. Hash the password
 	hashedPassword, err := s.hasher.Hash(passwordStr)
@@ -143,8 +140,9 @@ func (s *authService) Register(ctx context.Context, name, email, passwordStr str
 
 	s.logger.Info().Str("email", email).Str("uuid", user.UUID).Msg("User registered successfully")
 
+	// DEPRECATED
 	// 5. Add new user to our in-memory cache
-	s.userCache.Add(user.Email)
+	// s.userCache.Add(user.Email)
 
 	// 6. Generate tokens
 	return s.createTokenSet(user)
@@ -152,16 +150,17 @@ func (s *authService) Register(ctx context.Context, name, email, passwordStr str
 
 // Login validates user credentials and returns a new set of auth tokens.
 func (s *authService) Login(ctx context.Context, email, passwordStr string) (*ports.AuthResponse, error) {
+	// DEPRECATED
 	// 1. Check bloom filter
-	if !s.userCache.Test(email) {
-		// Email *definitely does not exist*.
-		// We can short-circuit without hitting the DB.
-		// This is a very cheap way to reject invalid login attempts.
-		s.logger.Warn().Str("email", email).Msg("Login failed: invalid credentials (user not found via bloom filter)")
-		return nil, ErrInvalidCredentials
-	}
+	// if !s.userCache.Test(email) {
+	// Email *definitely does not exist*.
+	// We can short-circuit without hitting the DB.
+	// This is a very cheap way to reject invalid login attempts.
+	// s.logger.Warn().Str("email", email).Msg("Login failed: invalid credentials (user not found via bloom filter)")
+	// return nil, ErrInvalidCredentials
+	// }
 
-	// 2. Find user by email (filter reported a *possible* match)
+	// 2. Find user by email (we now *always* hit the DB for this).
 	user, err := s.userRepo.FindByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, db.ErrUserNotFound) {

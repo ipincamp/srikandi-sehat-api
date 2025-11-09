@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -10,6 +9,7 @@ import (
 	// --- Internal Dependencies ---
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driven/postgres"
 	"github.com/ipincamp/srikandi-sehat/pkg/config"
+	"github.com/ipincamp/srikandi-sehat/pkg/logger"
 	// "github.com/ipincamp/srikandi-sehat/internal/adapters/primary/http" (Example)
 	// "github.com/ipincamp/srikandi-sehat/internal/core/services"       (Example)
 	// "github.com/ipincamp/srikandi-sehat/internal/repositories"        (Example)
@@ -20,9 +20,17 @@ func main() {
 	// Load configuration from environment variables
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("Failed to load configuration: %v", err)
+		// We can't use the configured logger yet, so we use a temporary one.
+		// Use a basic zerolog for this fatal error.
+		tempLogger := logger.NewLogger("development") // Use "development" for a clean exit message
+		tempLogger.Fatal().Err(err).Msg("Failed to load configuration")
 	}
-	log.Printf("Configuration loaded (Env: %s)", cfg.Server.Env)
+
+	// --- 1.5. Initialize Logger ---
+	// Now that config is loaded, create the main logger
+	// This logger will be used throughout the application
+	logger := logger.NewLogger(cfg.Server.Env)
+	logger.Info().Str("Env", cfg.Server.Env).Msg("Configuration loaded")
 
 	// --- 2. Setup Application Context ---
 	// Create a context that listens for shutdown signals.
@@ -34,7 +42,7 @@ func main() {
 		sigchan := make(chan os.Signal, 1)
 		signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM)
 		<-sigchan
-		log.Println("Shutdown signal received, initiating graceful shutdown...")
+		logger.Info().Msg("Shutdown signal received, initiating graceful shutdown...")
 		cancel()
 	}()
 
@@ -42,11 +50,11 @@ func main() {
 	// Connect to the PostgreSQL database
 	dbPool, err := postgres.Connect(ctx, cfg.Database.DSN())
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		logger.Fatal().Err(err).Msg("Failed to connect to database")
 	}
 	// Defer closing the pool until the application exits
 	defer dbPool.Close()
-	log.Println("Database connection pool established")
+	logger.Info().Msg("Database connection pool established")
 
 	// --- 4. Dependency Injection (Composition Root) ---
 	// Here you would initialize your repositories, services, and handlers (primary adapters).
@@ -77,8 +85,8 @@ func main() {
 	// }()
 	//
 	// --- TODO: Remove this placeholder and start your server ---
-	log.Println("Application dependencies initialized.")
-	log.Println("TODO: Start your HTTP server or primary adapter here.")
+	logger.Info().Msg("Application dependencies initialized.")
+	logger.Warn().Msg("TODO: Start your HTTP server or primary adapter here.")
 	// -------------------------------------------------------------
 
 	// --- 6. Wait for Shutdown Signal ---
@@ -86,7 +94,7 @@ func main() {
 	<-ctx.Done()
 
 	// --- 7. Graceful Shutdown ---
-	log.Println("Shutting down application...")
+	logger.Info().Msg("Shutting down application...")
 
 	// --- TODO: Add your graceful shutdown logic here ---
 	// (e.g., shut down the HTTP server with a timeout)
@@ -99,5 +107,5 @@ func main() {
 	// }
 	// ---------------------------------------------------
 
-	log.Println("Application shut down gracefully.")
+	logger.Info().Msg("Application shut down gracefully.")
 }

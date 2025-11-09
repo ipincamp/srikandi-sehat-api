@@ -19,7 +19,7 @@ TIMEZONE=Asia/Jakarta
 # DEFINISI PERINTAH
 # ==============================================================================
 
-help: ## ℹ️  Tampilkan semua perintah yang tersedia
+help: ## ℹ️  Show all available commands
 	@echo "Perintah yang tersedia:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 	awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-25s\033[0m %s\n", $$1, $$2}'
@@ -31,11 +31,11 @@ help: ## ℹ️  Tampilkan semua perintah yang tersedia
 build-run: ## --- Build & Run ---
 	@# Target palsu ini hanya untuk pengelompokan di 'make help'
 
-clean: ## 🧹 Bersihkan artefak build (direktori ./bin)
+clean: ## 🧹 Clean build artifacts (./bin directory)
 	@echo "Membersihkan artefak build..."
 	@rm -rf ./bin/*
 
-build: ## 🏗️  Kompilasi aplikasi Go ke binary di ./bin
+build: ## 🏗️  Compile the Go application to a binary in ./bin
 	@echo "Mem-build binary..."
 	@mkdir -p ./bin
 	@go build -o ./bin/$(BINARY_NAME) $(MAIN_GO)
@@ -67,7 +67,7 @@ air-install:
 database-migrations: ## --- Database Migrations ---
 	@# Target palsu ini hanya untuk pengelompokan di 'make help'
 
-create-migration: ## 📝 Buat file migrasi baru. Cth: make create-migration name=create_users_table
+create-migration: ## 📝 Create a new migration file. Ex: make create-migration name=create_users_table
 	@echo "Membuat file migrasi..."
 	@if [ -z "$(name)" ]; then \
 		echo "Usage: make create-migration name=<nama_migrasi>"; \
@@ -87,7 +87,7 @@ migrate-down: ## ⬇️  Batalkan (rollback) migrasi terakhir (down)
 	@echo "Me-rollback migrasi terakhir..."
 	@go run $(MIGRATE_GO) down
 
-migrate-fresh: ## 🔄 HAPUS semua tabel lalu jalankan ulang SEMUA migrasi (ideal untuk dev)
+migrate-fresh: ## 🔄 DROP all tables then re-run ALL migrations (ideal for dev)
 	@echo "Mer-reset database (drop semua tabel & migrasi ulang)..."
 	@go run $(MIGRATE_GO) fresh
 
@@ -110,8 +110,8 @@ generate: ## 🔄 Sinkronisasi skema
 # PENGATURAN MAKEFILE
 # ==============================================================================
 
-# Mendefinisikan target mana yang bukan file
-# Ini mencegah 'make' bingung jika ada file/folder dengan nama yang sama
+# Define which targets are not files
+# This prevents 'make' from getting confused if a file/folder has the same name
 .PHONY: help \
 	build-run clean build run dev debug air-install \
 	database-migrations create-migration migrate migrate-down migrate-fresh migrate-prune \

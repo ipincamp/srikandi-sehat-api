@@ -1,5 +1,0 @@
-# A simple query type for testing server initialization.
-type Query {
-  # A test query that returns "pong"
-  ping: String!
-}

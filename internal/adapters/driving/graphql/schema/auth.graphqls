@@ -1,0 +1,23 @@
+# This type mirrors the 'ports.AuthResponse' DTO from the core service.
+type AuthResponse {
+  accessToken: String!
+  refreshToken: String!
+}
+
+# Input DTO for the 'register' mutation.
+input RegisterInput {
+  name: String!
+  email: String!
+  password: String!
+}
+
+# Input DTO for the 'login' mutation.
+input LoginInput {
+  email: String!
+  password: String!
+}
+
+type Mutation {
+  register(input: RegisterInput!): AuthResponse!
+  login(input: LoginInput!): AuthResponse!
+}

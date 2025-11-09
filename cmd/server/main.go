@@ -8,11 +8,11 @@ import (
 	"syscall"
 	"time"
 
-	// --- Handler dari gqlgen ---
+	// --- gqlgen Handlers ---
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/playground"
 
-	// --- Dependensi Internal ---
+	// --- Internal Dependencies ---
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driven/postgres"
 	"github.com/ipincamp/srikandi-sehat/internal/core/service"
 	"github.com/ipincamp/srikandi-sehat/pkg/config"
@@ -20,9 +20,9 @@ import (
 	"github.com/ipincamp/srikandi-sehat/pkg/password"
 	"github.com/ipincamp/srikandi-sehat/pkg/token"
 
-	// --- Impor paket GraphQL Anda ---
-	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql"
+	// --- GraphQL Package Imports ---
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/generated"
+	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/resolvers"
 )
 
 func main() {
@@ -33,7 +33,7 @@ func main() {
 		tempLogger.Fatal().Err(err).Msg("Failed to load configuration")
 	}
 
-	// --- 1.5. Initialize Logger ---
+	// --- 1.1. Initialize Logger ---
 	log := logger.NewLogger(cfg.Server.Env)
 	log.Info().Str("Env", cfg.Server.Env).Msg("Configuration loaded")
 
@@ -58,24 +58,29 @@ func main() {
 	log.Info().Msg("Database connection pool established")
 
 	// --- 4. Dependency Injection (Composition Root) ---
+	// This is the only place in the app that knows about concrete implementations.
+	// We assemble the application components here, following Hexagonal Architecture.
 
-	// 4a. Inisialisasi 'pkg' helpers (implementasi)
+	// 4a. Initialize 'pkg' helpers (implementations)
 	hasher := password.NewArgon2idHasher()
 	tokenMaker, err := token.NewPasetoMaker(cfg.Token.SymmetricKey, cfg.Token.Issuer)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to create Paseto token maker")
 	}
 
-	// 4b. Inisialisasi Driven Adapters (Repositories)
+	// 4b. Initialize Driven Adapters (Repositories)
+	// We create the concrete 'postgres.userRepository' implementation.
 	userRepo := postgres.NewUserRepository(dbPool)
 
-	// 4c. Inisialisasi Core Services
+	// 4c. Initialize Core Services
+	// We inject the repository (an interface) into the service.
 	authService := service.NewAuthService(userRepo, tokenMaker, hasher, cfg.Token)
 
-	// 4d. Inisialisasi Driving Adapters (GraphQL)
-	gqlResolver := graphql.NewResolver(authService)
+	// 4d. Initialize Driving Adapters (GraphQL)
+	// We inject the service (an interface) into the resolver.
+	gqlResolver := resolvers.NewResolver(authService)
 
-	// 4e. Buat konfigurasi server GraphQL
+	// 4e. Create GraphQL server configuration
 	gqlConfig := generated.Config{Resolvers: gqlResolver}
 	gqlServer := handler.NewDefaultServer(generated.NewExecutableSchema(gqlConfig))
 

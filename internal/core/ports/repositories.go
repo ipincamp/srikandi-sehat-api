@@ -21,11 +21,6 @@ type UserRepository interface {
 	// This is crucial for login and registration checks.
 	FindByEmail(ctx context.Context, email string) (*domain.User, error)
 
-	// DEPRECATED
-	// GetAllUserEmails retrieves all user emails from the data store.
-	// This is used to populate in-memory caches on application startup.
-	// GetAllUserEmails(ctx context.Context) ([]string, error)
-
 	// TODO: Add other necessary methods like Delete, List, etc. as needed.
 }
 

@@ -80,39 +80,7 @@ func main() {
 	// Create the Unit of Work factory, passing the pool
 	uow := postgres.NewUnitOfWork(dbPool, uowLogger)
 
-	/*
-		// DEPRECATED
-		// 4d. Initialize & Populate In-Memory Cache
-		log.Info().Msg("Loading user emails for in-memory cache...")
-		// We can use the non-transactional repo to populate the cache
-		allEmails, err := userRepo.GetAllUserEmails(ctx)
-		if err != nil {
-			log.Fatal().Err(err).Msg("Failed to load user emails for cache")
-		}
-
-		// Configure bloom filter.
-		const (
-			expectedUsers     = 1000000
-			falsePositiveRate = 0.001
-		)
-
-		// Calculate optimal parameters
-		m, k := bloomfilter.CalculateParams(uint64(expectedUsers), falsePositiveRate)
-
-		// Create the adapter
-		userCache := inmemory.NewUserBloomCache(m, k)
-
-		// Populate the filter
-		userCache.Populate(allEmails)
-
-		log.Info().
-			Int("loaded_emails", len(allEmails)).
-			Uint64("filter_bits_m", m).
-			Uint("filter_hashes_k", k).
-			Msg("In-memory user cache (Bloom filter) populated")
-	*/
-
-	// 4e. Initialize Core Services
+	// 4d. Initialize Core Services
 	authServiceLogger := log.With().Str("component", "AuthService").Logger()
 	userService := service.NewUserService(
 		userRepo,          // ports.UserRepository
@@ -122,8 +90,6 @@ func main() {
 	)
 	authService := service.NewAuthService(
 		userRepo, // Pass the non-tx repo for reads
-		// DEPRECATED
-		// userCache,
 		tokenMaker,
 		hasher,
 		cfg.Token,
@@ -131,7 +97,7 @@ func main() {
 		uow,
 	)
 
-	// 4f. Initialize Driving Adapters (GraphQL)
+	// 4e. Initialize Driving Adapters (GraphQL)
 	// Inject the service and a logger
 	resolverLogger := log.With().Str("component", "GraphQLResolver").Logger()
 	gqlResolver := resolvers.NewResolver(

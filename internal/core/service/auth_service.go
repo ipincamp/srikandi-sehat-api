@@ -22,8 +22,6 @@ var _ ports.AuthService = (*authService)(nil)
 // authService implements the ports.AuthService interface.
 type authService struct {
 	userRepo ports.UserRepository // For non-transactional reads (e.g., Login)
-	// DEPRECATED
-	// userCache ports.UserCache
 	maker    token.Maker
 	hasher   password.Hasher
 	tokenCfg config.Token
@@ -34,8 +32,6 @@ type authService struct {
 // NewAuthService is the constructor for authService.
 func NewAuthService(
 	userRepo ports.UserRepository, // This is the non-transactional repo
-	// DEPRECATED
-	// userCache ports.UserCache,
 	maker token.Maker,
 	hasher password.Hasher,
 	tokenCfg config.Token,
@@ -44,8 +40,6 @@ func NewAuthService(
 ) ports.AuthService {
 	return &authService{
 		userRepo: userRepo,
-		// DEPRECATED
-		// userCache: userCache,
 		maker:    maker,
 		hasher:   hasher,
 		tokenCfg: tokenCfg,
@@ -140,27 +134,13 @@ func (s *authService) Register(ctx context.Context, name, email, passwordStr str
 
 	s.logger.Info().Str("email", email).Str("uuid", user.UUID).Msg("User registered successfully")
 
-	// DEPRECATED
-	// 5. Add new user to our in-memory cache
-	// s.userCache.Add(user.Email)
-
-	// 6. Generate tokens
+	// 9. Generate tokens
 	return s.createTokenSet(user)
 }
 
 // Login validates user credentials and returns a new set of auth tokens.
 func (s *authService) Login(ctx context.Context, email, passwordStr string) (*ports.AuthResponse, error) {
-	// DEPRECATED
-	// 1. Check bloom filter
-	// if !s.userCache.Test(email) {
-	// Email *definitely does not exist*.
-	// We can short-circuit without hitting the DB.
-	// This is a very cheap way to reject invalid login attempts.
-	// s.logger.Warn().Str("email", email).Msg("Login failed: invalid credentials (user not found via bloom filter)")
-	// return nil, ErrInvalidCredentials
-	// }
-
-	// 2. Find user by email (we now *always* hit the DB for this).
+	// 1. Find user by email (we now *always* hit the DB for this).
 	user, err := s.userRepo.FindByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, db.ErrUserNotFound) {
@@ -171,13 +151,13 @@ func (s *authService) Login(ctx context.Context, email, passwordStr string) (*po
 		return nil, err
 	}
 
-	// 3. Compare password
+	// 2. Compare password
 	if !s.hasher.Compare(user.Password, passwordStr) {
 		s.logger.Warn().Str("email", email).Msg("Login failed: invalid credentials (password mismatch)")
 		return nil, ErrInvalidCredentials
 	}
 
-	// 4. Generate tokens
+	// 3. Generate tokens
 	s.logger.Info().Str("email", email).Str("uuid", user.UUID).Msg("User logged in successfully")
 	return s.createTokenSet(user)
 }

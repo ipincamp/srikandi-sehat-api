@@ -157,3 +157,53 @@ func (r *userRepository) FindByEmail(ctx context.Context, email string) (*domain
 
 	return dbUser.toDomain(), nil
 }
+
+// FindMapByUUIDs implements the batch fetch method for the UserRepository port.
+func (r *userRepository) FindMapByUUIDs(ctx context.Context, uuids []string) (map[string]*domain.User, error) {
+	query := `
+		SELECT id, uuid, name, email, password, created_at, updated_at
+		FROM users
+		WHERE uuid = ANY($1)
+	`
+	// Handle empty input UUIDs to avoid a query error
+	if len(uuids) == 0 {
+		return make(map[string]*domain.User), nil
+	}
+
+	rows, err := r.db.Query(ctx, query, uuids)
+	if err != nil {
+		r.logger.Error().Err(err).Strs("uuids", uuids).Msg("Failed to query users by UUIDs")
+		return nil, ErrUnexpectedFind
+	}
+	defer rows.Close()
+
+	// Initialize a map to store results, keyed by UUID
+	userMap := make(map[string]*domain.User, len(uuids))
+
+	for rows.Next() {
+		dbUser := &User{}
+		err := rows.Scan(
+			&dbUser.ID,
+			&dbUser.UUID,
+			&dbUser.Name,
+			&dbUser.Email,
+			&dbUser.Password,
+			&dbUser.CreatedAt,
+			&dbUser.UpdatedAt,
+		)
+		if err != nil {
+			r.logger.Error().Err(err).Msg("Error scanning user row in batch find")
+			return nil, ErrUnexpectedFind
+		}
+		// Map the database model to domain model and add to map
+		userMap[dbUser.UUID] = dbUser.toDomain()
+	}
+
+	if err := rows.Err(); err != nil {
+		r.logger.Error().Err(err).Msg("Error after iterating user rows in batch find")
+		return nil, ErrUnexpectedFind
+	}
+
+	r.logger.Debug().Int("found", len(userMap)).Int("requested", len(uuids)).Msg("Batch user find complete")
+	return userMap, nil
+}

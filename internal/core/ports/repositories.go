@@ -21,6 +21,11 @@ type UserRepository interface {
 	// This is crucial for login and registration checks.
 	FindByEmail(ctx context.Context, email string) (*domain.User, error)
 
+	// FindMapByUUIDs efficiently finds many users by their UUIDs.
+	// It returns a map for easy lookup, which is ideal for dataloaders.
+	// The key of the map is the user's UUID.
+	FindMapByUUIDs(ctx context.Context, uuids []string) (map[string]*domain.User, error)
+
 	// TODO: Add other necessary methods like Delete, List, etc. as needed.
 }
 

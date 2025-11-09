@@ -19,10 +19,12 @@ func (r *mutationResolver) Register(ctx context.Context, input models.RegisterIn
 	authRes, err := r.authService.Register(ctx, input.Name, input.Email, input.Password)
 	if err != nil {
 		// Log the error
-		log := r.logger.Warn().Err(err).Str("email", input.Email).Str("mutation", "Register")
+		// DO NOT log the email, to prevent user enumeration attacks.
+		log := r.logger.Warn().Err(err).Str("mutation", "Register")
 
 		// Provide context-specific logs for known business errors
 		if errors.Is(err, ports.ErrEmailExists) {
+			// We log that the event happened, but not the specific email.
 			log.Msg("Registration failed: Email exists")
 		} else {
 			log.Msg("Registration failed: Unexpected service error")
@@ -45,7 +47,8 @@ func (r *mutationResolver) Login(ctx context.Context, input models.LoginInput) (
 	authRes, err := r.authService.Login(ctx, input.Email, input.Password)
 	if err != nil {
 		// Log the error
-		log := r.logger.Warn().Err(err).Str("email", input.Email).Str("mutation", "Login")
+		// DO NOT log the email, to prevent user enumeration attacks.
+		log := r.logger.Warn().Err(err).Str("mutation", "Login")
 
 		if errors.Is(err, ports.ErrInvalidCredentials) {
 			log.Msg("Login failed: Invalid credentials")

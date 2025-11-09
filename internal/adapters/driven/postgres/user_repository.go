@@ -7,7 +7,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgxpool"
+
+	// "github.com/jackc/pgx/v5/pgxpool"
 	"github.com/rs/zerolog"
 
 	"github.com/ipincamp/srikandi-sehat/internal/core/domain"
@@ -28,12 +29,12 @@ var (
 // userRepository implements the ports.UserRepository interface
 // using a pgxpool.Pool for database connections.
 type userRepository struct {
-	db     *pgxpool.Pool
+	db     dbExecutor
 	logger zerolog.Logger
 }
 
 // NewUserRepository creates a new repository instance.
-func NewUserRepository(db *pgxpool.Pool, logger zerolog.Logger) ports.UserRepository {
+func NewUserRepository(db dbExecutor, logger zerolog.Logger) ports.UserRepository {
 	return &userRepository{
 		db:     db,
 		logger: logger,

@@ -67,11 +67,20 @@ func main() {
 
 	// 4b. Initialize Driven Adapters (Repositories)
 	// Inject the logger with component context
-	userRepoLogger := log.With().Str("component", "UserRepository").Logger()
+	userRepoLogger := log.With().Str("component", "UserRepository(Non-TX)").Logger()
+	// Create the *non-transactional* user repository.
+	// We pass dbPool, which satisfies the dbExecutor interface.
+	// This repo is used for read-only operations like Login.
 	userRepo := postgres.NewUserRepository(dbPool, userRepoLogger)
 
-	// 4c. Initialize & Populate In-Memory Cache
+	// 4c. Initialize Unit of Work
+	uowLogger := log.With().Str("component", "UnitOfWork").Logger()
+	// Create the Unit of Work factory, passing the pool
+	uow := postgres.NewUnitOfWork(dbPool, uowLogger)
+
+	// 4d. Initialize & Populate In-Memory Cache
 	log.Info().Msg("Loading user emails for in-memory cache...")
+	// We can use the non-transactional repo to populate the cache
 	allEmails, err := userRepo.GetAllUserEmails(ctx)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to load user emails for cache")
@@ -98,23 +107,22 @@ func main() {
 		Uint("filter_hashes_k", k).
 		Msg("In-memory user cache (Bloom filter) populated")
 
-	// 4d. Initialize Core Services
+	// 4e. Initialize Core Services
 	authServiceLogger := log.With().Str("component", "AuthService").Logger()
 	authService := service.NewAuthService(
-		userRepo,
+		userRepo, // Pass the non-tx repo for reads
 		userCache,
 		tokenMaker,
 		hasher,
 		cfg.Token,
 		authServiceLogger,
+		uow,
 	)
 
-	// 4e. Initialize Driving Adapters (GraphQL)
+	// 4f. Initialize Driving Adapters (GraphQL)
 	// Inject the service and a logger
 	resolverLogger := log.With().Str("component", "GraphQLResolver").Logger()
 	gqlResolver := resolvers.NewResolver(authService, resolverLogger)
-
-	// 4f. Create GraphQL server configuration (sebelumnya 4e)
 	gqlConfig := generated.Config{Resolvers: gqlResolver}
 	gqlServer := handler.NewDefaultServer(generated.NewExecutableSchema(gqlConfig))
 

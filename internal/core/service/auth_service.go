@@ -21,22 +21,24 @@ var _ ports.AuthService = (*authService)(nil)
 
 // authService implements the ports.AuthService interface.
 type authService struct {
-	userRepo  ports.UserRepository
+	userRepo  ports.UserRepository // For non-transactional reads (e.g., Login)
 	userCache ports.UserCache
 	maker     token.Maker
 	hasher    password.Hasher
 	tokenCfg  config.Token
 	logger    zerolog.Logger
+	uow       ports.UnitOfWork
 }
 
 // NewAuthService is the constructor for authService.
 func NewAuthService(
-	userRepo ports.UserRepository,
+	userRepo ports.UserRepository, // This is the non-transactional repo
 	userCache ports.UserCache,
 	maker token.Maker,
 	hasher password.Hasher,
 	tokenCfg config.Token,
 	logger zerolog.Logger,
+	uow ports.UnitOfWork,
 ) ports.AuthService {
 	return &authService{
 		userRepo:  userRepo,
@@ -45,15 +47,18 @@ func NewAuthService(
 		hasher:    hasher,
 		tokenCfg:  tokenCfg,
 		logger:    logger,
+		uow:       uow,
 	}
 }
 
 // Register creates a new user, hashes their password,
 // saves them, and returns a new set of auth tokens.
+// This operation is now transactional.
 func (s *authService) Register(ctx context.Context, name, email, passwordStr string) (*ports.AuthResponse, error) {
 	// 1. Check if user *might* exist using the bloom filter
 	if s.userCache.Test(email) {
 		// Email *might* exist. We must fallback to the DB for a definitive check.
+		// We use the non-transactional repo for this read-only check.
 		_, err := s.userRepo.FindByEmail(ctx, email)
 		if err == nil {
 			// User found, email is taken
@@ -86,18 +91,55 @@ func (s *authService) Register(ctx context.Context, name, email, passwordStr str
 		// ID, CreatedAt, UpdatedAt will be set by the repository
 	}
 
-	// 4. Save the user
-	if err := s.userRepo.Save(ctx, user); err != nil {
+	// 4. === Begin Transactional Unit of Work ===
+	tx, err := s.uow.Begin(ctx)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("Failed to begin registration transaction")
+		return nil, err
+	}
+
+	// Defer a function to handle rollback in case of panic or error
+	defer func() {
+		if r := recover(); r != nil {
+			// A panic occurred
+			s.logger.Error().Msgf("Panic detected in Register, rolling back transaction: %v", r)
+			_ = tx.Rollback(ctx)
+			panic(r) // re-panic after rollback
+		}
+		if err != nil {
+			// An error occurred, rollback the transaction
+			if rbErr := tx.Rollback(ctx); rbErr != nil {
+				s.logger.Error().Err(rbErr).Msg("Failed to rollback transaction after error")
+			}
+		}
+	}()
+
+	// 5. Get the transactional repository from the Unit of Work
+	txUserRepo := tx.GetUserRepository()
+
+	// 6. Save the user *using the transactional repo*
+	if err = txUserRepo.Save(ctx, user); err != nil {
 		// Check for duplicate email (race condition)
 		if errors.Is(err, db.ErrDuplicateEmail) {
 			s.logger.Warn().Str("email", email).Msg("Registration failed: email already exists (race condition on save)")
-			return nil, ErrEmailExists // Return the *service* level error
+			return nil, ErrEmailExists // Defer will catch this and rollback
 		}
 
 		// A different, unexpected save error
 		s.logger.Error().Err(err).Str("email", email).Msg("Failed to save user during registration")
-		return nil, err
+		return nil, err // Defer will catch this and rollback
 	}
+
+	// 7. (Example) If you had other tables, you would save them here
+	// e.g., tx.GetProfileRepository().CreateDefaultProfile(ctx, user.ID)
+	// If this failed, the defer would roll back the user creation.
+
+	// 8. Commit the transaction
+	if err = tx.Commit(ctx); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to commit registration transaction")
+		return nil, err // err is already set, so defer will *not* roll back again
+	}
+	// === End Transactional Unit of Work ===
 
 	s.logger.Info().Str("email", email).Str("uuid", user.UUID).Msg("User registered successfully")
 

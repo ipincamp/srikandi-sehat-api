@@ -10,8 +10,6 @@ import (
 	"github.com/ipincamp/srikandi-sehat/internal/core/domain"
 	"github.com/ipincamp/srikandi-sehat/internal/core/ports"
 	"github.com/ipincamp/srikandi-sehat/pkg/password"
-
-	db "github.com/ipincamp/srikandi-sehat/internal/adapters/driven/postgres"
 )
 
 // Compile-time check
@@ -45,9 +43,9 @@ func (s *userService) GetUserByID(ctx context.Context, uuid string) (*domain.Use
 	// This read operation is non-transactional and can use the base repo.
 	user, err := s.userRepo.FindByID(ctx, uuid)
 	if err != nil {
-		if errors.Is(err, db.ErrUserNotFound) {
+		if errors.Is(err, ports.ErrUserNotFound) {
 			s.logger.Warn().Str("uuid", uuid).Msg("User not found")
-			return nil, ErrUserNotFound // Use service-level error
+			return nil, ports.ErrUserNotFound
 		}
 		s.logger.Error().Err(err).Str("uuid", uuid).Msg("Failed to get user by ID")
 		return nil, err
@@ -63,9 +61,9 @@ func (s *userService) CreateUser(ctx context.Context, name, email, passwordStr s
 	if err == nil {
 		// User found, email is taken
 		s.logger.Warn().Str("email", email).Msg("CreateUser failed: email already exists (pre-check)")
-		return nil, ErrEmailExists
+		return nil, ports.ErrEmailExists
 	}
-	if !errors.Is(err, db.ErrUserNotFound) {
+	if !errors.Is(err, ports.ErrUserNotFound) {
 		// A different, unexpected database error occurred
 		s.logger.Error().Err(err).Str("email", email).Msg("Failed to check user existence")
 		return nil, err
@@ -108,9 +106,9 @@ func (s *userService) CreateUser(ctx context.Context, name, email, passwordStr s
 	// 6. Save the user *using the transactional repo*
 	if err = txUserRepo.Save(ctx, user); err != nil {
 		// Check for duplicate email (race condition)
-		if errors.Is(err, db.ErrDuplicateEmail) {
+		if errors.Is(err, ports.ErrDuplicateEmail) {
 			s.logger.Warn().Str("email", email).Msg("CreateUser failed: email already exists (race condition on save)")
-			return nil, ErrEmailExists
+			return nil, ports.ErrEmailExists
 		}
 		s.logger.Error().Err(err).Str("email", email).Msg("Failed to save user during creation")
 		return nil, err // Defer will catch this and rollback

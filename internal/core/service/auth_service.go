@@ -12,8 +12,6 @@ import (
 	"github.com/ipincamp/srikandi-sehat/pkg/config"
 	"github.com/ipincamp/srikandi-sehat/pkg/password"
 	"github.com/ipincamp/srikandi-sehat/pkg/token"
-
-	db "github.com/ipincamp/srikandi-sehat/internal/adapters/driven/postgres"
 )
 
 // Compile-time check
@@ -57,9 +55,9 @@ func (s *authService) Register(ctx context.Context, name, email, passwordStr str
 	if err == nil {
 		// User found, email is taken
 		s.logger.Warn().Str("email", email).Msg("Registration failed: email already exists (pre-check)")
-		return nil, ErrEmailExists
+		return nil, ports.ErrEmailExists
 	}
-	if !errors.Is(err, db.ErrUserNotFound) {
+	if !errors.Is(err, ports.ErrUserNotFound) {
 		// A different, unexpected database error occurred during find
 		s.logger.Error().Err(err).Str("email", email).Msg("Failed to check user existence")
 		return nil, err
@@ -111,9 +109,9 @@ func (s *authService) Register(ctx context.Context, name, email, passwordStr str
 	// 6. Save the user *using the transactional repo*
 	if err = txUserRepo.Save(ctx, user); err != nil {
 		// Check for duplicate email (race condition)
-		if errors.Is(err, db.ErrDuplicateEmail) {
+		if errors.Is(err, ports.ErrDuplicateEmail) {
 			s.logger.Warn().Str("email", email).Msg("Registration failed: email already exists (race condition on save)")
-			return nil, ErrEmailExists // Defer will catch this and rollback
+			return nil, ports.ErrEmailExists
 		}
 
 		// A different, unexpected save error
@@ -143,9 +141,9 @@ func (s *authService) Login(ctx context.Context, email, passwordStr string) (*po
 	// 1. Find user by email (we now *always* hit the DB for this).
 	user, err := s.userRepo.FindByEmail(ctx, email)
 	if err != nil {
-		if errors.Is(err, db.ErrUserNotFound) {
+		if errors.Is(err, ports.ErrUserNotFound) {
 			s.logger.Warn().Str("email", email).Msg("Login failed: invalid credentials (user not found)")
-			return nil, ErrInvalidCredentials
+			return nil, ports.ErrInvalidCredentials
 		}
 		s.logger.Error().Err(err).Str("email", email).Msg("Login failed: database error on find")
 		return nil, err
@@ -154,7 +152,7 @@ func (s *authService) Login(ctx context.Context, email, passwordStr string) (*po
 	// 2. Compare password
 	if !s.hasher.Compare(user.Password, passwordStr) {
 		s.logger.Warn().Str("email", email).Msg("Login failed: invalid credentials (password mismatch)")
-		return nil, ErrInvalidCredentials
+		return nil, ports.ErrInvalidCredentials
 	}
 
 	// 3. Generate tokens
@@ -169,24 +167,24 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*p
 	if err != nil {
 		if errors.Is(err, token.ErrTokenExpired) {
 			s.logger.Warn().Msg("Refresh token failed: token expired")
-			return nil, ErrTokenExpired
+			return nil, ports.ErrTokenExpired
 		}
 		s.logger.Warn().Err(err).Msg("Refresh token failed: invalid token")
-		return nil, ErrInvalidToken
+		return nil, ports.ErrInvalidToken
 	}
 
 	// 2. Check that it's actually a refresh token
 	if payload.UseFor != token.UseForRefreshToken {
 		s.logger.Warn().Str("uuid", payload.UserID).Msg("Refresh token failed: token use mismatch")
-		return nil, ErrTokenUseMismatch
+		return nil, ports.ErrTokenUseMismatch
 	}
 
 	// 3. Find the user
 	user, err := s.userRepo.FindByID(ctx, payload.UserID)
 	if err != nil {
-		if errors.Is(err, db.ErrUserNotFound) {
+		if errors.Is(err, ports.ErrUserNotFound) {
 			s.logger.Error().Str("uuid", payload.UserID).Msg("Refresh token failed: user not found")
-			return nil, ErrUserNotFound
+			return nil, ports.ErrUserNotFound
 		}
 		s.logger.Error().Err(err).Str("uuid", payload.UserID).Msg("Refresh token failed: database error")
 		return nil, err

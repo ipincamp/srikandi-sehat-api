@@ -17,14 +17,6 @@ import (
 // Compile-time check to ensure userRepository implements ports.UserRepository
 var _ ports.UserRepository = (*userRepository)(nil)
 
-// Errors specific to this repository
-var (
-	ErrUserNotFound   = errors.New("user not found")
-	ErrDuplicateEmail = errors.New("duplicate key (email) violates unique constraint")
-	ErrUnexpectedSave = errors.New("unexpected error during user save")
-	ErrUnexpectedFind = errors.New("unexpected error during user find")
-)
-
 // userRepository implements the ports.UserRepository interface
 // using a pgxpool.Pool for database connections.
 type userRepository struct {
@@ -76,13 +68,13 @@ func (r *userRepository) Save(ctx context.Context, user *domain.User) error {
 					Str("email", dbUser.Email).
 					Str("constraint", pgErr.ConstraintName).
 					Msg("User save failed: unique constraint violation")
-				return ErrDuplicateEmail
+				return ports.ErrDuplicateEmail
 			}
 		}
 
 		// Log any other database error
 		r.logger.Error().Err(err).Str("email", dbUser.Email).Msg("Failed to save user")
-		return ErrUnexpectedSave // Return a generic repository error
+		return ports.ErrUnexpectedSave
 	}
 
 	// Update the original domain model with new data (ID, timestamps)
@@ -116,11 +108,11 @@ func (r *userRepository) FindByID(ctx context.Context, uuid string) (*domain.Use
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			r.logger.Debug().Str("uuid", uuid).Msg("User not found by UUID")
-			return nil, ErrUserNotFound
+			return nil, ports.ErrUserNotFound
 		}
 		// Log other errors
 		r.logger.Error().Err(err).Str("uuid", uuid).Msg("Error finding user by UUID")
-		return nil, ErrUnexpectedFind
+		return nil, ports.ErrUnexpectedFind
 	}
 
 	return dbUser.toDomain(), nil
@@ -148,11 +140,11 @@ func (r *userRepository) FindByEmail(ctx context.Context, email string) (*domain
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			r.logger.Debug().Str("email", email).Msg("User not found by email")
-			return nil, ErrUserNotFound
+			return nil, ports.ErrUserNotFound
 		}
 		// Log other errors
 		r.logger.Error().Err(err).Str("email", email).Msg("Error finding user by email")
-		return nil, ErrUnexpectedFind
+		return nil, ports.ErrUnexpectedFind
 	}
 
 	return dbUser.toDomain(), nil
@@ -173,7 +165,7 @@ func (r *userRepository) FindMapByUUIDs(ctx context.Context, uuids []string) (ma
 	rows, err := r.db.Query(ctx, query, uuids)
 	if err != nil {
 		r.logger.Error().Err(err).Strs("uuids", uuids).Msg("Failed to query users by UUIDs")
-		return nil, ErrUnexpectedFind
+		return nil, ports.ErrUnexpectedFind
 	}
 	defer rows.Close()
 
@@ -193,7 +185,7 @@ func (r *userRepository) FindMapByUUIDs(ctx context.Context, uuids []string) (ma
 		)
 		if err != nil {
 			r.logger.Error().Err(err).Msg("Error scanning user row in batch find")
-			return nil, ErrUnexpectedFind
+			return nil, ports.ErrUnexpectedFind
 		}
 		// Map the database model to domain model and add to map
 		userMap[dbUser.UUID] = dbUser.toDomain()
@@ -201,7 +193,7 @@ func (r *userRepository) FindMapByUUIDs(ctx context.Context, uuids []string) (ma
 
 	if err := rows.Err(); err != nil {
 		r.logger.Error().Err(err).Msg("Error after iterating user rows in batch find")
-		return nil, ErrUnexpectedFind
+		return nil, ports.ErrUnexpectedFind
 	}
 
 	r.logger.Debug().Int("found", len(userMap)).Int("requested", len(uuids)).Msg("Batch user find complete")

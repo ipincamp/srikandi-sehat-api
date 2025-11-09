@@ -1,77 +1,94 @@
 package config
 
 import (
-	"errors"
 	"fmt"
-	"time"
+	"os"
+	"strconv"
 
-	"github.com/go-playground/validator/v10"
-	"github.com/spf13/viper"
+	// Using godotenv for local development convenience.
+	// In production, environment variables should be set directly.
+	"github.com/joho/godotenv"
 )
 
-// Config adalah struct yang menampung semua konfigurasi aplikasi.
-// Kita menggunakan tag 'validate' untuk memastikan nilai-nilai penting ada.
+// Config holds all configuration for the application.
 type Config struct {
-	// Server
-	AppEnv  string `mapstructure:"APP_ENV"      validate:"required,oneof=development production staging"`
-	AppTZ   string `mapstructure:"APP_TIMEZONE" validate:"required"`
-	AppPort string `mapstructure:"APP_PORT"     validate:"required"`
-	AppHost string `mapstructure:"APP_HOST"     validate:"required"`
-
-	// Database
-	DBHost     string `mapstructure:"DB_HOST"     validate:"required"`
-	DBPort     string `mapstructure:"DB_PORT"     validate:"required"`
-	DBName     string `mapstructure:"DB_NAME"     validate:"required"`
-	DBUsername string `mapstructure:"DB_USER"     validate:"required"`
-	DBPassword string `mapstructure:"DB_PASS"     validate:"required"`
-	DBSSLMode  string `mapstructure:"DB_SSL_MODE" validate:"required"`
-	DBTimezone string `mapstructure:"DB_TIMEZONE" validate:"required"`
-
-	// Paseto
-	TokenIssuer          string        `mapstructure:"TOKEN_ISSUER"           validate:"required"`
-	TokenAccessDuration  time.Duration `mapstructure:"TOKEN_ACCESS_DURATION"  validate:"required"`
-	TokenRefreshDuration time.Duration `mapstructure:"TOKEN_REFRESH_DURATION" validate:"required"`
+	// Server holds web server specific configuration.
+	Server Server
+	// Database holds PostgreSQL database connection configuration.
+	Database Database
 }
 
-// validate adalah instance dari validator.
-var validate = validator.New()
+// Server holds configuration related to the HTTP server.
+type Server struct {
+	// Port is the port number the server will listen on.
+	Port string
+	// Env is the application environment (e.g., "development", "staging", "production").
+	Env string
+}
 
-// LoadConfig memuat konfigurasi dari file .env di path yang diberikan.
-// Ini juga akan membaca dari environment variables (berguna untuk Docker/K8s).
-func LoadConfig(path string) (*Config, error) {
-	// 1. Set default, file, dan env binding
-	viper.AddConfigPath(path)   // Path untuk mencari file config
-	viper.SetConfigName(".env") // Nama file config (tanpa ekstensi)
-	viper.SetConfigType("env")  // Tipe file config
+// Database holds configuration for the PostgreSQL connection.
+type Database struct {
+	Host     string
+	Port     int
+	User     string
+	Password string
+	DBName   string
+	SSLMode  string
+}
 
-	viper.AutomaticEnv() // Baca env variables yang cocok
+// Load reads configuration from environment variables.
+// It loads from a .env file if it exists (for local development).
+func Load() (*Config, error) {
+	// Attempt to load .env file.
+	// This is ignored if .env does not exist, which is fine for production.
+	_ = godotenv.Load()
 
-	// 2. Baca file config
-	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			// File config tidak ditemukan; tidak masalah jika env vars di-set
-		} else {
-			return nil, fmt.Errorf("gagal membaca file config: %w", err)
-		}
+	dbPort, err := strconv.Atoi(getEnv("DB_PORT", "5432"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid DB_PORT: %w", err)
 	}
 
-	// 3. Unmarshal config ke struct
-	var config Config
-	if err := viper.Unmarshal(&config); err != nil {
-		return nil, fmt.Errorf("gagal unmarshal config: %w", err)
+	cfg := &Config{
+		Server: Server{
+			Port: getEnv("PORT", "8080"),
+			Env:  getEnv("ENV", "development"),
+		},
+		Database: Database{
+			Host:     getEnv("DB_HOST", "localhost"),
+			Port:     dbPort,
+			User:     getEnv("DB_USER", "postgres"),
+			Password: getEnv("DB_PASS", ""),
+			DBName:   getEnv("DB_NAME", "postgres"),
+			SSLMode:  getEnv("DB_SSL_MODE", "disable"),
+		},
 	}
 
-	// 4. Validasi struct
-	if err := validate.Struct(&config); err != nil {
-		// Ubah error validasi menjadi lebih mudah dibaca
-		var validationErrors validator.ValidationErrors
-		if errors.As(err, &validationErrors) {
-			for _, e := range validationErrors {
-				return nil, fmt.Errorf("validasi config gagal: field '%s' (value: '%v') tidak memenuhi syarat '%s'", e.Field(), e.Value(), e.Tag())
-			}
-		}
-		return nil, fmt.Errorf("validasi config gagal: %w", err)
+	// Simple validation
+	if cfg.Database.User == "" || cfg.Database.Password == "" || cfg.Database.DBName == "" {
+		return nil, fmt.Errorf("DB_USER, DB_PASS, and DB_NAME must be set")
 	}
 
-	return &config, nil
+	return cfg, nil
+}
+
+// DSN returns the Data Source Name string for connecting to the database.
+// This encapsulates the logic for building the connection string.
+func (d *Database) DSN() string {
+	// Example: "postgres://user:password@localhost:5432/dbname?sslmode=disable"
+	return fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=%s",
+		d.User,
+		d.Password,
+		d.Host,
+		d.Port,
+		d.DBName,
+		d.SSLMode,
+	)
+}
+
+// getEnv retrieves an environment variable by key or returns a fallback value.
+func getEnv(key, fallback string) string {
+	if value, exists := os.LookupEnv(key); exists {
+		return value
+	}
+	return fallback
 }

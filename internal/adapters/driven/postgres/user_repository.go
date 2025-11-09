@@ -157,3 +157,35 @@ func (r *userRepository) FindByEmail(ctx context.Context, email string) (*domain
 
 	return dbUser.toDomain(), nil
 }
+
+// GetAllUserEmails retrieves all user emails from the database.
+func (r *userRepository) GetAllUserEmails(ctx context.Context) ([]string, error) {
+	query := `SELECT email FROM users`
+
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		r.logger.Error().Err(err).Msg("Failed to query for all user emails")
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Pre-allocate a slice with a reasonable capacity, e.g., 1000
+	// This reduces re-allocations, but will grow if needed.
+	emails := make([]string, 0, 1000)
+	for rows.Next() {
+		var email string
+		if err := rows.Scan(&email); err != nil {
+			r.logger.Error().Err(err).Msg("Failed to scan email during bulk load")
+			return nil, err
+		}
+		emails = append(emails, email)
+	}
+
+	if err := rows.Err(); err != nil {
+		r.logger.Error().Err(err).Msg("Error occurred during email rows iteration")
+		return nil, err
+	}
+
+	r.logger.Debug().Int("count", len(emails)).Msg("Loaded all user emails")
+	return emails, nil
+}

@@ -6,7 +6,7 @@ import "github.com/go-gormigrate/gormigrate/v2"
 // WHEN YOU CREATE A NEW MIGRATION, ADD IT TO THIS LIST.
 var AllMigrations = []*gormigrate.Migration{
 	// Add new migrations here, e.g.:
+	CreateUsersTable(),
 	// CreateRolesTable(),
-	// CreateUsersTable(),
 	// CreateProductsTable(),
 }

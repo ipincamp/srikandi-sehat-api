@@ -11,11 +11,9 @@ import (
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/playground"
 
-	// "github.com/ipincamp/srikandi-sehat/internal/adapters/driven/inmemory"
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driven/postgres"
 	"github.com/ipincamp/srikandi-sehat/internal/core/service"
 
-	// "github.com/ipincamp/srikandi-sehat/pkg/bloomfilter"
 	"github.com/ipincamp/srikandi-sehat/pkg/config"
 	"github.com/ipincamp/srikandi-sehat/pkg/logger"
 	"github.com/ipincamp/srikandi-sehat/pkg/password"
@@ -111,10 +109,20 @@ func main() {
 	// --- 5. Start Application (HTTP Server) ---
 	log.Info().Msg("Application dependencies initialized.")
 
+	// Create Auth Middleware
 	authMw := middleware.NewAuthMiddleware(tokenMaker)
+
+	// Create Dataloader Middleware
+	// We pass the non-transactional repo, which is perfect for read-only batching.
+	dataloaderMw := middleware.NewDataloaderMiddleware(userRepo)
+
 	httpMux := http.NewServeMux()
 	httpMux.Handle("/", playground.Handler("GraphQL Playground", "/query"))
-	httpMux.Handle("/query", authMw.Handler(gqlServer))
+
+	// --- IMPORTANT: Chain the middleware ---
+	// The request will flow: dataloaderMw -> authMw -> gqlServer
+	// This ensures the loader is in the context *before* the auth (or any other) middleware runs.
+	httpMux.Handle("/query", dataloaderMw.Handler(authMw.Handler(gqlServer)))
 
 	server := &http.Server{
 		Addr:    ":" + cfg.Server.Port,

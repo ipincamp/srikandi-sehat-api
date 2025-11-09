@@ -20,4 +20,10 @@ input LoginInput {
 type Mutation {
   register(input: RegisterInput!): AuthResponse!
   login(input: LoginInput!): AuthResponse!
+
+  # Mutation to logout.
+  # In a stateless setup, the service layer might be a no-op,
+  # but we provide the hook for stateful (e.g., blocklist)
+  # implementations. Client is still responsible for deleting tokens.
+  logout(refreshToken: String!): Boolean!
 }

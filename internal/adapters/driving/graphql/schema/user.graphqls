@@ -1,0 +1,17 @@
+# This type mirrors the 'domain.User' entity, but only
+# exposes fields that are safe for the client.
+# It explicitly omits 'password'.
+type User {
+  uuid: String!
+  name: String!
+  email: String!
+  createdAt: String! # Using String for ISO 8601 timestamp
+  updatedAt: String! # Using String for ISO 8601 timestamp
+}
+
+# Extend the base Query type
+type Query {
+  # 'me' fetches the profile of the currently authenticated user.
+  # This query requires authentication (e.g., a valid access token).
+  me: User!
+}

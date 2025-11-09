@@ -21,6 +21,7 @@ import (
 	"github.com/ipincamp/srikandi-sehat/pkg/token"
 
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/generated"
+	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/middleware"
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/resolvers"
 )
 
@@ -139,9 +140,10 @@ func main() {
 	// --- 5. Start Application (HTTP Server) ---
 	log.Info().Msg("Application dependencies initialized.")
 
+	authMw := middleware.NewAuthMiddleware(tokenMaker)
 	httpMux := http.NewServeMux()
 	httpMux.Handle("/", playground.Handler("GraphQL Playground", "/query"))
-	httpMux.Handle("/query", gqlServer)
+	httpMux.Handle("/query", authMw.Handler(gqlServer))
 
 	server := &http.Server{
 		Addr:    ":" + cfg.Server.Port,

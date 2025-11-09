@@ -1,0 +1,31 @@
+package migrations
+
+import (
+	"github.com/go-gormigrate/gormigrate/v2"
+	"gorm.io/gorm"
+)
+
+// __STRUCT_NAME__ migration
+func __STRUCT_NAME__() *gormigrate.Migration {
+	// Define your model here for AutoMigrate
+	// type MyTable struct {
+	// 	ID   uint   `gorm:"primarykey"`
+	// 	Name string `gorm:"type:varchar(100)"`
+	// }
+
+	return &gormigrate.Migration{
+		ID: "__TIMESTAMP__",
+		Migrate: func(tx *gorm.DB) error {
+			// return tx.AutoMigrate(&MyTable{})
+			return nil // IMPLEMENT MIGRATION LOGIC
+		},
+		Rollback: func(tx *gorm.DB) error {
+			// return tx.Migrator().DropTable(&MyTable{})
+			return nil // IMPLEMENT ROLLBACK LOGIC
+		},
+	}
+}
+
+// !!! IMPORTANT !!!
+// After creating this file, you MUST add the function call '__STRUCT_NAME__()'
+// to the 'AllMigrations' slice in 'internal/adapters/driven/postgres/db/migrations/registry.go'

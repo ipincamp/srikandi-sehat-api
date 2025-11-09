@@ -10,7 +10,7 @@ import (
 
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/generated"
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/models"
-	"github.com/ipincamp/srikandi-sehat/internal/core/service"
+	"github.com/ipincamp/srikandi-sehat/internal/core/ports"
 )
 
 // Register is the resolver for the register field.
@@ -22,7 +22,7 @@ func (r *mutationResolver) Register(ctx context.Context, input models.RegisterIn
 		log := r.logger.Warn().Err(err).Str("email", input.Email).Str("mutation", "Register")
 
 		// Provide context-specific logs for known business errors
-		if errors.Is(err, service.ErrEmailExists) {
+		if errors.Is(err, ports.ErrEmailExists) {
 			log.Msg("Registration failed: Email exists")
 		} else {
 			log.Msg("Registration failed: Unexpected service error")
@@ -47,7 +47,7 @@ func (r *mutationResolver) Login(ctx context.Context, input models.LoginInput) (
 		// Log the error
 		log := r.logger.Warn().Err(err).Str("email", input.Email).Str("mutation", "Login")
 
-		if errors.Is(err, service.ErrInvalidCredentials) {
+		if errors.Is(err, ports.ErrInvalidCredentials) {
 			log.Msg("Login failed: Invalid credentials")
 		} else {
 			log.Msg("Login failed: Unexpected service error")

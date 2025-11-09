@@ -11,7 +11,7 @@ import (
 
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/generated"
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/models"
-	"github.com/ipincamp/srikandi-sehat/internal/core/service"
+	"github.com/ipincamp/srikandi-sehat/internal/core/ports"
 )
 
 // Me is the resolver for the me field.
@@ -29,7 +29,7 @@ func (r *queryResolver) Me(ctx context.Context) (*models.User, error) {
 	user, err := r.userService.GetUserByID(ctx, uuid)
 	if err != nil {
 		log := r.logger.Warn().Err(err).Str("uuid", uuid)
-		if errors.Is(err, service.ErrUserNotFound) {
+		if errors.Is(err, ports.ErrUserNotFound) {
 			log.Msg("Authenticated user not found in DB")
 		} else {
 			log.Msg("Failed to fetch user profile")

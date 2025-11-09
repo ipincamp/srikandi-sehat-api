@@ -3,7 +3,6 @@ package token
 import (
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/o1egl/paseto"
@@ -28,6 +27,19 @@ var ErrInvalidToken = errors.New("token is invalid or missing claims")
 // (Note: ErrTokenExpired is defined in payload.go, as it's part of
 // the public Payload contract).
 
+// --- Added Constants ---
+
+// pasetoV2SymmetricKeySize is the required 32-byte key length for PASETO v2.local.
+const pasetoV2SymmetricKeySize = 32
+
+// Custom claim keys. Using constants prevents typos and ensures
+// CreateToken and ValidateToken use the same values.
+const (
+	claimUserID = "uid"
+	claimRoleID = "rid"
+	claimUseFor = "for"
+)
+
 // --- Paseto Maker Implementation ---
 
 // pasetoMaker is the Paseto-specific implementation of the Maker interface.
@@ -44,7 +56,8 @@ type pasetoMaker struct {
 func NewPasetoMaker(symmetricKey string, issuer string) (Maker, error) {
 	// 1. Fail-fast: Validate the key size immediately.
 	//    This prevents a runtime panic inside the paseto library.
-	if len(symmetricKey) != 32 {
+	//    Using constant instead of magic number 32.
+	if len(symmetricKey) != pasetoV2SymmetricKeySize {
 		return nil, ErrInvalidKeySize
 	}
 
@@ -75,9 +88,10 @@ func (m *pasetoMaker) CreateToken(userID, roleID, useFor string, duration time.D
 
 	// 3. Add our application-specific custom claims.
 	//    These will be stored in the token's JSON payload.
-	jsonToken.Set("uid", payload.UserID)
-	jsonToken.Set("rid", payload.RoleID)
-	jsonToken.Set("for", payload.UseFor)
+	//    Using constants instead of magic strings.
+	jsonToken.Set(claimUserID, payload.UserID)
+	jsonToken.Set(claimRoleID, payload.RoleID)
+	jsonToken.Set(claimUseFor, payload.UseFor)
 
 	// 4. Encrypt the token using Paseto v2.local (symmetric key).
 	token, err := m.paseto.Encrypt(m.symmetricKey, jsonToken, nil)
@@ -99,13 +113,15 @@ func (m *pasetoMaker) ValidateToken(token string) (*Payload, error) {
 	//    if it's in the past, though we double-check later).
 	err := m.paseto.Decrypt(token, m.symmetricKey, &jsonToken, &footer)
 	if err != nil {
-		// Error Translation:
-		// If Paseto returns a "token has expired" error, we translate
-		// it into our package's public ErrTokenExpired.
-		// This decouples the caller from the Paseto library.
-		if strings.Contains(err.Error(), "token has expired") {
-			return nil, ErrTokenExpired
-		}
+		//  REMOVED fragile string-based error check.
+		// The `payload.Validate()` check at the end of this function
+		// is the robust way to check for expiration.
+		//
+		// Old code:
+		// if strings.Contains(err.Error(), "token has expired") {
+		// 	return nil, ErrTokenExpired
+		// }
+
 		// For all other decryption errors (bad format, bad signature),
 		// return our public ErrInvalidToken.
 		return nil, fmt.Errorf("%w: %w", ErrInvalidToken, err)
@@ -113,9 +129,10 @@ func (m *pasetoMaker) ValidateToken(token string) (*Payload, error) {
 
 	// 3. Manually extract our custom claims from the token's internal map.
 	//    We use .Get() which returns a string.
-	userID := jsonToken.Get("uid")
-	roleID := jsonToken.Get("rid")
-	useFor := jsonToken.Get("for")
+	//    Using constants instead of magic strings.
+	userID := jsonToken.Get(claimUserID)
+	roleID := jsonToken.Get(claimRoleID)
+	useFor := jsonToken.Get(claimUseFor)
 
 	// 4. Sanity check our *required* custom claims.
 	//    A valid token *must* contain a user ID and its intended use.
@@ -135,7 +152,8 @@ func (m *pasetoMaker) ValidateToken(token string) (*Payload, error) {
 	// 6. ***CRITICAL***: Perform our own explicit validation.
 	//    This is a defense-in-depth step. It re-checks the expiration
 	//    using time.Now(), fixing the 'TestPasetoMaker_ExpiredToken' failure.
-	if err := payload.Valid(); err != nil {
+	//    Using the renamed `Validate()` method.
+	if err := payload.Validate(); err != nil {
 		return nil, err // This will correctly return ErrTokenExpired
 	}
 

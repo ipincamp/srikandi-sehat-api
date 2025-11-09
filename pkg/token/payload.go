@@ -53,10 +53,10 @@ func NewPayload(userID, roleID, useFor string, duration time.Duration) (*Payload
 	}, nil
 }
 
-// Valid checks if the token payload is still valid.
+// Validate checks if the token payload is still valid.
 // PASETO/JWT libraries often do this automatically, but it's
 // good practice to have a method on the payload itself.
-func (p *Payload) Valid() error {
+func (p *Payload) Validate() error {
 	if time.Now().UTC().After(p.ExpiresAt) {
 		return ErrTokenExpired
 	}

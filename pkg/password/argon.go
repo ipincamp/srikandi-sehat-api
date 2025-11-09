@@ -131,6 +131,12 @@ type argonParams struct {
 	keyLength   uint32
 }
 
+// Added constants to remove magic numbers/strings from the decodeHash function.
+const (
+	expectedHashParts   = 6
+	algorithmIdentifier = "argon2id"
+)
+
 // decodeHash parses the string hash format.
 // This is *unexported* (lowercase 'd') as it's an internal
 // implementation detail.
@@ -139,11 +145,13 @@ func decodeHash(encodedHash string) (p *argonParams, salt, hash []byte, err erro
 	// $argon2id$v=19$m=65536,t=3,p=2$c29tZXNhbHQ$c29tZXBhc3N3b3Jk
 	//   [0]      [1]    [2]       [3]          [4]        [5]
 	parts := strings.Split(encodedHash, "$")
-	if len(parts) != 6 {
+	// Using constant instead of magic number 6.
+	if len(parts) != expectedHashParts {
 		return nil, nil, nil, errors.New("invalid hash format: wrong number of parts")
 	}
 
-	if parts[1] != "argon2id" {
+	// Using constant instead of magic string "argon2id".
+	if parts[1] != algorithmIdentifier {
 		return nil, nil, nil, errors.New("invalid hash format: not argon2id")
 	}
 

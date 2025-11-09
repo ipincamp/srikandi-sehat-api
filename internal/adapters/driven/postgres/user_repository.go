@@ -6,7 +6,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rs/zerolog"
 
 	"github.com/ipincamp/srikandi-sehat/internal/core/domain"
 	"github.com/ipincamp/srikandi-sehat/internal/core/ports"
@@ -15,24 +17,30 @@ import (
 // Compile-time check to ensure userRepository implements ports.UserRepository
 var _ ports.UserRepository = (*userRepository)(nil)
 
-// Error specifically for this repository
-var ErrUserNotFound = errors.New("user not found")
+// Errors specific to this repository
+var (
+	ErrUserNotFound   = errors.New("user not found")
+	ErrDuplicateEmail = errors.New("duplicate key (email) violates unique constraint")
+	ErrUnexpectedSave = errors.New("unexpected error during user save")
+	ErrUnexpectedFind = errors.New("unexpected error during user find")
+)
 
 // userRepository implements the ports.UserRepository interface
 // using a pgxpool.Pool for database connections.
 type userRepository struct {
-	db *pgxpool.Pool
+	db     *pgxpool.Pool
+	logger zerolog.Logger
 }
 
 // NewUserRepository creates a new repository instance.
-func NewUserRepository(db *pgxpool.Pool) ports.UserRepository {
-	return &userRepository{db: db}
+func NewUserRepository(db *pgxpool.Pool, logger zerolog.Logger) ports.UserRepository {
+	return &userRepository{
+		db:     db,
+		logger: logger,
+	}
 }
 
 // Save creates a new user in the database.
-// It assumes the domain.User has ID=0 for creation.
-// Note: This implementation only handles *creation* as requested by AuthService.
-// A more robust `Save` would handle updates (if ID > 0).
 func (r *userRepository) Save(ctx context.Context, user *domain.User) error {
 	// Map domain model to database model
 	dbUser := fromDomain(user)
@@ -58,8 +66,23 @@ func (r *userRepository) Save(ctx context.Context, user *domain.User) error {
 	).Scan(&dbUser.ID, &dbUser.CreatedAt, &dbUser.UpdatedAt)
 
 	if err != nil {
-		// TODO: Check for unique constraint violation (pgconn.PgError)
-		return err
+		// --- Enhanced Error Handling ---
+		var pgErr *pgconn.PgError
+		// Check if the error is a PostgreSQL error
+		if errors.As(err, &pgErr) {
+			// Check for unique_violation (e.g., duplicate email)
+			if pgErr.Code == "23505" {
+				r.logger.Warn().
+					Str("email", dbUser.Email).
+					Str("constraint", pgErr.ConstraintName).
+					Msg("User save failed: unique constraint violation")
+				return ErrDuplicateEmail
+			}
+		}
+
+		// Log any other database error
+		r.logger.Error().Err(err).Str("email", dbUser.Email).Msg("Failed to save user")
+		return ErrUnexpectedSave // Return a generic repository error
 	}
 
 	// Update the original domain model with new data (ID, timestamps)
@@ -67,6 +90,7 @@ func (r *userRepository) Save(ctx context.Context, user *domain.User) error {
 	user.CreatedAt = dbUser.CreatedAt
 	user.UpdatedAt = dbUser.UpdatedAt
 
+	r.logger.Debug().Str("uuid", user.UUID).Msg("User saved successfully")
 	return nil
 }
 
@@ -91,9 +115,12 @@ func (r *userRepository) FindByID(ctx context.Context, uuid string) (*domain.Use
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
+			r.logger.Debug().Str("uuid", uuid).Msg("User not found by UUID")
 			return nil, ErrUserNotFound
 		}
-		return nil, err
+		// Log other errors
+		r.logger.Error().Err(err).Str("uuid", uuid).Msg("Error finding user by UUID")
+		return nil, ErrUnexpectedFind
 	}
 
 	return dbUser.toDomain(), nil
@@ -120,9 +147,12 @@ func (r *userRepository) FindByEmail(ctx context.Context, email string) (*domain
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
+			r.logger.Debug().Str("email", email).Msg("User not found by email")
 			return nil, ErrUserNotFound
 		}
-		return nil, err
+		// Log other errors
+		r.logger.Error().Err(err).Str("email", email).Msg("Error finding user by email")
+		return nil, ErrUnexpectedFind
 	}
 
 	return dbUser.toDomain(), nil

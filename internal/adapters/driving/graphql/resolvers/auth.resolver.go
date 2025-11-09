@@ -6,23 +6,33 @@ package resolvers
 
 import (
 	"context"
+	"errors"
 
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/generated"
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/models"
+	"github.com/ipincamp/srikandi-sehat/internal/core/service"
 )
 
 // Register is the resolver for the register field.
 func (r *mutationResolver) Register(ctx context.Context, input models.RegisterInput) (*models.AuthResponse, error) {
-	// 1. Call the injected authService (the core business logic)
+	// 1. Call the injected authService
 	authRes, err := r.authService.Register(ctx, input.Name, input.Email, input.Password)
 	if err != nil {
-		// 2. Errors from the service (e.g., ErrEmailExists) are automatically passed to GraphQL.
-		// The resolver doesn't need to know *what* the error is, just that it failed.
+		// Log the error
+		log := r.logger.Warn().Err(err).Str("email", input.Email).Str("mutation", "Register")
+
+		// Provide context-specific logs for known business errors
+		if errors.Is(err, service.ErrEmailExists) {
+			log.Msg("Registration failed: Email exists")
+		} else {
+			log.Msg("Registration failed: Unexpected service error")
+		}
+
+		// 2. Errors from the service are passed to GraphQL.
 		return nil, err
 	}
 
 	// 3. Convert from the service's 'ports.AuthResponse' to the GraphQL 'models.AuthResponse'.
-	// This is a simple translation layer.
 	return &models.AuthResponse{
 		AccessToken:  authRes.AccessToken,
 		RefreshToken: authRes.RefreshToken,
@@ -34,7 +44,16 @@ func (r *mutationResolver) Login(ctx context.Context, input models.LoginInput) (
 	// 1. Call the injected authService
 	authRes, err := r.authService.Login(ctx, input.Email, input.Password)
 	if err != nil {
-		// 2. Errors (e.g., ErrInvalidCredentials) are passed through.
+		// Log the error
+		log := r.logger.Warn().Err(err).Str("email", input.Email).Str("mutation", "Login")
+
+		if errors.Is(err, service.ErrInvalidCredentials) {
+			log.Msg("Login failed: Invalid credentials")
+		} else {
+			log.Msg("Login failed: Unexpected service error")
+		}
+
+		// 2. Errors from the service are passed to GraphQL.
 		return nil, err
 	}
 

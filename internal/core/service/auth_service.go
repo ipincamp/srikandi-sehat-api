@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog"
 
 	"github.com/ipincamp/srikandi-sehat/internal/core/domain"
 	"github.com/ipincamp/srikandi-sehat/internal/core/ports"
@@ -12,7 +13,6 @@ import (
 	"github.com/ipincamp/srikandi-sehat/pkg/password"
 	"github.com/ipincamp/srikandi-sehat/pkg/token"
 
-	// Import the new repository error
 	db "github.com/ipincamp/srikandi-sehat/internal/adapters/driven/postgres"
 )
 
@@ -20,12 +20,12 @@ import (
 var _ ports.AuthService = (*authService)(nil)
 
 // authService implements the ports.AuthService interface.
-// It depends on abstractions (interfaces) for its dependencies.
 type authService struct {
 	userRepo ports.UserRepository
 	maker    token.Maker
 	hasher   password.Hasher
-	tokenCfg config.Token // Use the config struct for TTLs
+	tokenCfg config.Token
+	logger   zerolog.Logger
 }
 
 // NewAuthService is the constructor for authService.
@@ -34,38 +34,43 @@ func NewAuthService(
 	maker token.Maker,
 	hasher password.Hasher,
 	tokenCfg config.Token,
+	logger zerolog.Logger,
 ) ports.AuthService {
 	return &authService{
 		userRepo: userRepo,
 		maker:    maker,
 		hasher:   hasher,
 		tokenCfg: tokenCfg,
+		logger:   logger,
 	}
 }
 
 // Register creates a new user, hashes their password,
 // saves them, and returns a new set of auth tokens.
 func (s *authService) Register(ctx context.Context, name, email, passwordStr string) (*ports.AuthResponse, error) {
-	// 1. Check if user already exists
+	// 1. Check if user already exists (pre-check)
 	_, err := s.userRepo.FindByEmail(ctx, email)
 	if err == nil {
 		// User found, email is taken
+		s.logger.Warn().Str("email", email).Msg("Registration failed: email already exists (pre-check)")
 		return nil, ErrEmailExists
 	}
 	if !errors.Is(err, db.ErrUserNotFound) {
-		// A different, unexpected database error occurred
+		// A different, unexpected database error occurred during find
+		s.logger.Error().Err(err).Str("email", email).Msg("Failed to check user existence")
 		return nil, err
 	}
 
 	// 2. Hash the password
 	hashedPassword, err := s.hasher.Hash(passwordStr)
 	if err != nil {
+		s.logger.Error().Err(err).Msg("Failed to hash password during registration")
 		return nil, err
 	}
 
 	// 3. Create the domain user
 	user := &domain.User{
-		UUID:     uuid.NewString(), // Generate a new public UUID
+		UUID:     uuid.NewString(),
 		Name:     name,
 		Email:    email,
 		Password: hashedPassword,
@@ -74,8 +79,18 @@ func (s *authService) Register(ctx context.Context, name, email, passwordStr str
 
 	// 4. Save the user
 	if err := s.userRepo.Save(ctx, user); err != nil {
+		// Check for duplicate email (race condition)
+		if errors.Is(err, db.ErrDuplicateEmail) {
+			s.logger.Warn().Str("email", email).Msg("Registration failed: email already exists (race condition on save)")
+			return nil, ErrEmailExists // Return the *service* level error
+		}
+
+		// A different, unexpected save error
+		s.logger.Error().Err(err).Str("email", email).Msg("Failed to save user during registration")
 		return nil, err
 	}
+
+	s.logger.Info().Str("email", email).Str("uuid", user.UUID).Msg("User registered successfully")
 
 	// 5. Generate tokens
 	return s.createTokenSet(user)
@@ -87,17 +102,21 @@ func (s *authService) Login(ctx context.Context, email, passwordStr string) (*po
 	user, err := s.userRepo.FindByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, db.ErrUserNotFound) {
+			s.logger.Warn().Str("email", email).Msg("Login failed: invalid credentials (user not found)")
 			return nil, ErrInvalidCredentials
 		}
+		s.logger.Error().Err(err).Str("email", email).Msg("Login failed: database error on find")
 		return nil, err
 	}
 
 	// 2. Compare password
 	if !s.hasher.Compare(user.Password, passwordStr) {
+		s.logger.Warn().Str("email", email).Msg("Login failed: invalid credentials (password mismatch)")
 		return nil, ErrInvalidCredentials
 	}
 
 	// 3. Generate tokens
+	s.logger.Info().Str("email", email).Str("uuid", user.UUID).Msg("User logged in successfully")
 	return s.createTokenSet(user)
 }
 
@@ -107,13 +126,16 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*p
 	payload, err := s.maker.ValidateToken(refreshToken)
 	if err != nil {
 		if errors.Is(err, token.ErrTokenExpired) {
+			s.logger.Warn().Msg("Refresh token failed: token expired")
 			return nil, ErrTokenExpired
 		}
+		s.logger.Warn().Err(err).Msg("Refresh token failed: invalid token")
 		return nil, ErrInvalidToken
 	}
 
 	// 2. Check that it's actually a refresh token
 	if payload.UseFor != token.UseForRefreshToken {
+		s.logger.Warn().Str("uuid", payload.UserID).Msg("Refresh token failed: token use mismatch")
 		return nil, ErrTokenUseMismatch
 	}
 
@@ -121,12 +143,15 @@ func (s *authService) RefreshToken(ctx context.Context, refreshToken string) (*p
 	user, err := s.userRepo.FindByID(ctx, payload.UserID)
 	if err != nil {
 		if errors.Is(err, db.ErrUserNotFound) {
+			s.logger.Error().Str("uuid", payload.UserID).Msg("Refresh token failed: user not found")
 			return nil, ErrUserNotFound
 		}
+		s.logger.Error().Err(err).Str("uuid", payload.UserID).Msg("Refresh token failed: database error")
 		return nil, err
 	}
 
 	// 4. Generate new tokens
+	s.logger.Info().Str("uuid", user.UUID).Msg("Token refreshed successfully")
 	return s.createTokenSet(user)
 }
 

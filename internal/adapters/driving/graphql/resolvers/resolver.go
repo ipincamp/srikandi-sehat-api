@@ -1,6 +1,9 @@
 package resolvers
 
-import "github.com/ipincamp/srikandi-sehat/internal/core/ports"
+import (
+	"github.com/ipincamp/srikandi-sehat/internal/core/ports"
+	"github.com/rs/zerolog"
+)
 
 // This file will not be regenerated automatically.
 //
@@ -8,14 +11,13 @@ import "github.com/ipincamp/srikandi-sehat/internal/core/ports"
 
 type Resolver struct {
 	authService ports.AuthService
+	logger      zerolog.Logger
 }
 
 // It's the entry point for injecting core services into the adapter.
-func NewResolver(authService ports.AuthService) *Resolver {
-	// When services are added, they would be injected here.
-	// Example:
-	// return &Resolver{userService: us}
+func NewResolver(authService ports.AuthService, logger zerolog.Logger) *Resolver {
 	return &Resolver{
 		authService: authService,
+		logger:      logger,
 	}
 }

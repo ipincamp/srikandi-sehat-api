@@ -238,20 +238,20 @@ func (ec *executionContext) introspectType(name string) (*introspection.Type, er
 }
 
 var sources = []*ast.Source{
-	{Name: "../schema/auth.graphqls", Input: `# Tipe ini me-mirror 'ports.AuthResponse' dari core service Anda
+	{Name: "../schema/auth.graphqls", Input: `# This type mirrors the 'ports.AuthResponse' DTO from the core service.
 type AuthResponse {
   accessToken: String!
   refreshToken: String!
 }
 
-# Input DTO untuk register
+# Input DTO for the 'register' mutation.
 input RegisterInput {
   name: String!
   email: String!
   password: String!
 }
 
-# Input DTO untuk login
+# Input DTO for the 'login' mutation.
 input LoginInput {
   email: String!
   password: String!
@@ -264,7 +264,8 @@ type Mutation {
 `, BuiltIn: false},
 	{Name: "../schema/health.graphqls", Input: `# A simple query type for testing server initialization.
 type Query {
-  # A test query that returns "pong"
+  # A test query that returns "pong".
+  # Used for simple health checks and liveness probes.
   ping: String!
 }
 `, BuiltIn: false},

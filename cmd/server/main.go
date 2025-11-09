@@ -8,11 +8,9 @@ import (
 	"syscall"
 	"time"
 
-	// --- gqlgen Handlers ---
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/playground"
 
-	// --- Internal Dependencies ---
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driven/postgres"
 	"github.com/ipincamp/srikandi-sehat/internal/core/service"
 	"github.com/ipincamp/srikandi-sehat/pkg/config"
@@ -20,7 +18,6 @@ import (
 	"github.com/ipincamp/srikandi-sehat/pkg/password"
 	"github.com/ipincamp/srikandi-sehat/pkg/token"
 
-	// --- GraphQL Package Imports ---
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/generated"
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/resolvers"
 )
@@ -29,11 +26,11 @@ func main() {
 	// --- 1. Load Configuration ---
 	cfg, err := config.Load()
 	if err != nil {
-		tempLogger := logger.NewLogger("development") // Use "development" for a clean exit message
+		tempLogger := logger.NewLogger("development")
 		tempLogger.Fatal().Err(err).Msg("Failed to load configuration")
 	}
 
-	// --- 1.1. Initialize Logger ---
+	// --- 1.5. Initialize Logger ---
 	log := logger.NewLogger(cfg.Server.Env)
 	log.Info().Str("Env", cfg.Server.Env).Msg("Configuration loaded")
 
@@ -58,8 +55,6 @@ func main() {
 	log.Info().Msg("Database connection pool established")
 
 	// --- 4. Dependency Injection (Composition Root) ---
-	// This is the only place in the app that knows about concrete implementations.
-	// We assemble the application components here, following Hexagonal Architecture.
 
 	// 4a. Initialize 'pkg' helpers (implementations)
 	hasher := password.NewArgon2idHasher()
@@ -69,16 +64,19 @@ func main() {
 	}
 
 	// 4b. Initialize Driven Adapters (Repositories)
-	// We create the concrete 'postgres.userRepository' implementation.
-	userRepo := postgres.NewUserRepository(dbPool)
+	// Inject the logger with component context
+	userRepoLogger := log.With().Str("component", "UserRepository").Logger()
+	userRepo := postgres.NewUserRepository(dbPool, userRepoLogger)
 
 	// 4c. Initialize Core Services
-	// We inject the repository (an interface) into the service.
-	authService := service.NewAuthService(userRepo, tokenMaker, hasher, cfg.Token)
+	// Inject dependencies (repo, helpers, and logger)
+	authServiceLogger := log.With().Str("component", "AuthService").Logger()
+	authService := service.NewAuthService(userRepo, tokenMaker, hasher, cfg.Token, authServiceLogger)
 
 	// 4d. Initialize Driving Adapters (GraphQL)
-	// We inject the service (an interface) into the resolver.
-	gqlResolver := resolvers.NewResolver(authService)
+	// Inject the service and a logger
+	resolverLogger := log.With().Str("component", "GraphQLResolver").Logger()
+	gqlResolver := resolvers.NewResolver(authService, resolverLogger)
 
 	// 4e. Create GraphQL server configuration
 	gqlConfig := generated.Config{Resolvers: gqlResolver}

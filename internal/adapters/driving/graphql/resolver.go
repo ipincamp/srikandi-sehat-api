@@ -12,7 +12,7 @@ type Resolver struct{}
 
 // Ping is the resolver for the ping field.
 func (r *queryResolver) Ping(ctx context.Context) (string, error) {
-	panic("not implemented")
+	return "pong", nil
 }
 
 // Query returns generated.QueryResolver implementation.
@@ -27,14 +27,5 @@ type queryResolver struct{ *Resolver }
 //    it when you're done.
 //  - You have helper methods in this file. Move them out to keep these resolver files clean.
 /*
-	type Resolver struct {
-	// Example (based on your PDF):
-	// userService ports.UserService [cite: 122]
-}
-func NewResolver() *Resolver {
-	// When services are added, they would be injected here.
-	// Example:
-	// return &Resolver{userService: us} [cite: 124, 125]
-	return &Resolver{}
-}
+	type Resolver struct{}
 */

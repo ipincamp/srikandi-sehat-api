@@ -2,17 +2,24 @@ package main
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
-	// --- Internal Dependencies ---
+	// --- Handler dari gqlgen ---
+	"github.com/99designs/gqlgen/graphql/handler"
+	"github.com/99designs/gqlgen/graphql/playground"
+
+	// --- Dependensi Internal ---
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driven/postgres"
 	"github.com/ipincamp/srikandi-sehat/pkg/config"
 	"github.com/ipincamp/srikandi-sehat/pkg/logger"
-	// "github.com/ipincamp/srikandi-sehat/internal/adapters/primary/http" (Example)
-	// "github.com/ipincamp/srikandi-sehat/internal/core/services"       (Example)
-	// "github.com/ipincamp/srikandi-sehat/internal/repositories"        (Example)
+
+	// --- Impor paket GraphQL Anda ---
+	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql"
+	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/generated"
 )
 
 func main() {
@@ -29,83 +36,95 @@ func main() {
 	// --- 1.5. Initialize Logger ---
 	// Now that config is loaded, create the main logger
 	// This logger will be used throughout the application
-	logger := logger.NewLogger(cfg.Server.Env)
-	logger.Info().Str("Env", cfg.Server.Env).Msg("Configuration loaded")
+	log := logger.NewLogger(cfg.Server.Env)
+	log.Info().Str("Env", cfg.Server.Env).Msg("Configuration loaded")
 
 	// --- 2. Setup Application Context ---
-	// Create a context that listens for shutdown signals.
+	// Buat context yang me-listen untuk sinyal shutdown.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Listen for OS interrupt signals
+	// Listen untuk sinyal interrupt dari OS
 	go func() {
 		sigchan := make(chan os.Signal, 1)
 		signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM)
 		<-sigchan
-		logger.Info().Msg("Shutdown signal received, initiating graceful shutdown...")
+		log.Info().Msg("Shutdown signal received, initiating graceful shutdown...")
 		cancel()
 	}()
 
 	// --- 3. Initialize Driven Adapters (Database) ---
-	// Connect to the PostgreSQL database
+	// Terhubung ke database PostgreSQL
 	dbPool, err := postgres.Connect(ctx, cfg.Database.DSN())
 	if err != nil {
-		logger.Fatal().Err(err).Msg("Failed to connect to database")
+		log.Fatal().Err(err).Msg("Failed to connect to database")
 	}
-	// Defer closing the pool until the application exits
+	// Tunda penutupan pool koneksi hingga aplikasi keluar
 	defer dbPool.Close()
-	logger.Info().Msg("Database connection pool established")
+	log.Info().Msg("Database connection pool established")
 
 	// --- 4. Dependency Injection (Composition Root) ---
-	// Here you would initialize your repositories, services, and handlers (primary adapters).
-	// This is the core of "Dependency Injection": passing dependencies (like dbPool)
-	// into the components that need them.
-	//
-	// Example:
-	// userRepo := repositories.NewGormUserRepository(gormDB) // If using Gorm
-	// userRepo := repositories.NewPgxUserRepository(dbPool)   // If using pgx directly
-	//
-	// authService := services.NewAuthService(userRepo, cfg.Server.JWTSecret)
-	//
-	// httpHandler := http.NewHandler(authService)
-	//
-	// server := &http.Server{
-	// 	Addr:    ":" + cfg.Server.Port,
-	// 	Handler: httpHandler.Router,
-	// }
+	// Di sinilah Anda menginisialisasi repositories, services, dan handlers.
+	// Ini adalah inti dari "Dependency Injection": meneruskan dependensi (seperti dbPool)
+	// ke komponen yang membutuhkannya.
 
-	// --- 5. Start Application ---
-	//
-	// Example:
-	// go func() {
-	// 	log.Printf("Starting server on port %s", cfg.Server.Port)
-	// 	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-	// 		log.Fatalf("Could not start server: %v", err)
-	// 	}
-	// }()
-	//
-	// --- TODO: Remove this placeholder and start your server ---
-	logger.Info().Msg("Application dependencies initialized.")
-	logger.Warn().Msg("TODO: Start your HTTP server or primary adapter here.")
-	// -------------------------------------------------------------
+	// 4a. Inisialisasi Repositories (Contoh)
+	// userRepo := postgres.NewUserRepository(dbPool)
+
+	// 4b. Inisialisasi Core Services (Contoh)
+	// userService := service.NewUserService(userRepo)
+
+	// 4c. Inisialisasi Driving Adapters (GraphQL)
+	// "Suntikkan" service ke dalam resolver.
+	// Karena kita belum memiliki service untuk tes ini, kita panggil langsung.
+	// (Contoh dengan service: gqlResolver := graphql.NewResolver(userService))
+	gqlResolver := graphql.NewResolver()
+
+	// 4d. Buat konfigurasi server GraphQL
+	gqlConfig := generated.Config{Resolvers: gqlResolver}
+	gqlServer := handler.NewDefaultServer(generated.NewExecutableSchema(gqlConfig))
+
+	// --- 5. Start Application (HTTP Server) ---
+	log.Info().Msg("Application dependencies initialized.")
+
+	// Buat HTTP server mux (router)
+	httpMux := http.NewServeMux()
+
+	// Atur handler untuk GraphQL Playground di root ("/")
+	httpMux.Handle("/", playground.Handler("GraphQL Playground", "/query"))
+	// Atur handler untuk endpoint GraphQL utama di "/query"
+	httpMux.Handle("/query", gqlServer)
+
+	// Konfigurasi server HTTP
+	server := &http.Server{
+		Addr:    ":" + cfg.Server.Port,
+		Handler: httpMux,
+		// Anda bisa menambahkan ReadTimeout, WriteTimeout, dll di sini untuk produksi
+	}
+
+	// Jalankan server di goroutine terpisah
+	go func() {
+		log.Info().Str("port", cfg.Server.Port).Msg("Starting HTTP server... (GraphQL Playground at http://localhost:" + cfg.Server.Port + ")")
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatal().Err(err).Msg("Could not start server")
+		}
+	}()
 
 	// --- 6. Wait for Shutdown Signal ---
-	// Block here until the context is canceled (e.g., by the OS signal)
+	// Blok di sini sampai context dibatalkan (misalnya, oleh sinyal OS)
 	<-ctx.Done()
 
 	// --- 7. Graceful Shutdown ---
-	logger.Info().Msg("Shutting down application...")
+	log.Info().Msg("Shutting down application...")
 
-	// --- TODO: Add your graceful shutdown logic here ---
-	// (e.g., shut down the HTTP server with a timeout)
-	//
-	// shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	// defer shutdownCancel()
-	//
-	// if err := server.Shutdown(shutdownCtx); err != nil {
-	// 	log.Printf("Server shutdown failed: %v", err)
-	// }
-	// ---------------------------------------------------
+	// Buat context untuk server shutdown dengan timeout
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer shutdownCancel()
 
-	logger.Info().Msg("Application shut down gracefully.")
+	// Lakukan graceful shutdown server HTTP
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Warn().Err(err).Msg("Server shutdown failed")
+	}
+
+	log.Info().Msg("Application shut down gracefully.")
 }

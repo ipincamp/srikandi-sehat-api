@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 
 	// Using godotenv for local development convenience.
 	// In production, environment variables should be set directly.
@@ -16,6 +17,8 @@ type Config struct {
 	Server Server
 	// Database holds PostgreSQL database connection configuration.
 	Database Database
+	// Token holds PASETO token configuration.
+	Token Token
 }
 
 // Server holds configuration related to the HTTP server.
@@ -36,6 +39,14 @@ type Database struct {
 	SSLMode  string
 }
 
+// Token holds configuration for PASETO token generation.
+type Token struct {
+	SymmetricKey    string
+	Issuer          string
+	AccessTokenTTL  time.Duration
+	RefreshTokenTTL time.Duration
+}
+
 // Load reads configuration from environment variables.
 // It loads from a .env file if it exists (for local development).
 func Load() (*Config, error) {
@@ -46,6 +57,16 @@ func Load() (*Config, error) {
 	dbPort, err := strconv.Atoi(getEnv("DB_PORT", "5432"))
 	if err != nil {
 		return nil, fmt.Errorf("invalid DB_PORT: %w", err)
+	}
+
+	accessTokenTTL, err := time.ParseDuration(getEnv("TOKEN_ACCESS_DURATION", "15m"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid TOKEN_ACCESS_DURATION: %w", err)
+	}
+
+	refreshTokenTTL, err := time.ParseDuration(getEnv("TOKEN_REFRESH_DURATION", "720h"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid TOKEN_REFRESH_DURATION: %w", err)
 	}
 
 	cfg := &Config{
@@ -61,11 +82,23 @@ func Load() (*Config, error) {
 			DBName:   getEnv("DB_NAME", "postgres"),
 			SSLMode:  getEnv("DB_SSL_MODE", "disable"),
 		},
+		Token: Token{
+			SymmetricKey:    getEnv("TOKEN_SYMMETRIC_KEY", ""),
+			Issuer:          getEnv("TOKEN_ISSUER", "srikandi-sehat"),
+			AccessTokenTTL:  accessTokenTTL,
+			RefreshTokenTTL: refreshTokenTTL,
+		},
 	}
 
 	// Simple validation
 	if cfg.Database.User == "" || cfg.Database.Password == "" || cfg.Database.DBName == "" {
 		return nil, fmt.Errorf("DB_USER, DB_PASS, and DB_NAME must be set")
+	}
+	if cfg.Token.SymmetricKey == "" {
+		return nil, fmt.Errorf("TOKEN_SYMMETRIC_KEY must be set")
+	}
+	if len(cfg.Token.SymmetricKey) != 32 {
+		return nil, fmt.Errorf("TOKEN_SYMMETRIC_KEY must be exactly 32 bytes")
 	}
 
 	return cfg, nil

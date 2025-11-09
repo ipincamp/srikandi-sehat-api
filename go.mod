@@ -4,6 +4,7 @@ go 1.25.4
 
 require (
 	github.com/99designs/gqlgen v0.17.82
+	github.com/go-gormigrate/gormigrate/v2 v2.1.5
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/joho/godotenv v1.5.1
 	github.com/o1egl/paseto v1.0.0

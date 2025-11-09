@@ -1,12 +1,11 @@
 # ==============================================================================
-# Makefile untuk Proyek Go (Srikandi Sehat API)
+# Makefile untuk Proyek Go (Srikandi Sehat)
 # ==============================================================================
 
 # Variabel Proyek
 BINARY_NAME=srikandisehat
-MAIN_GO=./cmd/api/main.go
+MAIN_GO=./cmd/server/main.go
 MIGRATE_GO=./cmd/migrate/main.go
-SEED_GO=./cmd/seed/main.go
 
 # Variabel Lingkungan
 GOPATH=$(shell go env GOPATH)
@@ -20,11 +19,10 @@ TIMEZONE=Asia/Jakarta
 # DEFINISI PERINTAH
 # ==============================================================================
 
-help: ## ℹ️ Tampilkan semua perintah yang tersedia
+help: ## ℹ️  Tampilkan semua perintah yang tersedia
 	@echo "Perintah yang tersedia:"
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 	awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-25s\033[0m %s\n", $$1, $$2}'
-
 
 # --------------------------------------
 # Perintah Build & Run
@@ -37,7 +35,7 @@ clean: ## 🧹 Bersihkan artefak build (direktori ./bin)
 	@echo "Membersihkan artefak build..."
 	@rm -rf ./bin/*
 
-build: ## 🏗️ Kompilasi aplikasi Go ke binary di ./bin
+build: ## 🏗️  Kompilasi aplikasi Go ke binary di ./bin
 	@echo "Mem-build binary..."
 	@mkdir -p ./bin
 	@go build -o ./bin/$(BINARY_NAME) $(MAIN_GO)
@@ -77,48 +75,36 @@ create-migration: ## 📝 Buat file migrasi baru. Cth: make create-migration nam
 	fi
 	@timestamp=$$(date +%Y%m%d%H%M%S); \
 	func_name=$$(echo "$(name)" | sed -e 's/_\([a-z]\)/\u\1/g' -e 's/^\([a-z]\)/\u\1/g'); \
-	filepath=database/migrations/$${timestamp}_$(name).go; \
+	filepath=internal/adapters/driven/postgres/db/migrations/$${timestamp}_$(name).go; \
 	printf 'package migrations\n\nimport (\n\t"github.com/go-gormigrate/gormigrate/v2"\n\t"gorm.io/gorm"\n)\n\nfunc %s() *gormigrate.Migration {\n\t// TODO: Tentukan struct Anda di sini\n\t// type YourStruct struct {}\n\treturn &gormigrate.Migration{\n\t\tID: "%s",\n\t\tMigrate: func(tx *gorm.DB) error {\n\t\t\t// TODO: Implementasi migrasi (buat tabel/kolom)\n\t\t\t// Cth: return tx.AutoMigrate(&YourStruct{})\n\t\t\treturn nil\n\t\t},\n\t\tRollback: func(tx *gorm.DB) error {\n\t\t\t// TODO: Implementasi rollback (hapus tabel/kolom)\n\t\t\t// Cth: return tx.Migrator().DropTable("your_structs")\n\t\t\treturn nil\n\t\t},\n\t}\n}\n' "$$func_name" "$$timestamp" > $$filepath; \
 	echo "Berhasil membuat: $$filepath"
 
-migrate: ## ⬆️ Jalankan semua migrasi yang tertunda (up)
+migrate: ## ⬆️  Jalankan semua migrasi yang tertunda (up)
 	@echo "Menjalankan migrasi (up)..."
 	@go run $(MIGRATE_GO) up
 
-migrate-down: ## ⬇️ Batalkan (rollback) migrasi terakhir (down)
+migrate-down: ## ⬇️  Batalkan (rollback) migrasi terakhir (down)
 	@echo "Me-rollback migrasi terakhir..."
 	@go run $(MIGRATE_GO) down
 
-migrate-reset: ## 🔄 HAPUS semua tabel lalu jalankan ulang SEMUA migrasi (ideal untuk dev)
+migrate-fresh: ## 🔄 HAPUS semua tabel lalu jalankan ulang SEMUA migrasi (ideal untuk dev)
 	@echo "Mer-reset database (drop semua tabel & migrasi ulang)..."
-	@go run $(MIGRATE_GO) reset
+	@go run $(MIGRATE_GO) fresh
 
-db-drop: ## ⚠️ DANGER! HAPUS semua tabel & JANGAN migrasi ulang (mengosongkan DB)
+migrate-prune: ## ⚠️  DANGER! HAPUS semua tabel & JANGAN migrasi ulang (mengosongkan DB)
 	@echo "PERHATIAN! Menghapus semua tabel (tanpa migrasi ulang)..."
-	@go run $(MIGRATE_GO) drop-all
+	@go run $(MIGRATE_GO) prune
 
-# --------------------------------------
-# Perintah Seeder Database
-# --------------------------------------
+# ==============================================================================
+# Perintah GraphQL
+# ==============================================================================
 
-database-seeders: ## --- Database Seeders ---
+graphql-schema: ## --- Validasi skema GraphQL ---
 	@# Target palsu ini hanya untuk pengelompokan di 'make help'
 
-create-seeder: ## 🌱 Buat file seeder baru. Cth: make create-seeder name=admin_user
-	@echo "Membuat file seeder..."
-	@if [ -z "$(name)" ]; then \
-		echo "Usage: make create-seeder name=<nama_seeder>"; \
-		exit 1; \
-	fi
-	@func_name=$$(echo "$(name)" | sed -e 's/_\([a-z]\)/\u\1/g' -e 's/^\([a-z]\)/\u\1/g')Seeder; \
-	filepath=database/seeders/$(name).go; \
-	printf 'package seeders\n\nimport (\n\t"log"\n\n\t"gorm.io/gorm"\n)\n\nfunc %s(db *gorm.DB) error {\n\t// TODO: Implementasi logika seeder Anda di sini\n\t// Gunakan db.FirstOrCreate() untuk menghindari duplikat\n\tlog.Println("%s berjalan sukses")\n\treturn nil\n}\n' "$$func_name" "$$func_name" > $$filepath; \
-	echo "Berhasil membuat: $$filepath"
-
-seed: ## 💾 Jalankan semua seeder untuk mengisi data awal (roles, admin, dll)
-	@echo "Menjalankan database seeders..."
-	@go run $(SEED_GO)
-
+generate: ## 🔄 Sinkronisasi skema
+	@echo "Running gqlgen generate..."
+	go run github.com/99designs/gqlgen generate
 
 # ==============================================================================
 # PENGATURAN MAKEFILE
@@ -128,5 +114,5 @@ seed: ## 💾 Jalankan semua seeder untuk mengisi data awal (roles, admin, dll)
 # Ini mencegah 'make' bingung jika ada file/folder dengan nama yang sama
 .PHONY: help \
 	build-run clean build run dev debug air-install \
-	database-migrations create-migration migrate migrate-down migrate-reset db-drop \
-	database-seeders create-seeder seed
+	database-migrations create-migration migrate migrate-down migrate-fresh migrate-prune \
+	graphql-schema generate

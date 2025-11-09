@@ -64,6 +64,22 @@ func (r *mutationResolver) Login(ctx context.Context, input models.LoginInput) (
 	}, nil
 }
 
+// Logout is the resolver for the logout field.
+func (r *mutationResolver) Logout(ctx context.Context, refreshToken string) (bool, error) {
+	// 1. Call the injected authService
+	err := r.authService.Logout(ctx, refreshToken)
+	if err != nil {
+		// In a stateful implementation, this could be a DB error.
+		r.logger.Error().Err(err).Msg("Logout failed: Unexpected service error")
+		return false, err
+	}
+
+	// 2. For stateless tokens, the service is a no-op.
+	// We return true to signal the client to clear its tokens.
+	r.logger.Info().Msg("Logout endpoint hit. Client advised to clear tokens.")
+	return true, nil
+}
+
 // Mutation returns generated.MutationResolver implementation.
 func (r *Resolver) Mutation() generated.MutationResolver { return &mutationResolver{r} }
 

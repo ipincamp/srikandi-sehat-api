@@ -6,16 +6,9 @@ package resolvers
 
 import (
 	"context"
-
-	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/generated"
 )
 
 // Ping is the resolver for the ping field.
 func (r *queryResolver) Ping(ctx context.Context) (string, error) {
 	return "pong", nil
 }
-
-// Query returns generated.QueryResolver implementation.
-func (r *Resolver) Query() generated.QueryResolver { return &queryResolver{r} }
-
-type queryResolver struct{ *Resolver }

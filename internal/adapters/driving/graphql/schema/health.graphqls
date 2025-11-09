@@ -1,5 +1,5 @@
 # A simple query type for testing server initialization.
-type Query {
+extend type Query {
   # A test query that returns "pong".
   # Used for simple health checks and liveness probes.
   ping: String!

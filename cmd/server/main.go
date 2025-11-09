@@ -109,6 +109,12 @@ func main() {
 
 	// 4e. Initialize Core Services
 	authServiceLogger := log.With().Str("component", "AuthService").Logger()
+	userService := service.NewUserService(
+		userRepo,          // ports.UserRepository
+		hasher,            // password.Hasher
+		authServiceLogger, // zerolog.Logger
+		uow,               // ports.UnitOfWork
+	)
 	authService := service.NewAuthService(
 		userRepo, // Pass the non-tx repo for reads
 		userCache,
@@ -122,7 +128,11 @@ func main() {
 	// 4f. Initialize Driving Adapters (GraphQL)
 	// Inject the service and a logger
 	resolverLogger := log.With().Str("component", "GraphQLResolver").Logger()
-	gqlResolver := resolvers.NewResolver(authService, resolverLogger)
+	gqlResolver := resolvers.NewResolver(
+		authService,
+		userService,
+		resolverLogger,
+	)
 	gqlConfig := generated.Config{Resolvers: gqlResolver}
 	gqlServer := handler.NewDefaultServer(generated.NewExecutableSchema(gqlConfig))
 

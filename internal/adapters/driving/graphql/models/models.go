@@ -23,3 +23,11 @@ type RegisterInput struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
 }
+
+type User struct {
+	UUID      string `json:"uuid"`
+	Name      string `json:"name"`
+	Email     string `json:"email"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
+}

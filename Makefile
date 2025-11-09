@@ -104,7 +104,7 @@ graphql-schema: ## --- Validasi skema GraphQL ---
 
 generate: ## 🔄 Sinkronisasi skema
 	@echo "Running gqlgen generate..."
-	go run github.com/99designs/gqlgen generate
+	@go run github.com/99designs/gqlgen generate
 
 # ==============================================================================
 # PENGATURAN MAKEFILE

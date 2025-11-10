@@ -1,213 +1,249 @@
-# SRIKANDI SEHAT
-REST API ini dibangun menggunakan Go (GoFiber) dengan arsitektur yang bersih dan modern, menyediakan fondasi yang kuat untuk aplikasi frontend seperti Flutter.
+# Srikandi Sehat GraphQL API
+
+A production-ready GraphQL API built with Go, following **Hexagonal Architecture** (Ports and Adapters) principles. This project provides a secure, scalable authentication and user management system.
+
+## 🏗️ Architecture
+
+This project follows **Hexagonal Architecture** (also known as Ports and Adapters), which promotes:
+
+- **Clean separation of concerns** between business logic and infrastructure
+- **Technology independence** - easily swap databases, frameworks, or external services
+- **Testability** - core business logic can be tested without external dependencies
+- **Maintainability** - clear boundaries between different layers
+
+### Architecture Layers
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Driving Adapters                        │
+│              (GraphQL Resolvers, Middleware)                │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ↓
+┌─────────────────────────────────────────────────────────────┐
+│                    Driving Ports                            │
+│              (Service Interfaces)                           │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ↓
+┌─────────────────────────────────────────────────────────────┐
+│                    Core Domain                              │
+│        (Business Logic & Entities)                          │
+│    User, OTP, AuthService, UserService                      │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ↓
+┌─────────────────────────────────────────────────────────────┐
+│                    Driven Ports                             │
+│         (Repository Interfaces)                             │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ↓
+┌─────────────────────────────────────────────────────────────┐
+│                   Driven Adapters                           │
+│         (PostgreSQL, Mailgun, etc.)                         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## 🚀 Features
+
+### ✅ Implemented Features
+
+- **User Registration** - Create new user accounts with email and password
+- **User Login** - Authenticate users with email and password
+- **Token-based Authentication** - Secure PASETO tokens (access + refresh)
+- **Token Refresh** - Renew expired access tokens without re-login
+- **Change Password** - Authenticated users can update their password
+- **Update Profile** - Users can update their profile information
+- **Get User Profile** - Retrieve authenticated user information
+- **Password Reset** - Forgot password flow with OTP via email
+- **Email Verification** - Verify email addresses with OTP codes
+- **Request Email Change** - Change email address with verification
+- **Account Deletion** - Soft delete user accounts
+- **Database Migrations** - Version-controlled database schema
+- **Health Check** - API health status endpoint
+- **DataLoader** - Efficient batch loading to prevent N+1 queries
+- **Structured Logging** - JSON-structured logs with zerolog
+- **Environment Configuration** - Flexible configuration via environment variables
+
+### 🔮 Planned Features
+
+Additional features can be easily added following the established patterns.
+
+## 📋 Prerequisites
+
+- **Go 1.25.4+**
+- **PostgreSQL 16+**
+- **Docker & Docker Compose** (for local development)
+- **Make** (for running Makefile commands)
+
+## 🛠️ Installation & Setup
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/ipincamp/srikandi-sehat-graphql.git
+cd srikandi-sehat-graphql
+```
+
+### 2. Install Dependencies
+
+```bash
+go mod download
+```
+
+### 3. Configure Environment Variables
+
+Copy the example environment file and configure it:
+
+```bash
+cp .env.example .env
+```
 
-## Daftar Isi
+Edit `.env` with your configuration:
 
-1. [Requirements](#1-requirements)
-
-2. [Instalasi & Setup](#2-instalasi--setup)
-
-3. [Fondasi & Arsitektur](#3-fondasi--arsitektur)
-
-4. [Fitur & Endpoint](#4-fitur--endpoint)
-
-5. [Komponen Pendukung Kualitas Kode](#5-komponen-pendukung-kualitas-kode)
-
-6. [License](#6-license)
-
-## 1. Requirements
-Untuk menjalankan proyek ini di lingkungan development, Anda memerlukan perangkat lunak berikut:
-
-- Go: Versi `1.21` atau yang lebih baru.
-
-- MySQL: Versi `8.0` atau yang lebih baru (MariaDB juga didukung).
-
-- Make: (Opsional, tapi sangat direkomendasikan) Untuk menjalankan perintah shortcut dari Makefile.
-
-- Text Editor: Visual Studio Code dengan ekstensi Go sangat direkomendasikan.
-
-## 2. Instalasi & Setup
-
-Ikuti langkah-langkah berikut untuk menjalankan API ini di mesin lokal Anda.
-
-1. Clone Repositori
-
-    ```bash
-    git clone https://github.com/ipincamp/go-srikandi-sehat-api.git
-    cd go-srikandi-sehat-api
-    ```
-
-2. Konfigurasi Environment
-Salin file `.env.example` menjadi `.env` dan sesuaikan nilainya dengan konfigurasi database dan kredensial seeder Anda.
-
-    ```bash
-    cp .env.example .env
-    ```
-
-    Buka file `.env` dan isi semua variabel yang diperlukan.
-
-3. Instal Dependensi
-Jalankan perintah berikut untuk mengunduh semua package yang dibutuhkan.
-
-    ```bash
-    go mod tidy
-    ```
-
-4. Jalankan Seeder Database
-Perintah ini akan membuat semua tabel yang diperlukan dan mengisi data awal (roles, permissions, user default, dan data wilayah).
-
-    ```bash
-    go run database/seeders/main.go
-    ```
-
-    Atau, jika Anda menggunakan *`Makefile`*, Anda bisa membuat shortcut `make db-seed`.
-
-5. Jalankan Aplikasi
-Sekarang Anda siap untuk menjalankan server API.
-
-    ```bash
-    go run main.go
-    ```
-
-    Server akan berjalan di `http://0.0.0.0:3000` (atau port yang Anda tentukan di `.env`).
-
-## 3. Fondasi & Arsitektur
-Proyek ini dibangun di atas tumpukan teknologi modern dan mengikuti prinsip-prinsip clean architecture untuk memastikan skalabilitas dan kemudahan pengelolaan.
-
-### Teknologi Utama
-
-- Bahasa: Go
-
-- Framework: Fiber v2 (terinspirasi dari Express.js, sangat cepat)
-
-- Database: MySQL
-
-- ORM: GORM (ORM yang matang untuk Go)
-
-- Validasi: `go-playground/validator/v10`
-
-### Struktur Proyek
-Proyek ini menggunakan arsitektur berlapis yang terorganisir dengan baik untuk memisahkan tanggung jawab:
-
-- `config`: Mengelola konfigurasi dari file `.env`.
-
-- `database`: Mengelola koneksi database (MySQL) dan seeder.
-
-- `src/constants`: Menyimpan nilai konstan (enum) untuk `roles` dan `classifications`.
-
-- `src/dto`: (Data Transfer Object) Mendefinisikan `struct` untuk data input (request) dan output (response).
-
-- `src/handlers`: Berisi logika bisnis untuk setiap endpoint.
-
-- `src/middleware`: Berisi middleware untuk proteksi rute (otentikasi JWT, pengecekan role).
-
-- `src/models`: Mendefinisikan `struct` GORM yang merepresentasikan tabel di database.
-
-- `src/routes`: Mendefinisikan semua rute API.
-
-- `src/utils`: Berisi fungsi-fungsi pembantu (helper) seperti hashing, JWT, validasi, dan response standar.
-
-## 4. Fitur & Endpoint
-API ini memiliki beberapa fitur inti yang sudah siap untuk diintegrasikan dengan aplikasi frontend.
-
-### Fitur 1: Sistem Autentikasi & Manajemen Akun
-Sistem ini menangani semua kebutuhan dasar pengguna, mulai dari pendaftaran hingga pengelolaan akun, dengan keamanan sebagai prioritas utama.
-
-Menggunakan JSON Web Tokens (JWT) untuk autentikasi yang aman. Password disimpan menggunakan hashing bcrypt. Sistem logout diperkuat dengan blocklist di database, memastikan token yang sudah di-logout benar-benar tidak bisa digunakan lagi.
-
-- `POST /api/auth/register`
-
-    Menerima permintaan pendaftaran dan menaruhnya di antrian untuk diproses di background. Response `202 Accepted` dengan pesan bahwa akun sedang diproses.
-
-- `POST /api/auth/login`
-
-    Mengautentikasi user dan mengembalikan JWT.
-
-- `POST /api/user/logout` (Terproteksi)
-
-    Membatalkan token JWT saat ini.
-
-### Fitur 2: Manajemen Profil Pengguna
-Pengguna yang sudah login dapat mengelola data personal mereka.
-
-- `GET /api/me` (Terproteksi)
-
-    Mengambil detail profil lengkap dari user yang sedang login.
-
-- `PUT /api/me/details` (Terproteksi)
-
-    Membuat atau memperbarui profil pengguna secara keseluruhan. Juga bisa digunakan untuk mengubah nama.
-
-    Body: Semua field UpdateProfileRequest (lihat `dto/user.dto.go`).
-
-- `PATCH /api/me/password` (Terproteksi)
-
-    Mengubah password user.
-
-    Body: `old_password`, `new_password`, `new_password_confirmation`.
-
-
-### Fitur 2: Role-Based Access Control (RBAC)
-Sistem hak akses yang terinspirasi dari `spatie/laravel-permission`, memungkinkan kontrol yang sangat detail terhadap apa yang bisa dilakukan oleh setiap user.
-
-Terdapat dua level hak akses utama: **Admin** dan **User**. Endpoint tertentu hanya bisa diakses oleh user dengan role "Admin".
-
-- `GET /api/admin/users` (Hanya Admin)
-
-    Mengambil daftar semua user (kecuali admin lain) dengan sistem paginasi.
-
-    > Query Params
-
-    - `page` (opsional, default: 1): Nomor halaman yang ingin ditampilkan.
-
-    - `limit` (opsional, default: 10): Jumlah data per halaman.
-
-    > Contoh Response
-
-    ```json
-    {
-        "status": true,
-        "message": "Users fetched successfully",
-        "data": {
-            "data": [ /* ... daftar user ... */ ],
-            "meta": {
-                "limit": 10,
-                "total_rows": 50,
-                "total_pages": 5,
-                "current_page": 1,
-                "previous_page": null,
-                "next_page": 2
-            }
-        }
-    }
-    ```
-
-- `GET /api/admin/users/:id` (Hanya Admin)
-
-    Mengambil detail user spesifik berdasarkan UUID.
-
-### Fitur 3: API Data Wilayah Indonesia
-Menyediakan data wilayah administrasi Indonesia yang bisa digunakan untuk fitur pemilihan alamat.
-
-Endpoint ini menyajikan data provinsi, kabupaten, kecamatan, dan desa yang sudah di-seed ke dalam database.
-
-- `GET /api/regions/provinces`
-
-- `GET /api/regions/regencies?province_code=...`
-
-- `GET /api/regions/districts?regency_code=...`
-
-- `GET /api/regions/villages?district_code=...`
-
-## 5. Komponen Pendukung Kualitas Kode
-- Validasi Lanjutan: Menggunakan `go-playground/validator` dengan aturan validasi kustom (misalnya, `password_strength`) dan pesan error yang informatif untuk memastikan integritas data.
-
-- Response JSON Standar: Semua response dari API mengikuti format yang konsisten (`status`, `message`, `data`) untuk memudahkan parsing di aplikasi client.
-
-- Seeder Transaksional: Terdapat sistem seeder yang idempotent (aman dijalankan berkali-kali) dan transaksional. Seeder ini mengisi data awal untuk `roles`, `permissions`, user default (Admin & User) dari `.env`, dan data wilayah.
-
-- Penggunaan: Cukup jalankan `make db-seed` (jika dikonfigurasi di Makefile) atau `go run database/seeders/main.go` untuk menyiapkan seluruh lingkungan development dalam satu perintah.
-
-
-## 6. License
-Proyek ini dilisensikan di bawah [MIT License](LICENSE).
+```env
+# Application
+APP_ENV=development
+APP_PORT=8000
+APP_HOST=0.0.0.0
+
+# Database
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=srikandi_sehat
+DB_USER=postgres
+DB_PASS=your_password
+DB_SSL_MODE=disable
+
+# PASETO Token (must be 32 bytes)
+TOKEN_SYMMETRIC_KEY=your_32_byte_secret_key_here_now
+TOKEN_ISSUER=srikandi-sehat-api
+TOKEN_ACCESS_DURATION=15m
+TOKEN_REFRESH_DURATION=720h
+
+# Email Service
+MAIL_DRIVER=smtp
+MAIL_HOST=localhost
+MAIL_PORT=1025
+MAIL_FROM_ADDRESS=no-reply@srikandi-sehat.com
+MAIL_FROM_NAME=Srikandi Sehat
+```
+
+### 4. Start Infrastructure Services
+
+Start PostgreSQL and Mailpit (local email testing):
+
+```bash
+docker-compose up -d
+```
+
+### 5. Run Database Migrations
+
+```bash
+make migrate
+```
+
+### 6. Start the Development Server
+
+```bash
+make dev
+```
+
+The GraphQL API will be available at `http://localhost:8000/query` with the GraphQL Playground at `http://localhost:8000/`.
+
+## 📚 Documentation
+
+- **[Architecture Guide](./docs/ARCHITECTURE.md)** - Detailed explanation of hexagonal architecture implementation
+- **[API Reference](./docs/API.md)** - Complete GraphQL API documentation
+- **[Developer Guide](./docs/DEVELOPER.md)** - Guide for developers contributing to this project
+- **[Feature Documentation](./docs/FEATURES.md)** - Detailed documentation of all features
+
+## 🔧 Available Commands
+
+```bash
+# Development
+make dev              # Run with hot reload
+make build            # Build binary
+make run              # Build and run production binary
+make clean            # Clean build artifacts
+
+# Database Migrations
+make create-migration name=create_something_table  # Create new migration
+make migrate          # Run all pending migrations
+make migrate-down     # Rollback last migration
+make migrate-fresh    # Drop all tables and re-run migrations
+make migrate-prune    # Drop all tables (dangerous!)
+
+# GraphQL
+make generate         # Generate GraphQL code from schema
+
+# Help
+make help             # Show all available commands
+```
+
+## 🧪 Testing
+
+```bash
+# Run all tests
+go test ./...
+
+# Run tests with coverage
+go test -cover ./...
+
+# Run specific package tests
+go test ./internal/core/service/...
+```
+
+## 🏛️ Project Structure
+
+```
+.
+├── cmd/
+│   ├── migrate/         # Database migration CLI
+│   └── server/          # Main application entry point
+├── internal/
+│   ├── adapters/
+│   │   ├── driven/      # Infrastructure adapters (DB, Email, etc.)
+│   │   │   ├── mailgun/
+│   │   │   └── postgres/
+│   │   └── driving/     # API adapters (GraphQL, REST, etc.)
+│   │       └── graphql/
+│   └── core/
+│       ├── domain/      # Domain entities
+│       ├── ports/       # Port interfaces
+│       └── service/     # Business logic services
+├── pkg/
+│   ├── config/          # Configuration management
+│   ├── logger/          # Logging utilities
+│   ├── password/        # Password hashing
+│   └── token/           # Token generation/validation
+├── tools/               # Development tools
+├── docker-compose.yml   # Local infrastructure
+├── Makefile            # Build automation
+└── README.md           # This file
+```
+
+## 🔐 Security
+
+- **Password Hashing**: Argon2id algorithm (memory-hard, secure)
+- **Token Security**: PASETO v2 (authenticated encryption)
+- **SQL Injection**: Protected via GORM parameterization
+- **Rate Limiting**: Recommended to add at reverse proxy level
+- **HTTPS**: Recommended for production (use reverse proxy)
+
+## 📝 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 👥 Contributing
+
+Please read [DEVELOPER.md](./docs/DEVELOPER.md) for details on our code of conduct and the process for submitting pull requests.
+
+## 📧 Contact
+
+For questions or support, please contact the development team.
+
+---
+
+Built with ❤️ using Go and GraphQL

@@ -33,6 +33,17 @@ type UserRepository interface {
 	// TODO: Add other necessary methods like Delete, List, etc. as needed.
 }
 
+// OTPRepository adalah "driven port" untuk persistensi OTP.
+type OTPRepository interface {
+	// Save menyimpan OTP baru ke database.
+	Save(ctx context.Context, otp *domain.OTP) error
+
+	// FindAndConsume mencari OTP berdasarkan kode dan tipe,
+	// memverifikasi apakah masih valid (belum kedaluwarsa),
+	// dan jika ya, mengembalikannya lalu menghapusnya (consume).
+	FindAndConsume(ctx context.Context, code string, otpType string) (*domain.OTP, error)
+}
+
 // NOTE: We would also define other repository interfaces here, e.g.:
 // type TokenRepository interface {
 //     SaveRefreshToken(ctx, userID, tokenID string) error

@@ -2,7 +2,6 @@ package ports
 
 import (
 	"context"
-	"time"
 
 	"github.com/ipincamp/srikandi-sehat/internal/core/domain"
 )
@@ -70,21 +69,10 @@ type UserService interface {
 
 }
 
-// --- Blueprint Ports (untuk adapter yang belum ada) ---
-
-// EmailServicePort mendefinisikan kontrak untuk adapter pengirim email.
-type EmailServicePort interface {
+// EmailService mendefinisikan kontrak untuk adapter pengirim email.
+type EmailService interface {
 	SendPasswordResetEmail(ctx context.Context, userEmail, name, otp string) error
 	SendEmailVerificationEmail(ctx context.Context, userEmail, name, otp string) error
 	SendEmailChangeEmail(ctx context.Context, oldEmail, newEmail, name, otp string) error
-	SendDeleteAccountEmail(ctx context.Context, userEmail, name, otp string) error
-}
-
-// OTPServicePort mendefinisikan kontrak untuk membuat dan memvalidasi OTP.
-// Ini bisa diimplementasikan oleh adapter Redis atau Postgres.
-type OTPServicePort interface {
-	// Membuat OTP, menyimpannya, dan mengembalikannya
-	GenerateAndStoreOTP(ctx context.Context, userID, otpType string, duration time.Duration) (string, error)
-	// Memvalidasi OTP, mengembalikan userID jika valid, lalu menghapusnya
-	ValidateAndConsumeOTP(ctx context.Context, otp, otpType string) (string, error)
+	SendDeleteAccountEmail(ctx context.Context, userEmail, name string) error
 }

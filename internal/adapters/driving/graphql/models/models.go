@@ -7,6 +7,11 @@ type AuthResponse struct {
 	RefreshToken string `json:"refreshToken"`
 }
 
+type ChangePasswordInput struct {
+	OldPassword string `json:"oldPassword"`
+	NewPassword string `json:"newPassword"`
+}
+
 type LoginInput struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
@@ -22,6 +27,10 @@ type RegisterInput struct {
 	Name     string `json:"name"`
 	Email    string `json:"email"`
 	Password string `json:"password"`
+}
+
+type UpdateProfileInput struct {
+	Name string `json:"name"`
 }
 
 type User struct {

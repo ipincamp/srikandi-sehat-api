@@ -17,6 +17,16 @@ input LoginInput {
   password: String!
 }
 
+# Input DTO for the 'changePassword' mutation.
+input ChangePasswordInput {
+  oldPassword: String!
+  newPassword: String!
+}
+
+input UpdateProfileInput {
+  name: String!
+}
+
 type Mutation {
   register(input: RegisterInput!): AuthResponse!
   login(input: LoginInput!): AuthResponse!
@@ -26,4 +36,21 @@ type Mutation {
   # but we provide the hook for stateful (e.g., blocklist)
   # implementations. Client is still responsible for deleting tokens.
   logout(refreshToken: String!): Boolean!
+
+  refreshToken(refreshToken: String!): AuthResponse!
+  changePassword(input: ChangePasswordInput!): Boolean!
+  updateProfile(input: UpdateProfileInput!): User! # Mengembalikan user yang diperbarui
+  # --- Blueprints ---
+
+  # 5. Forgot Password
+  forgotPassword(email: String!): Boolean!
+
+  # 6. Verification Email
+  verifyEmail(otp: String!): Boolean!
+
+  # 7. Delete My Account (Membutuhkan autentikasi)
+  deleteMyAccount: Boolean!
+
+  # 10. Change Email (Membutuhkan autentikasi)
+  requestEmailChange(newEmail: String!): Boolean!
 }

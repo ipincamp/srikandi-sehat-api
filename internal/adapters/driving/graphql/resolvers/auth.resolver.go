@@ -7,6 +7,7 @@ package resolvers
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/generated"
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/models"
@@ -80,6 +81,111 @@ func (r *mutationResolver) Logout(ctx context.Context, refreshToken string) (boo
 	// 2. For stateless tokens, the service is a no-op.
 	// We return true to signal the client to clear its tokens.
 	r.logger.Info().Msg("Logout endpoint hit. Client advised to clear tokens.")
+	return true, nil
+}
+
+// RefreshToken is the resolver for the refreshToken field.
+func (r *mutationResolver) RefreshToken(ctx context.Context, refreshToken string) (*models.AuthResponse, error) {
+	authRes, err := r.authService.RefreshToken(ctx, refreshToken)
+	if err != nil {
+		r.logger.Warn().Err(err).Msg("RefreshToken failed")
+		return nil, err
+	}
+
+	return &models.AuthResponse{
+		AccessToken:  authRes.AccessToken,
+		RefreshToken: authRes.RefreshToken,
+	}, nil
+}
+
+// ChangePassword is the resolver for the changePassword field.
+func (r *mutationResolver) ChangePassword(ctx context.Context, input models.ChangePasswordInput) (bool, error) {
+	// Ambil UUID pengguna dari konteks (ditetapkan oleh auth middleware)
+	uuid, ok := ctx.Value(AuthUserUUIDKey).(string)
+	if !ok || uuid == "" {
+		r.logger.Warn().Msg("ChangePassword failed: No user UUID in context")
+		return false, ErrNotAuthenticated
+	}
+
+	err := r.authService.ChangePassword(ctx, uuid, input.OldPassword, input.NewPassword)
+	if err != nil {
+		r.logger.Warn().Err(err).Str("uuid", uuid).Msg("ChangePassword service error")
+		return false, err
+	}
+
+	return true, nil
+}
+
+// UpdateProfile is the resolver for the updateProfile field.
+func (r *mutationResolver) UpdateProfile(ctx context.Context, input models.UpdateProfileInput) (*models.User, error) {
+	uuid, ok := ctx.Value(AuthUserUUIDKey).(string)
+	if !ok || uuid == "" {
+		r.logger.Warn().Msg("UpdateProfile failed: No user UUID in context")
+		return nil, ErrNotAuthenticated
+	}
+
+	user, err := r.userService.UpdateProfile(ctx, uuid, input.Name)
+	if err != nil {
+		r.logger.Warn().Err(err).Str("uuid", uuid).Msg("UpdateProfile service error")
+		return nil, err
+	}
+
+	// Konversi domain.User ke models.User [cite: 52]
+	return &models.User{
+		UUID:      user.UUID,
+		Name:      user.Name,
+		Email:     user.Email,
+		CreatedAt: user.CreatedAt.Format(time.RFC3339),
+		UpdatedAt: user.UpdatedAt.Format(time.RFC3339),
+	}, nil
+}
+
+// ForgotPassword is the resolver for the forgotPassword field.
+func (r *mutationResolver) ForgotPassword(ctx context.Context, email string) (bool, error) {
+	if err := r.authService.ForgotPassword(ctx, email); err != nil {
+		// Kita tidak return error ke client untuk mencegah enumerasi email
+		r.logger.Error().Err(err).Msg("ForgotPassword service error")
+	}
+	// Selalu kembalikan true
+	return true, nil
+}
+
+// VerifyEmail is the resolver for the verifyEmail field.
+func (r *mutationResolver) VerifyEmail(ctx context.Context, otp string) (bool, error) {
+	if err := r.authService.VerifyEmailOTP(ctx, otp); err != nil {
+		r.logger.Warn().Err(err).Msg("VerifyEmail service error")
+		return false, err
+	}
+	return true, nil
+}
+
+// DeleteMyAccount is the resolver for the deleteMyAccount field.
+func (r *mutationResolver) DeleteMyAccount(ctx context.Context) (bool, error) {
+	uuid, ok := ctx.Value(AuthUserUUIDKey).(string)
+	if !ok || uuid == "" {
+		r.logger.Warn().Msg("DeleteMyAccount failed: No user UUID in context")
+		return false, ErrNotAuthenticated
+	}
+
+	if err := r.userService.DeleteAccount(ctx, uuid); err != nil {
+		r.logger.Error().Err(err).Str("uuid", uuid).Msg("DeleteAccount service error")
+		return false, err
+	}
+	return true, nil
+}
+
+// RequestEmailChange is the resolver for the requestEmailChange field.
+func (r *mutationResolver) RequestEmailChange(ctx context.Context, newEmail string) (bool, error) {
+	uuid, ok := ctx.Value(AuthUserUUIDKey).(string)
+	if !ok || uuid == "" {
+		r.logger.Warn().Msg("RequestEmailChange failed: No user UUID in context")
+		return false, ErrNotAuthenticated
+	}
+
+	if err := r.authService.RequestEmailChange(ctx, uuid, newEmail); err != nil {
+		r.logger.Warn().Err(err).Str("uuid", uuid).Msg("RequestEmailChange service error")
+		return false, err
+	}
 	return true, nil
 }
 

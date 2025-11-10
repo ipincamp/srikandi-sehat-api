@@ -9,6 +9,7 @@ import "github.com/go-gormigrate/gormigrate/v2"
 var AllMigrations = []*gormigrate.Migration{
 	// Add new migrations here, e.g.:
 	CreateUsersTable(),
+	CreateOtpsTable(),
 	// CreateRolesTable(),
 	// CreateProductsTable(),
 }

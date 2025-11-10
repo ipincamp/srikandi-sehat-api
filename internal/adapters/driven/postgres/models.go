@@ -46,3 +46,42 @@ func fromDomain(dUser *domain.User) *User {
 		UpdatedAt: dUser.UpdatedAt,
 	}
 }
+
+// OTP adalah model database untuk One-Time Password.
+type OTP struct {
+	ID        uint      `db:"id"`
+	UserID    *uint     `db:"user_id"`
+	Email     string    `db:"email"`
+	Code      string    `db:"code"`
+	Type      string    `db:"type"`
+	ExpiresAt time.Time `db:"expires_at"`
+	CreatedAt time.Time `db:"created_at"`
+}
+
+// toDomain converts the database model (postgres.OTP)
+// into the core business model (domain.OTP).
+func (dbOTP *OTP) toDomain() *domain.OTP {
+	return &domain.OTP{
+		ID:        dbOTP.ID,
+		UserID:    dbOTP.UserID,
+		Email:     dbOTP.Email,
+		Code:      dbOTP.Code,
+		Type:      dbOTP.Type,
+		ExpiresAt: dbOTP.ExpiresAt,
+		CreatedAt: dbOTP.CreatedAt,
+	}
+}
+
+// fromDomain converts the core business model (domain.OTP)
+// into the database model (postgres.OTP) for saving.
+func otpFromDomain(dOTP *domain.OTP) *OTP {
+	return &OTP{
+		ID:        dOTP.ID,
+		UserID:    dOTP.UserID,
+		Email:     dOTP.Email,
+		Code:      dOTP.Code,
+		Type:      dOTP.Type,
+		ExpiresAt: dOTP.ExpiresAt,
+		CreatedAt: dOTP.CreatedAt,
+	}
+}

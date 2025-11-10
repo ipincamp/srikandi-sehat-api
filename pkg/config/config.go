@@ -37,6 +37,7 @@ type Database struct {
 	Password string
 	DBName   string
 	SSLMode  string
+	Timezone string
 }
 
 // Token holds configuration for PASETO token generation.
@@ -77,10 +78,11 @@ func Load() (*Config, error) {
 		Database: Database{
 			Host:     getEnv("DB_HOST", "localhost"),
 			Port:     dbPort,
-			User:     getEnv("DB_USER", "postgres"),
+			User:     getEnv("DB_USER", ""),
 			Password: getEnv("DB_PASS", ""),
-			DBName:   getEnv("DB_NAME", "postgres"),
+			DBName:   getEnv("DB_NAME", ""),
 			SSLMode:  getEnv("DB_SSL_MODE", "disable"),
+			Timezone: getEnv("DB_TIMEZONE", "Asia/Jakarta"),
 		},
 		Token: Token{
 			SymmetricKey:    getEnv("TOKEN_SYMMETRIC_KEY", ""),
@@ -104,6 +106,7 @@ func Load() (*Config, error) {
 	return cfg, nil
 }
 
+// DEPRECATED
 // DSN returns the Data Source Name string for connecting to the database.
 // This encapsulates the logic for building the connection string.
 func (d *Database) DSN() string {

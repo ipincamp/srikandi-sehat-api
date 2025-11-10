@@ -135,7 +135,7 @@ func (s *authService) Login(ctx context.Context, email, passwordStr string) (*po
 	user, err := s.userRepo.FindByEmail(ctx, email)
 	if err != nil {
 		if errors.Is(err, ports.ErrUserNotFound) {
-			s.logger.Warn().Str("email", email).Msg("Login failed: invalid credentials (user not found)")
+			s.logger.Warn().Msg("Login failed: invalid credentials (user not found)")
 			return nil, ports.ErrInvalidCredentials
 		}
 		s.logger.Error().Err(err).Str("email", email).Msg("Login failed: database error on find")
@@ -144,7 +144,7 @@ func (s *authService) Login(ctx context.Context, email, passwordStr string) (*po
 
 	// 2. Compare password
 	if !s.hasher.Compare(user.Password, passwordStr) {
-		s.logger.Warn().Str("email", email).Msg("Login failed: invalid credentials (password mismatch)")
+		s.logger.Warn().Msg("Login failed: invalid credentials (password mismatch)")
 		return nil, ports.ErrInvalidCredentials
 	}
 

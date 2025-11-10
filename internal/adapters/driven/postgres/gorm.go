@@ -23,7 +23,7 @@ func ConnectGORM(cfg config.Database) (*gorm.DB, error) {
 		cfg.DBName,
 		cfg.Port,
 		cfg.SSLMode,
-		"Asia/Jakarta", // Hardcoded from .env, you might want to move this to config struct
+		cfg.Timezone,
 	)
 
 	// Configure GORM logger

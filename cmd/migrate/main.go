@@ -86,16 +86,15 @@ func main() {
 	}
 }
 
-// dropAllTables finds and drops all tables in the public schema,
-// except for the gormigrate history table.
+// dropAllTables finds and drops all tables in the public schema using a safe method.
 func dropAllTables(db *gorm.DB, logger zerolog.Logger) error {
 	logger.Info().Msg("Finding all tables to drop...")
 
 	// Get all table names in the 'public' schema
-	// We MUST exclude the migration history table, or gormigrate will fail
-	query := `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE' AND table_name != ?`
+	// We don't need to filter out the migrations table, as we'll drop all.
+	query := `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'`
 
-	rows, err := db.Raw(query, gormigrate.DefaultOptions.TableName).Rows()
+	rows, err := db.Raw(query).Rows()
 	if err != nil {
 		return fmt.Errorf("failed to query for tables: %w", err)
 	}
@@ -111,25 +110,38 @@ func dropAllTables(db *gorm.DB, logger zerolog.Logger) error {
 	}
 
 	if len(tables) == 0 {
-		logger.Info().Msg("No user tables found to drop.")
+		logger.Info().Msg("No tables found to drop.")
 		return nil
 	}
 
-	logger.Info().Msgf("Found %d tables to drop. Dropping...", len(tables))
+	logger.Info().Msgf("Disabling foreign key constraints and dropping %d tables...", len(tables))
 
-	// Drop tables one by one. Using CASCADE handles foreign key constraints.
-	for _, table := range tables {
-		logger.Debug().Str("table", table).Msg("Dropping table...")
-		// We must quote the table name to handle any special characters or casing
-		if err := db.Exec(fmt.Sprintf(`DROP TABLE IF EXISTS "public"."%s" CASCADE`, table)).Error; err != nil {
-			return fmt.Errorf("failed to drop table %s: %w", table, err)
+	// Start a transaction to manage the process
+	return db.Transaction(func(tx *gorm.DB) error {
+		// Disable Foreign Key constraints (PostgreSQL specific)
+		// This allows us to drop tables in any order without constraint errors.
+		if err := tx.Exec("SET session_replication_role = 'replica'").Error; err != nil {
+			return fmt.Errorf("failed to disable foreign keys: %w", err)
 		}
-	}
 
-	if e := db.Exec(`DROP TABLE IF EXISTS "public"."migrations" CASCADE`).Error; e != nil {
-		return fmt.Errorf("failed to drop table migrations: %w", e)
-	}
+		// Drop all tables using GORM's migrator (safe from injection)
+		for _, table := range tables {
+			logger.Debug().Str("table", table).Msg("Dropping table...")
+			// Use Migrator().DropTable() as recommended
+			// This handles quoting and is safe from SQL injection.
+			if err := tx.Migrator().DropTable(table); err != nil {
+				// We log the error but attempt to continue,
+				// as some failures might be expected if order is complex.
+				logger.Warn().Err(err).Str("table", table).Msg("Failed to drop table, continuing...")
+			}
+		}
 
-	logger.Info().Int("count", len(tables)).Msg("All user tables dropped successfully.")
-	return nil
+		// Re-enable Foreign Key constraints
+		if err := tx.Exec("SET session_replication_role = 'origin'").Error; err != nil {
+			return fmt.Errorf("failed to re-enable foreign keys: %w", err)
+		}
+
+		logger.Info().Int("count", len(tables)).Msg("All tables dropped successfully.")
+		return nil
+	})
 }

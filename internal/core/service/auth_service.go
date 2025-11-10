@@ -50,28 +50,21 @@ func NewAuthService(
 // saves them, and returns a new set of auth tokens.
 // This operation is now transactional.
 func (s *authService) Register(ctx context.Context, name, email, passwordStr string) (*ports.AuthResponse, error) {
-	// 1. Check if user already exists using the non-transactional repo.
-	_, err := s.userRepo.FindByEmail(ctx, email)
-	if err == nil {
-		// User found, email is taken
-		s.logger.Warn().Str("email", email).Msg("Registration failed: email already exists (pre-check)")
-		return nil, ports.ErrEmailExists
-	}
-	if !errors.Is(err, ports.ErrUserNotFound) {
-		// A different, unexpected database error occurred during find
-		s.logger.Error().Err(err).Str("email", email).Msg("Failed to check user existence")
-		return nil, err
-	}
-	// If we are here, the user (correctly) was not found. We can proceed.
+	/*
+		DEPRECATED
+		FindByEmail check outside of transactions
+		We will rely on unique database constraints within transactions
+		to handle email duplication (eliminating race conditions).
+	*/
 
-	// 2. Hash the password
+	// 1. Hash the password
 	hashedPassword, err := s.hasher.Hash(passwordStr)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to hash password during registration")
 		return nil, err
 	}
 
-	// 3. Create the domain user
+	// 2. Create the domain user
 	user := &domain.User{
 		UUID:     uuid.NewString(),
 		Name:     name,
@@ -80,7 +73,7 @@ func (s *authService) Register(ctx context.Context, name, email, passwordStr str
 		// ID, CreatedAt, UpdatedAt will be set by the repository
 	}
 
-	// 4. === Begin Transactional Unit of Work ===
+	// 3. === Begin Transactional Unit of Work ===
 	tx, err := s.uow.Begin(ctx)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to begin registration transaction")
@@ -103,15 +96,15 @@ func (s *authService) Register(ctx context.Context, name, email, passwordStr str
 		}
 	}()
 
-	// 5. Get the transactional repository from the Unit of Work
+	// 4. Get the transactional repository from the Unit of Work
 	txUserRepo := tx.GetUserRepository()
 
-	// 6. Save the user *using the transactional repo*
+	// 5. Save the user *using the transactional repo*
 	if err = txUserRepo.Save(ctx, user); err != nil {
 		// Check for duplicate email (race condition)
 		if errors.Is(err, ports.ErrDuplicateEmail) {
-			s.logger.Warn().Str("email", email).Msg("Registration failed: email already exists (race condition on save)")
-			return nil, ports.ErrEmailExists
+			s.logger.Warn().Str("email", email).Msg("Registration failed: email already exists (constraint violation)")
+			return nil, ports.ErrEmailExists // Defer will catch this and rollback
 		}
 
 		// A different, unexpected save error
@@ -119,11 +112,11 @@ func (s *authService) Register(ctx context.Context, name, email, passwordStr str
 		return nil, err // Defer will catch this and rollback
 	}
 
-	// 7. (Example) If you had other tables, you would save them here
+	// 6. (Example) If you had other tables, you would save them here
 	// e.g., tx.GetProfileRepository().CreateDefaultProfile(ctx, user.ID)
 	// If this failed, the defer would roll back the user creation.
 
-	// 8. Commit the transaction
+	// 7. Commit the transaction
 	if err = tx.Commit(ctx); err != nil {
 		s.logger.Error().Err(err).Msg("Failed to commit registration transaction")
 		return nil, err // err is already set, so defer will *not* roll back again
@@ -132,7 +125,7 @@ func (s *authService) Register(ctx context.Context, name, email, passwordStr str
 
 	s.logger.Info().Str("email", email).Str("uuid", user.UUID).Msg("User registered successfully")
 
-	// 9. Generate tokens
+	// 8. Generate tokens
 	return s.createTokenSet(user)
 }
 

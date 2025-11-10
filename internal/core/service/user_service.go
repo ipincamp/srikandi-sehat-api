@@ -45,7 +45,7 @@ func (s *userService) GetUserByID(ctx context.Context, uuid string) (*domain.Use
 	if err != nil {
 		if errors.Is(err, ports.ErrUserNotFound) {
 			s.logger.Warn().Str("uuid", uuid).Msg("User not found")
-			return nil, ports.ErrUserNotFound
+			return nil, ports.ErrUserNotFound // Use service-level error
 		}
 		s.logger.Error().Err(err).Str("uuid", uuid).Msg("Failed to get user by ID")
 		return nil, err
@@ -56,27 +56,21 @@ func (s *userService) GetUserByID(ctx context.Context, uuid string) (*domain.Use
 // CreateUser creates a new user (e.g., for an admin panel).
 // This is distinct from 'Register' as it does not return tokens.
 func (s *userService) CreateUser(ctx context.Context, name, email, passwordStr string) (*domain.User, error) {
-	// 1. Pre-check existence using the non-transactional repo
-	_, err := s.userRepo.FindByEmail(ctx, email)
-	if err == nil {
-		// User found, email is taken
-		s.logger.Warn().Str("email", email).Msg("CreateUser failed: email already exists (pre-check)")
-		return nil, ports.ErrEmailExists
-	}
-	if !errors.Is(err, ports.ErrUserNotFound) {
-		// A different, unexpected database error occurred
-		s.logger.Error().Err(err).Str("email", email).Msg("Failed to check user existence")
-		return nil, err
-	}
+	/*
+		DEPRECATED
+		FindByEmail check outside of transactions
+		We will rely on unique database constraints inside transactions
+		to handle duplicate emails (eliminating race conditions).
+	*/
 
-	// 2. Hash the password
+	// 1. Hash the password
 	hashedPassword, err := s.hasher.Hash(passwordStr)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to hash password during user creation")
 		return nil, err
 	}
 
-	// 3. Create the domain user
+	// 2. Create the domain user
 	user := &domain.User{
 		UUID:     uuid.NewString(),
 		Name:     name,
@@ -84,7 +78,7 @@ func (s *userService) CreateUser(ctx context.Context, name, email, passwordStr s
 		Password: hashedPassword,
 	}
 
-	// 4. === Begin Transactional Unit of Work ===
+	// 3. === Begin Transactional Unit of Work ===
 	tx, err := s.uow.Begin(ctx)
 	if err != nil {
 		s.logger.Error().Err(err).Msg("Failed to begin CreateUser transaction")
@@ -100,21 +94,21 @@ func (s *userService) CreateUser(ctx context.Context, name, email, passwordStr s
 		}
 	}()
 
-	// 5. Get the transactional repository
+	// 4. Get the transactional repository
 	txUserRepo := tx.GetUserRepository()
 
-	// 6. Save the user *using the transactional repo*
+	// 5. Save the user *using the transactional repo*
 	if err = txUserRepo.Save(ctx, user); err != nil {
 		// Check for duplicate email (race condition)
 		if errors.Is(err, ports.ErrDuplicateEmail) {
-			s.logger.Warn().Str("email", email).Msg("CreateUser failed: email already exists (race condition on save)")
+			s.logger.Warn().Str("email", email).Msg("CreateUser failed: email already exists (constraint violation)")
 			return nil, ports.ErrEmailExists
 		}
 		s.logger.Error().Err(err).Str("email", email).Msg("Failed to save user during creation")
 		return nil, err // Defer will catch this and rollback
 	}
 
-	// 7. Commit the transaction
+	// 6. Commit the transaction
 	if err = tx.Commit(ctx); err != nil {
 		s.logger.Error().Err(err).Msg("Failed to commit CreateUser transaction")
 		return nil, err

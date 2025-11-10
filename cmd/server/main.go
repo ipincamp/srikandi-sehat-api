@@ -11,6 +11,7 @@ import (
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/playground"
 
+	"github.com/ipincamp/srikandi-sehat/internal/adapters/driven/mailgun"
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driven/postgres"
 	"github.com/ipincamp/srikandi-sehat/internal/core/service"
 
@@ -73,6 +74,11 @@ func main() {
 	// This repo is used for read-only operations like Login.
 	userRepo := postgres.NewUserRepository(dbPool, userRepoLogger)
 
+	otpRepoLogger := log.With().Str("component", "OTPRepository").Logger()
+	otpRepo := postgres.NewOTPRepository(dbPool, otpRepoLogger)
+	mailLogger := log.With().Str("component", "MailService").Logger()
+	mailSvc := mailgun.NewMailService(cfg.Mail, mailLogger)
+
 	// 4c. Initialize Unit of Work
 	uowLogger := log.With().Str("component", "UnitOfWork").Logger()
 	// Create the Unit of Work factory, passing the pool
@@ -93,6 +99,8 @@ func main() {
 		cfg.Token,
 		authServiceLogger,
 		uow,
+		otpRepo,
+		mailSvc,
 	)
 
 	// 4e. Initialize Driving Adapters (GraphQL)

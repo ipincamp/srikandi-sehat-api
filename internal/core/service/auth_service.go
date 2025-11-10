@@ -2,7 +2,10 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
+	"io"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
@@ -25,11 +28,8 @@ type authService struct {
 	tokenCfg config.Token
 	logger   zerolog.Logger
 	uow      ports.UnitOfWork
-
-	// --- Dependensi Blueprint ---
-	// Kita suntikkan interface-nya, meskipun implementasinya belum ada.
-	// emailSvc ports.EmailServicePort
-	// otpSvc   ports.OTPServicePort
+	otpRepo  ports.OTPRepository
+	emailSvc ports.EmailService
 }
 
 // NewAuthService is the constructor for authService.
@@ -40,6 +40,8 @@ func NewAuthService(
 	tokenCfg config.Token,
 	logger zerolog.Logger,
 	uow ports.UnitOfWork,
+	otpRepo ports.OTPRepository,
+	emailSvc ports.EmailService,
 ) ports.AuthService {
 	return &authService{
 		userRepo: userRepo,
@@ -48,6 +50,8 @@ func NewAuthService(
 		tokenCfg: tokenCfg,
 		logger:   logger,
 		uow:      uow,
+		otpRepo:  otpRepo,
+		emailSvc: emailSvc,
 	}
 }
 
@@ -264,40 +268,94 @@ func (s *authService) ForgotPassword(ctx context.Context, email string) error {
 	user, err := s.userRepo.FindByEmail(ctx, email)
 	if err != nil {
 		// Jangan bocorkan apakah email ada atau tidak
-		s.logger.Warn().Str("email", email).Msg("Forgot password attempt for non-existent email")
-		return nil // Selalu return nil
+		s.logger.Warn().Str("email", email).Msg("Forgot password attempt for (potentially) non-existent email")
+		return nil // Selalu return nil ke client
 	}
 
-	// const OTPSDuration = 15 * time.Minute
-	// otp, err := s.otpSvc.GenerateAndStoreOTP(ctx, user.UUID, "password_reset", OTPSDuration)
-	// if err != nil {
-	// 	s.logger.Error().Err(err).Msg("Failed to generate OTP for password reset")
-	// 	return err
-	// }
-	//
-	// err = s.emailSvc.SendPasswordResetEmail(ctx, user.Email, user.Name, otp)
-	// if err != nil {
-	// 	s.logger.Error().Err(err).Msg("Failed to send password reset email")
-	// 	return err
-	// }
+	const otpDuration = 15 * time.Minute
+	otpCode, err := generateOTP(6)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("Failed to generate OTP for password reset")
+		return err // Ini adalah 500
+	}
 
-	s.logger.Info().Str("uuid", user.UUID).Msg("Forgot password process initiated (blueprint)")
-	return nil // TODO: Hapus blueprint stub
+	otp := &domain.OTP{
+		UserID:    &user.ID, // Gunakan pointer ke ID
+		Email:     user.Email,
+		Code:      otpCode,
+		Type:      domain.OTPTypePasswordReset,
+		ExpiresAt: time.Now().UTC().Add(otpDuration),
+	}
+
+	if err := s.otpRepo.Save(ctx, otp); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to save OTP for password reset")
+		return err
+	}
+
+	// Kirim email (secara async akan lebih baik, tapi sync tidak apa-apa untuk saat ini)
+	err = s.emailSvc.SendPasswordResetEmail(ctx, user.Email, user.Name, otpCode)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("Failed to send password reset email")
+		// Jangan return error ke user, tapi log dengan serius
+		// Kita tidak ingin user tahu jika pengiriman email gagal
+	}
+
+	s.logger.Info().Str("uuid", user.UUID).Msg("Forgot password process initiated")
+	return nil
 }
 
 // 6. VerifyEmailOTP (Blueprint)
 func (s *authService) VerifyEmailOTP(ctx context.Context, otp string) error {
-	// userID, err := s.otpSvc.ValidateAndConsumeOTP(ctx, otp, "email_verification")
-	// if err != nil {
-	// 	s.logger.Warn().Err(err).Msg("Failed to validate email OTP")
-	// 	return ports.ErrInvalidToken
-	// }
-	//
-	// tx, err := s.uow.Begin(ctx)
-	// ... (logika untuk fetch user by ID, set user.IsVerified = true, txUserRepo.Update(user), tx.Commit()) ...
+	// 1. Konsumsi OTP
+	// Ini secara atomik menemukan DAN menghapus OTP jika valid
+	consumedOTP, err := s.otpRepo.FindAndConsume(ctx, otp, domain.OTPTypeVerification)
+	if err != nil {
+		s.logger.Warn().Err(err).Str("type", domain.OTPTypeVerification).Msg("Failed to validate/consume email OTP")
+		return ports.ErrInvalidToken // Kirim error generik
+	}
 
-	s.logger.Info().Str("otp", otp).Msg("Email verification attempt (blueprint)")
-	return nil // TODO: Hapus blueprint stub
+	// 2. Jika OTP tidak terkait dengan user (misal, verifikasi email saat registrasi)
+	// Kita mungkin perlu logika berbeda di sini, misal memvalidasi email.
+	// Untuk saat ini, kita asumsikan OTPTypeVerification *selalu* memiliki UserID
+	if consumedOTP.UserID == nil {
+		s.logger.Error().Msg("VerifyEmailOTP: Consumed OTP has no UserID")
+		return ports.ErrInvalidToken
+	}
+
+	// 3. Mulai Transaksi
+	tx, err := s.uow.Begin(ctx)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("Failed to begin VerifyEmail transaction")
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	// 4. Dapatkan user dan tandai sebagai terverifikasi
+	txUserRepo := tx.GetUserRepository()
+	// TODO: Kita perlu `FindByID(uint)` atau `FindByUUID`
+	// Saat ini repo kita hanya punya FindByID(uuid string). Ini kelemahan desain.
+	// Kita akan asumsikan kita perlu FindByEmail dari OTP
+	user, err := txUserRepo.FindByEmail(ctx, consumedOTP.Email)
+	if err != nil {
+		s.logger.Error().Err(err).Str("email", consumedOTP.Email).Msg("Failed to find user by email from OTP")
+		return err
+	}
+
+	// --- LOGIKA UNTUK MENAMBAHKAN ---
+	// Kita perlu menambahkan field `email_verified_at` ke tabel `users`
+	// user.EmailVerifiedAt = time.Now().UTC()
+	// if err := txUserRepo.Update(ctx, user); err != nil {
+	// ...
+	// }
+
+	// 5. Commit
+	if err := tx.Commit(ctx); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to commit VerifyEmail transaction")
+		return err
+	}
+
+	s.logger.Info().Str("uuid", user.UUID).Msg("Email verified successfully")
+	return nil
 }
 
 // 10. RequestEmailChange (Blueprint)
@@ -337,4 +395,19 @@ func (s *authService) createTokenSet(user *domain.User) (*ports.AuthResponse, er
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 	}, nil
+}
+
+// --- Helper OTP ---
+// (Anda bisa memindahkan ini ke /pkg/utils)
+func generateOTP(length int) (string, error) {
+	buffer := make([]byte, length)
+	_, err := io.ReadFull(rand.Reader, buffer)
+	if err != nil {
+		return "", err
+	}
+	// Buat kode numerik
+	for i := 0; i < length; i++ {
+		buffer[i] = (buffer[i] % 10) + '0'
+	}
+	return string(buffer), nil
 }

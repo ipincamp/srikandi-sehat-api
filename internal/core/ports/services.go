@@ -2,6 +2,7 @@ package ports
 
 import (
 	"context"
+	"time"
 
 	"github.com/ipincamp/srikandi-sehat/internal/core/domain"
 )
@@ -30,6 +31,20 @@ type AuthService interface {
 	// Logout invalidates a refresh token (e.g., from a database).
 	// This assumes refresh tokens are stateful (e.g., stored in a DB).
 	Logout(ctx context.Context, refreshToken string) error
+
+	// 8. Change Password
+	ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error
+
+	// --- Blueprints (Membutuhkan Mail/OTP Service) ---
+
+	// 5. Forgot Password
+	ForgotPassword(ctx context.Context, email string) error
+
+	// 6. Verification Email (dipanggil setelah OTP diterima)
+	VerifyEmailOTP(ctx context.Context, otp string) error
+
+	// 10. Change Email (memulai proses)
+	RequestEmailChange(ctx context.Context, userID, newEmail string) error
 }
 
 // UserService defines the "driving port" for user management operations.
@@ -44,5 +59,32 @@ type UserService interface {
 	// the user entity itself.
 	CreateUser(ctx context.Context, name, email, password string) (*domain.User, error)
 
+	UpdateProfile(ctx context.Context, userID string, newName string) (*domain.User, error)
+
+	// --- Blueprints ---
+
+	// 7. Delete My Account
+	DeleteAccount(ctx context.Context, userID string) error
+
 	// TODO: Add other methods like UpdateUser, DeleteUser, etc.
+
+}
+
+// --- Blueprint Ports (untuk adapter yang belum ada) ---
+
+// EmailServicePort mendefinisikan kontrak untuk adapter pengirim email.
+type EmailServicePort interface {
+	SendPasswordResetEmail(ctx context.Context, userEmail, name, otp string) error
+	SendEmailVerificationEmail(ctx context.Context, userEmail, name, otp string) error
+	SendEmailChangeEmail(ctx context.Context, oldEmail, newEmail, name, otp string) error
+	SendDeleteAccountEmail(ctx context.Context, userEmail, name, otp string) error
+}
+
+// OTPServicePort mendefinisikan kontrak untuk membuat dan memvalidasi OTP.
+// Ini bisa diimplementasikan oleh adapter Redis atau Postgres.
+type OTPServicePort interface {
+	// Membuat OTP, menyimpannya, dan mengembalikannya
+	GenerateAndStoreOTP(ctx context.Context, userID, otpType string, duration time.Duration) (string, error)
+	// Memvalidasi OTP, mengembalikan userID jika valid, lalu menghapusnya
+	ValidateAndConsumeOTP(ctx context.Context, otp, otpType string) (string, error)
 }

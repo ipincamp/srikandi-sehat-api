@@ -25,6 +25,11 @@ type authService struct {
 	tokenCfg config.Token
 	logger   zerolog.Logger
 	uow      ports.UnitOfWork
+
+	// --- Dependensi Blueprint ---
+	// Kita suntikkan interface-nya, meskipun implementasinya belum ada.
+	// emailSvc ports.EmailServicePort
+	// otpSvc   ports.OTPServicePort
 }
 
 // NewAuthService is the constructor for authService.
@@ -201,6 +206,107 @@ func (s *authService) Logout(ctx context.Context, refreshToken string) error {
 
 	// For this stateless implementation:
 	return nil
+}
+
+func (s *authService) ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error {
+	// 1. Dapatkan user (non-transaksional untuk pengecekan)
+	user, err := s.userRepo.FindByID(ctx, userID)
+	if err != nil {
+		return err // Termasuk ErrUserNotFound
+	}
+
+	// 2. Verifikasi password lama
+	if !s.hasher.Compare(user.Password, oldPassword) {
+		return ports.ErrInvalidCredentials
+	}
+
+	// 3. Hash password baru
+	newHashedPassword, err := s.hasher.Hash(newPassword)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("Failed to hash new password")
+		return err
+	}
+
+	// 4. Mulai Unit of Work untuk menyimpan
+	tx, err := s.uow.Begin(ctx)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("Failed to begin ChangePassword transaction")
+		return err
+	}
+	defer tx.Rollback(ctx) // Rollback jika ada error
+
+	// 5. Dapatkan repo transaksional dan update
+	txUserRepo := tx.GetUserRepository()
+	user.Password = newHashedPassword
+	// Kita perlu memastikan FindByID di-implementasikan oleh repo transaksional
+	// atau kita perlu mem-fetch ulang user di dalam transaksi.
+	// Untuk saat ini, kita asumsikan Update bisa menangani ini.
+	// (Cara lebih aman: fetch user *di dalam* transaksi)
+	if err := txUserRepo.Update(ctx, user); err != nil {
+		s.logger.Error().Err(err).Str("uuid", userID).Msg("Failed to update password in DB")
+		return err
+	}
+
+	// 6. Commit
+	if err := tx.Commit(ctx); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to commit ChangePassword transaction")
+		return err
+	}
+
+	s.logger.Info().Str("uuid", userID).Msg("Password changed successfully")
+	return nil
+}
+
+// --- Implementasi Blueprint ---
+
+// 5. ForgotPassword (Blueprint)
+func (s *authService) ForgotPassword(ctx context.Context, email string) error {
+	user, err := s.userRepo.FindByEmail(ctx, email)
+	if err != nil {
+		// Jangan bocorkan apakah email ada atau tidak
+		s.logger.Warn().Str("email", email).Msg("Forgot password attempt for non-existent email")
+		return nil // Selalu return nil
+	}
+
+	// const OTPSDuration = 15 * time.Minute
+	// otp, err := s.otpSvc.GenerateAndStoreOTP(ctx, user.UUID, "password_reset", OTPSDuration)
+	// if err != nil {
+	// 	s.logger.Error().Err(err).Msg("Failed to generate OTP for password reset")
+	// 	return err
+	// }
+	//
+	// err = s.emailSvc.SendPasswordResetEmail(ctx, user.Email, user.Name, otp)
+	// if err != nil {
+	// 	s.logger.Error().Err(err).Msg("Failed to send password reset email")
+	// 	return err
+	// }
+
+	s.logger.Info().Str("uuid", user.UUID).Msg("Forgot password process initiated (blueprint)")
+	return nil // TODO: Hapus blueprint stub
+}
+
+// 6. VerifyEmailOTP (Blueprint)
+func (s *authService) VerifyEmailOTP(ctx context.Context, otp string) error {
+	// userID, err := s.otpSvc.ValidateAndConsumeOTP(ctx, otp, "email_verification")
+	// if err != nil {
+	// 	s.logger.Warn().Err(err).Msg("Failed to validate email OTP")
+	// 	return ports.ErrInvalidToken
+	// }
+	//
+	// tx, err := s.uow.Begin(ctx)
+	// ... (logika untuk fetch user by ID, set user.IsVerified = true, txUserRepo.Update(user), tx.Commit()) ...
+
+	s.logger.Info().Str("otp", otp).Msg("Email verification attempt (blueprint)")
+	return nil // TODO: Hapus blueprint stub
+}
+
+// 10. RequestEmailChange (Blueprint)
+func (s *authService) RequestEmailChange(ctx context.Context, userID, newEmail string) error {
+	// ... (logika cek jika email baru sudah dipakai) ...
+	// ... (logika panggil s.otpSvc.GenerateAndStoreOTP) ...
+	// ... (logika panggil s.emailSvc.SendEmailChangeEmail) ...
+	s.logger.Info().Str("uuid", userID).Str("newEmail", newEmail).Msg("Email change requested (blueprint)")
+	return nil // TODO: Hapus blueprint stub
 }
 
 // createTokenSet is a helper to generate both access and refresh tokens.

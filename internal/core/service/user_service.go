@@ -123,3 +123,70 @@ func (s *userService) CreateUser(ctx context.Context, name, email, passwordStr s
 
 	return user, nil
 }
+
+func (s *userService) UpdateProfile(ctx context.Context, userID string, newName string) (*domain.User, error) {
+	if newName == "" {
+		return nil, errors.New("name cannot be empty")
+	}
+
+	tx, err := s.uow.Begin(ctx)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("Failed to begin UpdateProfile transaction")
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	txUserRepo := tx.GetUserRepository()
+
+	// 1. Fetch user DI DALAM transaksi
+	user, err := txUserRepo.FindByID(ctx, userID)
+	if err != nil {
+		return nil, err // Termasuk ErrUserNotFound
+	}
+
+	// 2. Ubah data
+	user.Name = newName
+
+	// 3. Simpan perubahan
+	if err := txUserRepo.Update(ctx, user); err != nil {
+		s.logger.Error().Err(err).Str("uuid", userID).Msg("Failed to update profile in DB")
+		return nil, err
+	}
+
+	// 4. Commit
+	if err := tx.Commit(ctx); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to commit UpdateProfile transaction")
+		return nil, err
+	}
+
+	s.logger.Info().Str("uuid", userID).Msg("Profile updated successfully")
+	return user, nil
+}
+
+// 7. DeleteAccount (Blueprint)
+func (s *userService) DeleteAccount(ctx context.Context, userID string) error {
+	// Implementasi sederhana (tanpa konfirmasi email)
+	tx, err := s.uow.Begin(ctx)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("Failed to begin DeleteAccount transaction")
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	txUserRepo := tx.GetUserRepository()
+
+	// Hapus pengguna
+	if err := txUserRepo.Delete(ctx, userID); err != nil {
+		s.logger.Error().Err(err).Str("uuid", userID).Msg("Failed to delete user from DB")
+		return err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		s.logger.Error().Err(err).Msg("Failed to commit DeleteAccount transaction")
+		return err
+	}
+
+	// TODO: Idealnya, kirim email konfirmasi dulu menggunakan s.emailSvc
+	s.logger.Info().Str("uuid", userID).Msg("Account deleted successfully (blueprint)")
+	return nil
+}

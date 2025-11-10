@@ -26,6 +26,10 @@ type UserRepository interface {
 	// The key of the map is the user's UUID.
 	FindMapByUUIDs(ctx context.Context, uuids []string) (map[string]*domain.User, error)
 
+	Update(ctx context.Context, user *domain.User) error
+
+	Delete(ctx context.Context, uuid string) error
+
 	// TODO: Add other necessary methods like Delete, List, etc. as needed.
 }
 

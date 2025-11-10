@@ -199,3 +199,57 @@ func (r *userRepository) FindMapByUUIDs(ctx context.Context, uuids []string) (ma
 	r.logger.Debug().Int("found", len(userMap)).Int("requested", len(uuids)).Msg("Batch user find complete")
 	return userMap, nil
 }
+
+// Update memperbarui data pengguna di database.
+func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
+	// Perbarui timestamp
+	user.UpdatedAt = time.Now().UTC()
+
+	query := `
+		UPDATE users
+		SET name = $1, password = $2, updated_at = $3
+		WHERE uuid = $4
+	`
+	// Catatan: Ini mengasumsikan kita *selalu* mengupdate nama dan password.
+	// Implementasi yang lebih baik akan membangun query secara dinamis
+	// atau memiliki metode terpisah untuk UpdatePassword vs UpdateProfile.
+	// Untuk saat ini, ini sudah cukup.
+	cmdTag, err := r.db.Exec(ctx, query,
+		user.Name,
+		user.Password,
+		user.UpdatedAt,
+		user.UUID,
+	)
+
+	if err != nil {
+		r.logger.Error().Err(err).Str("uuid", user.UUID).Msg("Failed to update user")
+		return ports.ErrUnexpectedSave
+	}
+
+	if cmdTag.RowsAffected() == 0 {
+		r.logger.Warn().Str("uuid", user.UUID).Msg("Update user failed, user not found")
+		return ports.ErrUserNotFound
+	}
+
+	r.logger.Debug().Str("uuid", user.UUID).Msg("User updated successfully")
+	return nil
+}
+
+// Delete menghapus pengguna dari database.
+func (r *userRepository) Delete(ctx context.Context, uuid string) error {
+	query := `DELETE FROM users WHERE uuid = $1`
+
+	cmdTag, err := r.db.Exec(ctx, query, uuid)
+	if err != nil {
+		r.logger.Error().Err(err).Str("uuid", uuid).Msg("Failed to delete user")
+		return ports.ErrUnexpectedSave
+	}
+
+	if cmdTag.RowsAffected() == 0 {
+		r.logger.Warn().Str("uuid", uuid).Msg("Delete user failed, user not found")
+		return ports.ErrUserNotFound
+	}
+
+	r.logger.Debug().Str("uuid", uuid).Msg("User deleted successfully")
+	return nil
+}

@@ -19,6 +19,7 @@ type Config struct {
 	Database Database
 	// Token holds PASETO token configuration.
 	Token Token
+	Mail  Mail
 }
 
 // Server holds configuration related to the HTTP server.
@@ -48,6 +49,17 @@ type Token struct {
 	RefreshTokenTTL time.Duration
 }
 
+// Mail holds configuration for the email service.
+type Mail struct {
+	Driver        string // "mailgun" or "smtp"
+	Host          string // "localhost" for Mailpit
+	Port          int    // 1025 for Mailpit
+	FromAddress   string
+	FromName      string
+	MailgunDomain string
+	MailgunAPIKey string
+}
+
 // Load reads configuration from environment variables.
 // It loads from a .env file if it exists (for local development).
 func Load() (*Config, error) {
@@ -70,6 +82,11 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("invalid TOKEN_REFRESH_DURATION: %w", err)
 	}
 
+	mailPort, err := strconv.Atoi(getEnv("MAIL_PORT", "1025"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid MAIL_PORT: %w", err)
+	}
+
 	cfg := &Config{
 		Server: Server{
 			Port: getEnv("PORT", "8080"),
@@ -90,6 +107,15 @@ func Load() (*Config, error) {
 			AccessTokenTTL:  accessTokenTTL,
 			RefreshTokenTTL: refreshTokenTTL,
 		},
+		Mail: Mail{
+			Driver:        getEnv("MAIL_DRIVER", "smtp"),
+			Host:          getEnv("MAIL_HOST", "localhost"),
+			Port:          mailPort,
+			FromAddress:   getEnv("MAIL_FROM_ADDRESS", "no-reply@example.com"),
+			FromName:      getEnv("MAIL_FROM_NAME", "Example App"),
+			MailgunDomain: getEnv("MAILGUN_DOMAIN", ""),
+			MailgunAPIKey: getEnv("MAILGUN_API_KEY", ""),
+		},
 	}
 
 	// Simple validation
@@ -101,6 +127,9 @@ func Load() (*Config, error) {
 	}
 	if len(cfg.Token.SymmetricKey) != 32 {
 		return nil, fmt.Errorf("TOKEN_SYMMETRIC_KEY must be exactly 32 bytes")
+	}
+	if cfg.Mail.Driver == "mailgun" && (cfg.Mail.MailgunDomain == "" || cfg.Mail.MailgunAPIKey == "") {
+		return nil, fmt.Errorf("MAIL_DRIVER 'mailgun' requires MAILGUN_DOMAIN and MAILGUN_API_KEY")
 	}
 
 	return cfg, nil

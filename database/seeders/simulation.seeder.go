@@ -56,9 +56,9 @@ func SeedSimulationData(tx *gorm.DB) error {
 	usersToCreate := make([]models.User, 0, totalUsers)
 	for i := 0; i < totalUsers; i++ {
 		usersToCreate = append(usersToCreate, models.User{
-			Name:     faker.Name(),
-			Email:    faker.Email(),
-			Password: hashedPassword,
+			Name:  faker.Name(),
+			Email: faker.Email(),
+			// Password: hashedPassword,
 		})
 	}
 
@@ -68,11 +68,12 @@ func SeedSimulationData(tx *gorm.DB) error {
 	}
 	log.Printf("[DB] [SEED] [SIMULATION] Successfully inserted %d users.", len(usersToCreate))
 
-	// --- TAHAP 4: Generate Data Turunan (Profiles, Roles, Cycles) di Memori ---
-	log.Println("[DB] [SEED] [SIMULATION] Generating profiles, roles, and cycles in memory...")
+	// --- TAHAP 4: Generate Data Turunan (Profiles, Roles, Cycles, AuthProviders) di Memori ---
+	log.Println("[DB] [SEED] [SIMULATION] Generating profiles, roles, auth providers, and cycles in memory...")
 	profilesToCreate := make([]models.Profile, 0, totalUsers)
 	userRolesToCreate := make([]UserRole, 0, totalUsers)
 	cyclesToCreate := make([]menstrual.MenstrualCycle, 0, totalUsers*7) // Estimasi 7 siklus per user
+	authProvidersToCreate := make([]models.UserAuthProvider, 0, totalUsers)
 
 	for _, user := range usersToCreate {
 		// Generate Profile
@@ -95,6 +96,12 @@ func SeedSimulationData(tx *gorm.DB) error {
 		userRolesToCreate = append(userRolesToCreate, UserRole{
 			UserID: user.ID,
 			RoleID: userRole.ID,
+		})
+
+		authProvidersToCreate = append(authProvidersToCreate, models.UserAuthProvider{
+			UserID:   user.ID,
+			Provider: "local",
+			Password: sql.NullString{String: hashedPassword, Valid: true},
 		})
 
 		// Generate Cycles
@@ -136,6 +143,11 @@ func SeedSimulationData(tx *gorm.DB) error {
 		return fmt.Errorf("failed to batch insert cycles: %w", err)
 	}
 	log.Printf("[DB] [SEED] [SIMULATION] Successfully inserted %d total cycles.", len(cyclesToCreate))
+
+	if err := tx.CreateInBatches(&authProvidersToCreate, dataBatchSize).Error; err != nil {
+		return fmt.Errorf("failed to batch insert auth providers: %w", err)
+	}
+	log.Printf("[DB] [SEED] [SIMULATION] Successfully inserted %d auth providers.", len(authProvidersToCreate))
 
 	// --- TAHAP 6: Generate Symptom Logs di Memori ---
 	log.Println("[DB] [SEED] [SIMULATION] Generating symptom logs in memory...")

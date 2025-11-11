@@ -39,6 +39,13 @@ type FullExportRecord struct {
 
 // GenerateReportResponse adalah respons saat meminta tautan unduhan.
 type GenerateReportResponse struct {
-	DownloadURL string    `json:"download_url"`
-	ExpiresAt   time.Time `json:"expires_at"`
+	DownloadURL    string    `json:"download_url"`
+	EncryptedToken string    `json:"encrypted_token"`
+	ExpiresAt      time.Time `json:"expires_at"`
+}
+
+// ValidateReportRequest adalah request untuk validasi password dan download report.
+type ValidateReportRequest struct {
+	Password string `json:"password" validate:"required,min=8"`
+	Token    string `json:"token" validate:"required"`
 }

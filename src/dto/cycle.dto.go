@@ -65,6 +65,9 @@ type CycleResponse struct {
 	CycleLength    *int16     `json:"cycle_length,omitempty"`
 	IsPeriodNormal *bool      `json:"is_period_normal,omitempty"`
 	IsCycleNormal  *bool      `json:"is_cycle_normal,omitempty"`
+	IsDeleted      bool       `json:"is_deleted"`
+	DeletionReason *string    `json:"deletion_reason,omitempty"`
+	DeletedAt      *time.Time `json:"deleted_at,omitempty"`
 }
 
 type CycleStatusResponse struct {

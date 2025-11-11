@@ -18,6 +18,7 @@ func dropAllTables(db *gorm.DB) error {
 	log.Println("Dropping tables dynamically...")
 
 	models := []any{
+		"user_auth_providers",
 		"maintenance_whitelists",
 		"notifications",
 		"settings",
@@ -108,6 +109,7 @@ func main() {
 		migrations.CreateMaintenanceTables(),
 		migrations.AddEmailVerification(),
 		migrations.AddLastOtpSentAt(),
+		migrations.RefactorAuthTables(),
 		// And more...
 	})
 

@@ -40,5 +40,10 @@ __debug*
 # Logs
 *.log
 
+# Reports directory (contains temporary XLSX files)
+reports/
+*.xlsx
+*.csv
+
 # Firebase service account key
 serviceAccountKey.json

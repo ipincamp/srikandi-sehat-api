@@ -8,6 +8,10 @@ type RegisterRequest struct {
 	PasswordConfirmation string `json:"password_confirmation" validate:"required,eqfield=Password"`
 }
 
+type GoogleLoginRequest struct {
+	IDToken string `json:"id_token" validate:"required"`
+}
+
 type LoginRequest struct {
 	Email    string `json:"email" validate:"required,email"`
 	Password string `json:"password" validate:"required,min=8"`

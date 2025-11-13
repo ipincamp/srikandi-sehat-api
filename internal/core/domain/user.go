@@ -6,11 +6,9 @@ import "time"
 // This struct represents the business entity, free of any
 // database or transport layer details.
 type User struct {
-	// ID is the internal, auto-incrementing primary key.
-	ID uint
 
-	// UUID is the external-facing, unique identifier.
-	UUID string
+	// ID is the internal database identifier.
+	ID string
 
 	// Name of the user.
 	Name string
@@ -18,10 +16,14 @@ type User struct {
 	// Email is the user's login and contact email.
 	Email string
 
-	// Password is the securely hashed password.
-	// The domain model itself does not know *how* it's hashed,
-	// only that it stores the resulting hash.
-	Password string
+	// EmailVerifiedAt is the timestamp when the user's email was verified.
+	EmailVerifiedAt *time.Time
+
+	// PasswordHash is the hashed password for authentication.
+	PasswordHash string
+
+	// DisabledAt is the timestamp when the user was disabled.
+	DisabledAt *time.Time
 
 	// CreatedAt timestamp.
 	CreatedAt time.Time
@@ -30,12 +32,15 @@ type User struct {
 	UpdatedAt time.Time
 }
 
-// NOTE: We can add pure business logic methods here, for example:
-//
-// func (u *User) IsActive() bool {
-//     // some logic
-//     return true
-// }
-//
+// IsVerified returns true if the user's email is verified.
+func (u *User) IsVerified() bool {
+	return u.EmailVerifiedAt != nil
+}
+
+// IsDisabled returns true if the user account is disabled.
+func (u *User) IsDisabled() bool {
+	return u.DisabledAt != nil
+}
+
 // Logic that requires external dependencies (like password hashing)
 // belongs in the 'service' layer.

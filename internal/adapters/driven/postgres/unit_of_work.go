@@ -11,21 +11,18 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// dbExecutor is an internal interface that abstracts database operations.
-// Both *pgxpool.Pool and pgx.Tx satisfy this interface, allowing our
-// repositories to be agnostic of whether they are in a transaction or not.
+// dbExecutor abstracts database operations allowing repositories to work with both connection pools and transactions.
 type dbExecutor interface {
 	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
 	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
 	Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error)
 }
 
-// Compile-time checks to ensure our types implement the core ports.
+// Compile-time interface implementation checks.
 var _ ports.UnitOfWork = (*unitOfWork)(nil)
 var _ ports.TransactionalUnit = (*transactionalUnit)(nil)
 
-// unitOfWork is the concrete implementation of the ports.UnitOfWork interface.
-// It holds the connection pool to begin new transactions.
+// unitOfWork implements ports.UnitOfWork interface using PostgreSQL connection pool.
 type unitOfWork struct {
 	pool   *pgxpool.Pool
 	logger zerolog.Logger
@@ -39,7 +36,7 @@ func NewUnitOfWork(pool *pgxpool.Pool, logger zerolog.Logger) ports.UnitOfWork {
 	}
 }
 
-// Begin starts a new pgx transaction and wraps it in our transactionalUnit.
+// Begin starts a new database transaction and returns a transactional unit.
 func (u *unitOfWork) Begin(ctx context.Context) (ports.TransactionalUnit, error) {
 	// Begin a new transaction from the pool
 	tx, err := u.pool.Begin(ctx)
@@ -54,15 +51,13 @@ func (u *unitOfWork) Begin(ctx context.Context) (ports.TransactionalUnit, error)
 	}, nil
 }
 
-// transactionalUnit is the concrete implementation of ports.TransactionalUnit.
-// It holds the live database transaction (pgx.Tx).
+// transactionalUnit implements ports.TransactionalUnit interface with an active database transaction.
 type transactionalUnit struct {
 	tx     pgx.Tx
 	logger zerolog.Logger
 }
 
-// GetUserRepository creates a new UserRepository instance that is
-// bound to this specific transaction (t.tx).
+// GetUserRepository returns a transactional user repository instance.
 func (t *transactionalUnit) GetUserRepository() ports.UserRepository {
 	// Create a new logger context for this repo
 	repoLogger := t.logger.With().Str("component", "UserRepository(TX)").Logger()
@@ -72,7 +67,43 @@ func (t *transactionalUnit) GetUserRepository() ports.UserRepository {
 	return NewUserRepository(t.tx, repoLogger)
 }
 
-// Commit commits the underlying pgx transaction.
+// GetUserTokenRepository returns a transactional user token repository instance.
+func (t *transactionalUnit) GetUserTokenRepository() ports.UserTokenRepository {
+	repoLogger := t.logger.With().Str("component", "UserTokenRepository(TX)").Logger()
+	return NewUserTokenRepository(t.tx, repoLogger)
+}
+
+// GetRoleRepository returns a transactional role repository instance.
+func (t *transactionalUnit) GetRoleRepository() ports.RoleRepository {
+	repoLogger := t.logger.With().Str("component", "RoleRepository(TX)").Logger()
+	return NewRoleRepository(t.tx, repoLogger)
+}
+
+// GetPermissionRepository returns a transactional permission repository instance.
+func (t *transactionalUnit) GetPermissionRepository() ports.PermissionRepository {
+	repoLogger := t.logger.With().Str("component", "PermissionRepository(TX)").Logger()
+	return NewPermissionRepository(t.tx, repoLogger)
+}
+
+// GetActivityLogRepository returns a transactional activity log repository instance.
+func (t *transactionalUnit) GetActivityLogRepository() ports.ActivityLogRepository {
+	repoLogger := t.logger.With().Str("component", "ActivityLogRepository(TX)").Logger()
+	return NewActivityLogRepository(t.tx, repoLogger)
+}
+
+// GetStatefulRefreshTokenRepository returns a transactional stateful refresh token repository instance.
+func (t *transactionalUnit) GetStatefulRefreshTokenRepository() ports.StatefulRefreshTokenRepository {
+	repoLogger := t.logger.With().Str("component", "StatefulRefreshTokenRepository(TX)").Logger()
+	return NewStatefulRefreshTokenRepository(t.tx, repoLogger)
+}
+
+// GetPersonalTokenRepository returns a transactional personal token repository instance.
+func (t *transactionalUnit) GetPersonalTokenRepository() ports.PersonalTokenRepository {
+	repoLogger := t.logger.With().Str("component", "PersonalTokenRepository(TX)").Logger()
+	return NewPersonalTokenRepository(t.tx, repoLogger)
+}
+
+// Commit persists all changes made within the transaction to the database.
 func (t *transactionalUnit) Commit(ctx context.Context) error {
 	if err := t.tx.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
@@ -80,11 +111,9 @@ func (t *transactionalUnit) Commit(ctx context.Context) error {
 	return nil
 }
 
-// Rollback rolls back the underlying pgx transaction.
+// Rollback discards all changes made within the transaction.
 func (t *transactionalUnit) Rollback(ctx context.Context) error {
 	if err := t.tx.Rollback(ctx); err != nil {
-		// We only log the error here, as a rollback failure
-		// is usually secondary to the error that caused the rollback.
 		t.logger.Warn().Err(err).Msg("Failed to rollback transaction")
 		return fmt.Errorf("failed to rollback transaction: %w", err)
 	}

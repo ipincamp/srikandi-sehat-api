@@ -8,8 +8,10 @@ import "github.com/go-gormigrate/gormigrate/v2"
 // but you must manually add the constructor function call here.
 var AllMigrations = []*gormigrate.Migration{
 	// Add new migrations here, e.g.:
+	CreateRolesTable(),
+	CreatePermissionsTable(),
 	CreateUsersTable(),
-	CreateOtpsTable(),
-	// CreateRolesTable(),
-	// CreateProductsTable(),
+	CreateRbacPivotTables(),
+	CreateTokenTables(),
+	CreateActivityLogsTable(),
 }

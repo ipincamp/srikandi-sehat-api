@@ -2,7 +2,6 @@ package ports
 
 import (
 	"context"
-	"time"
 
 	"github.com/ipincamp/srikandi-sehat/internal/core/domain"
 )
@@ -101,33 +100,6 @@ type UserTokenRepository interface {
 	FindAndConsume(ctx context.Context, userID string, purpose string, tokenHash string) (*domain.UserToken, error)
 }
 
-// StatefulRefreshTokenRepository manages refresh tokens in a stateful manner.
-// Unlike stateless JWT/PASETO tokens, these tokens are stored in the database,
-// allowing for explicit revocation and better security controls. This is particularly
-// useful for implementing logout functionality and detecting compromised tokens.
-type StatefulRefreshTokenRepository interface {
-	// Save stores a refresh token hash in the repository.
-	// The tokenHash should be a cryptographic hash of the actual token to prevent
-	// token theft if the database is compromised. Returns an error if save fails.
-	Save(ctx context.Context, tokenHash string, userID string, expiresAt time.Time) error
-
-	// IsValid checks if a refresh token is valid and returns the associated user.
-	// A token is valid if it exists, hasn't been revoked, and hasn't expired.
-	// Returns ErrTokenNotFound if the token doesn't exist or has been revoked,
-	// ErrTokenExpired if the token has expired, or ErrUserNotFound if the user no longer exists.
-	IsValid(ctx context.Context, tokenHash string) (*domain.User, error)
-
-	// Revoke invalidates a specific refresh token.
-	// This is called during logout or when a token is suspected to be compromised.
-	// Returns an error if the token doesn't exist or if revocation fails.
-	Revoke(ctx context.Context, tokenHash string) error
-
-	// RevokeAllForUser invalidates all refresh tokens for a specific user.
-	// This is useful for security events like password changes or when a user
-	// wants to log out from all devices. Returns an error if revocation fails.
-	RevokeAllForUser(ctx context.Context, userID string) error
-}
-
 // RoleRepository manages role definitions and their associated permissions.
 // Roles are collections of permissions that can be assigned to users, implementing
 // role-based access control (RBAC). Common examples include "admin", "user", "moderator".
@@ -193,11 +165,11 @@ type PermissionRepository interface {
 	Save(ctx context.Context, permission *domain.Permission) error
 }
 
-// PersonalTokenRepository manages long-lived API tokens for programmatic access.
+// RefreshTokenRepository manages long-lived API tokens for programmatic access.
 // Personal access tokens (PATs) allow users to authenticate API requests without
 // using their password, similar to GitHub's personal access tokens. These are typically
 // used for CLI tools, scripts, and third-party integrations.
-type PersonalTokenRepository interface {
+type RefreshTokenRepository interface {
 	// Save persists a new personal access token to the repository.
 	// The token should be hashed before storage for security.
 	// Returns an error if the save operation fails.

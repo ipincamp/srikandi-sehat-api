@@ -30,6 +30,9 @@ type User struct {
 
 	// UpdatedAt timestamp.
 	UpdatedAt time.Time
+
+	// DeletedAt timestamp for soft deletes.
+	DeletedAt *time.Time
 }
 
 // IsVerified returns true if the user's email is verified.
@@ -40,6 +43,11 @@ func (u *User) IsVerified() bool {
 // IsDisabled returns true if the user account is disabled.
 func (u *User) IsDisabled() bool {
 	return u.DisabledAt != nil
+}
+
+// IsDeleted returns true if the user account is soft deleted.
+func (u *User) IsDeleted() bool {
+	return u.DeletedAt != nil
 }
 
 // Logic that requires external dependencies (like password hashing)

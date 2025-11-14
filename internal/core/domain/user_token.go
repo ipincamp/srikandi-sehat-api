@@ -6,7 +6,7 @@ import "time"
 const (
 	TokenPurposeVerification    = "email_verification"
 	TokenPurposePasswordReset   = "password_reset"
-	TokenPurposeEmailChange     = "email_change"
+	TokenPurposeEmailChange     = "email_change_confirmation"
 	TokenPurposeAccountDeletion = "account_deletion"
 )
 

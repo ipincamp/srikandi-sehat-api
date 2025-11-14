@@ -1,5 +1,7 @@
 package dto
 
+// -- Request DTOs ---
+
 // PasswordResetMailRequest represents the data required to process a password reset request.
 type PasswordResetMailRequest struct {
 	// UserEmail is the email of the user requesting password reset.

@@ -14,6 +14,11 @@ var (
 	ErrInvalidToken     = errors.New("invalid token")
 	ErrTokenExpired     = errors.New("token has expired")
 	ErrTokenUseMismatch = errors.New("token cannot be used for this purpose")
+	ErrTokenNotFound    = errors.New("token not found")
+
+	// --- RBAC Errors ---
+	ErrRoleNotFound       = errors.New("role not found")
+	ErrPermissionNotFound = errors.New("permission not found")
 
 	// --- Repository Errors ---
 	// These are translated by the adapter from driver-specific errors.

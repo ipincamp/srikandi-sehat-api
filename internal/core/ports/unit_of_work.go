@@ -10,6 +10,8 @@ type TransactionalUnit interface {
 	// Rollback discards all changes made within the transaction.
 	Rollback(ctx context.Context) error
 
+	// --- Repository Getters ---
+
 	// GetUserRepository returns a transactional instance of UserRepository.
 	GetUserRepository() UserRepository
 
@@ -25,11 +27,8 @@ type TransactionalUnit interface {
 	// GetActivityLogRepository returns a transactional instance of ActivityLogRepository.
 	GetActivityLogRepository() ActivityLogRepository
 
-	// GetStatefulRefreshTokenRepository returns a transactional instance of StatefulRefreshTokenRepository.
-	GetStatefulRefreshTokenRepository() StatefulRefreshTokenRepository
-
-	// GetPersonalTokenRepository returns a transactional instance of PersonalTokenRepository.
-	GetPersonalTokenRepository() PersonalTokenRepository
+	// GetRefreshTokenRepository returns a transactional instance of RefreshTokenRepository.
+	GetRefreshTokenRepository() RefreshTokenRepository
 }
 
 // UnitOfWork manages database transactions ensuring atomicity across multiple repository operations.

@@ -14,41 +14,31 @@ type AuthResponse struct {
 
 // AuthService defines the driving port for authentication operations including identity verification and token management.
 type AuthService interface {
-	// Register creates a new user account and returns authentication tokens.
-	Register(ctx context.Context, name, email, password string) (*AuthResponse, error)
-
 	// Login validates user credentials and returns authentication tokens on success.
 	Login(ctx context.Context, email, password string) (*AuthResponse, error)
 
 	// RefreshToken validates a refresh token and issues a new token pair.
 	RefreshToken(ctx context.Context, refreshToken string) (*AuthResponse, error)
 
-	// Logout invalidates a refresh token (only relevant for stateful token implementations).
+	// Logout invalidates a refresh token.
 	Logout(ctx context.Context, refreshToken string) error
+}
+
+// UserService defines the driving port for user management including CRUD operations, account status, and RBAC.
+type UserService interface {
+	// --- User Lifecycle ---
+
+	// Register creates a new user account and returns authentication tokens.
+	Register(ctx context.Context, name, email, password string) (*AuthResponse, error)
+
+	// GetUserByID retrieves a user by their unique UUID.
+	GetUserByID(ctx context.Context, uuid string) (*domain.User, error)
 
 	// ForgotPassword initiates password reset flow by generating and sending an OTP to the user's email.
 	ForgotPassword(ctx context.Context, email string) error
 
 	// ResetPassword completes password reset flow by validating OTP and updating user's password.
 	ResetPassword(ctx context.Context, email, otp, newPassword string) error
-
-	// ChangePassword updates the password for an authenticated user after verifying the old password.
-	ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error
-
-	// RequestEmailVerification initiates email verification flow by generating and sending an OTP to the user.
-	RequestEmailVerification(ctx context.Context, userID string) error
-
-	// VerifyEmail completes email verification flow by validating OTP and marking email as verified.
-	VerifyEmail(ctx context.Context, userID string, otp string) error
-}
-
-// UserService defines the driving port for user management including CRUD operations, account status, and RBAC.
-type UserService interface {
-	// GetUserByID retrieves a user by their unique UUID.
-	GetUserByID(ctx context.Context, uuid string) (*domain.User, error)
-
-	// UpdateProfile updates user profile information such as name.
-	UpdateProfile(ctx context.Context, userID string, newName string) (*domain.User, error)
 
 	// DisableAccount marks an account as disabled, preventing login while retaining data for potential reactivation.
 	DisableAccount(ctx context.Context, userID string) error
@@ -58,6 +48,22 @@ type UserService interface {
 
 	// ListUsers retrieves all users in the system (admin only).
 	ListUsers(ctx context.Context) ([]*domain.User, error)
+
+	// --- Profile & Verification ---
+
+	// UpdateProfile updates user profile information such as name.
+	UpdateProfile(ctx context.Context, userID string, newName string) (*domain.User, error)
+
+	// ChangePassword updates the password for an authenticated user after verifying the old password.
+	ChangePassword(ctx context.Context, userID, oldPassword, newPassword string) error
+
+	// RequestEmailVerification initiates email verification flow by generating and sending an OTP to the user.
+	RequestEmailVerification(ctx context.Context, userID string) error
+
+	// VerifyEmail completes email verification flow by validating OTP and marking email as verified.
+	VerifyEmail(ctx context.Context, userID string, otp string) error
+
+	// --- RBAC (Role-Based Access Control) ---
 
 	// CreateRole creates a new role with the specified name and description.
 	CreateRole(ctx context.Context, name, description string) (*domain.Role, error)

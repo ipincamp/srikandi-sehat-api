@@ -8,18 +8,18 @@ import (
 
 // MailService defines the contract for email delivery adapter handling various email notifications.
 type MailService interface {
-	// SendPasswordResetEmail sends a password reset OTP email to the user.
-	SendPasswordResetEmail(ctx context.Context, dto dto.PasswordResetMailRequest) error
+	// SendPasswordReset sends a password reset OTP email to the user.
+	SendPasswordReset(ctx context.Context, dto dto.PasswordResetMailRequest) error
 
-	// SendEmailVerificationEmail sends an email verification OTP to the user.
-	SendEmailVerificationEmail(ctx context.Context, dto dto.EmailVerificationMailRequest) error
+	// SendEmailVerification sends an email verification OTP to the user.
+	SendEmailVerification(ctx context.Context, dto dto.EmailVerificationMailRequest) error
 
-	// SendEmailChangeEmail sends an email change verification OTP to the new email address.
-	SendEmailChangeEmail(ctx context.Context, dto dto.EmailChangeMailRequest) error
+	// SendEmailChange sends an email change verification OTP to the new email address.
+	SendEmailChange(ctx context.Context, dto dto.EmailChangeMailRequest) error
 
-	// SendDeleteAccountEmail sends an account deletion notification to the user.
-	SendDeleteAccountEmail(ctx context.Context, dto dto.AccountNotificationMailRequest) error
+	// SendDeleteAccount sends an account deletion notification to the user.
+	SendDeleteAccount(ctx context.Context, dto dto.AccountNotificationMailRequest) error
 
-	// SendDisableAccountEmail sends an account disabled notification to the user.
-	SendDisableAccountEmail(ctx context.Context, dto dto.AccountNotificationMailRequest) error
+	// SendDisableAccount sends an account disabled notification to the user.
+	SendDisableAccount(ctx context.Context, dto dto.AccountNotificationMailRequest) error
 }

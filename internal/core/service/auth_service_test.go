@@ -6,194 +6,497 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/ipincamp/srikandi-sehat/internal/core/domain"
 	"github.com/ipincamp/srikandi-sehat/internal/core/ports"
 	"github.com/ipincamp/srikandi-sehat/internal/core/service"
 	"github.com/ipincamp/srikandi-sehat/pkg/config"
+	"github.com/ipincamp/srikandi-sehat/pkg/token"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
-// --- 1. DEFINISIKAN MOCKS ---
-
-// mockUserRepository
-type mockUserRepository struct {
-	ports.UserRepository
-	MockFindByEmail func(ctx context.Context, email string) (*domain.User, error)
+// Test complex setup for AuthService
+type authServiceMocks struct {
+	UOW       *MockUnitOfWork
+	Tx        *MockTransaction
+	UserRepo  *MockUserRepository
+	TokenRepo *MockPersonalTokenRepository
+	Hasher    *MockHasher
+	Maker     *MockTokenMaker
+	Mail      *MockMailService
+	TokenCfg  config.Token
 }
 
-func (m *mockUserRepository) FindByEmail(ctx context.Context, email string) (*domain.User, error) {
-	return m.MockFindByEmail(ctx, email)
-}
+// setupAuthService initializes an AuthService with all its dependencies mocked.
+func setupAuthService(t *testing.T) (authServiceMocks, ports.AuthService) {
+	logger := zerolog.Nop()
 
-// mockOtpRepository
-type mockOtpRepository struct {
-	ports.OTPRepository
-	MockSave func(ctx context.Context, otp *domain.OTP) error
-}
+	// 1. Create all mock dependencies
+	mocks := authServiceMocks{
+		UOW:       &MockUnitOfWork{},
+		UserRepo:  &MockUserRepository{},
+		TokenRepo: &MockPersonalTokenRepository{},
+		Hasher:    &MockHasher{},
+		Maker:     &MockTokenMaker{},
+		Mail:      &MockMailService{},
+		TokenCfg: config.Token{
+			AccessTokenTTL:  15 * time.Minute,
+			RefreshTokenTTL: 7 * 24 * time.Hour,
+		},
+	}
 
-func (m *mockOtpRepository) Save(ctx context.Context, otp *domain.OTP) error {
-	return m.MockSave(ctx, otp)
-}
+	// 2. Create the mock transaction that holds the mock repos
+	mocks.Tx = &MockTransaction{
+		MockUserRepo:  mocks.UserRepo,
+		MockTokenRepo: mocks.TokenRepo,
+	}
 
-// mockEmailService
-type mockEmailService struct {
-	ports.EmailService
-	MockSendPasswordResetEmail func(ctx context.Context, userEmail, name, otp string) error
-}
-
-func (m *mockEmailService) SendPasswordResetEmail(ctx context.Context, userEmail, name, otp string) error {
-	return m.MockSendPasswordResetEmail(ctx, userEmail, name, otp)
-}
-
-// --- 2. FUNGSI SETUP ---
-
-// setup_auth_service diperbarui
-func setup_auth_service(_ *testing.T) (ports.AuthService, *mockUserRepository, *mockOtpRepository, *mockEmailService) {
-	userRepo := &mockUserRepository{}
-	otpRepo := &mockOtpRepository{}
-	emailSvc := &mockEmailService{}
-	dummyTokenCfg := config.Token{}
-	nopLogger := zerolog.Nop()
-
-	// Panggil konstruktor menggunakan prefix package: 'service.NewAuthService'
-	service := service.NewAuthService(
-		userRepo,
-		nil,
-		nil,
-		dummyTokenCfg,
-		nopLogger,
-		nil,
-		otpRepo,
-		emailSvc,
+	// 3. Initialize the service, injecting all mocks
+	authService := service.NewAuthService(
+		mocks.UOW,
+		mocks.Hasher,
+		mocks.Maker,
+		mocks.TokenCfg,
+		logger,
+		mocks.Mail,
 	)
+	require.NotNil(t, authService)
 
-	// Kita tidak perlu konversi 'ok', karena NewAuthService sudah
-	// mengembalikan interface ports.AuthService
-	return service, userRepo, otpRepo, emailSvc
+	return mocks, authService
 }
 
-// --- 3. TES KASUS ---
+func TestRegister_Success(t *testing.T) {
+	// 1. Setup
+	mocks, authService := setupAuthService(t)
+	ctx := context.Background()
 
-// Skenario 1: Happy Path
-func TestForgotPassword_HappyPath(t *testing.T) {
-	// --- Arrange (Persiapan) ---
-	// Tipe 'sut' sekarang adalah interface ports.AuthService, bukan *authService
-	sut, mockUserRepo, mockOtpRepo, mockEmailSvc := setup_auth_service(t)
+	// Test inputs
+	name := "New User"
+	email := "new@example.com"
+	password := "Password123!"
 
-	testEmail := "user@example.com"
-	testUser := &domain.User{
-		ID:    1,
-		UUID:  "user-uuid-123",
-		Name:  "Test User",
-		Email: testEmail,
+	// Mocked data
+	hashedPassword := "hashed_password"
+	newUserID := uuid.NewString()
+	accessToken := "new_access_token"
+	refreshToken := "new_refresh_token"
+	jti := uuid.NewString()
+
+	// 2. Stub all mock calls in order of execution
+
+	// a. UOW begins transaction
+	mocks.UOW.BeginFunc = func(c context.Context) (ports.Transaction, error) {
+		return mocks.Tx, nil
 	}
 
-	var capturedOTP *domain.OTP
-	var capturedEmailOTP string
-	var capturedEmailTo string
+	// b. UserRepo checks if email exists (it doesn't)
+	mocks.UserRepo.FindByEmailFunc = func(c context.Context, e string) (*domain.User, error) {
+		assert.Equal(t, email, e)
 
-	mockUserRepo.MockFindByEmail = func(ctx context.Context, email string) (*domain.User, error) {
-		assert.Equal(t, testEmail, email)
-		return testUser, nil
+		// Use the struct field for state, not context
+		if !mocks.UserRepo.FindByEmailCalled {
+			// First call: checking for existence
+			mocks.UserRepo.FindByEmailCalled = true // Mutate the mock's state
+			return nil, gorm.ErrRecordNotFound
+		}
+		// Second call: fetching the *newly created* user
+		return &domain.User{ID: newUserID, Name: name, Email: email}, nil
 	}
-	mockOtpRepo.MockSave = func(ctx context.Context, otp *domain.OTP) error {
-		capturedOTP = otp
+
+	// c. Hasher hashes the password
+	mocks.Hasher.HashFunc = func(p string) (string, error) {
+		assert.Equal(t, password, p)
+		return hashedPassword, nil
+	}
+
+	// d. UserRepo saves the new user
+	mocks.UserRepo.SaveFunc = func(c context.Context, u *domain.User) error {
+		assert.Equal(t, name, u.Name)
+		assert.Equal(t, email, u.Email)
+		assert.Equal(t, hashedPassword, u.PasswordHash)
 		return nil
 	}
-	mockEmailSvc.MockSendPasswordResetEmail = func(ctx context.Context, userEmail, name, otp string) error {
-		capturedEmailTo = userEmail
-		capturedEmailOTP = otp
+
+	// e. TokenMaker creates access token
+	mocks.Maker.CreateTokenFunc = func(userID, roleID, useFor string, duration time.Duration) (string, *token.Payload, error) {
+		if useFor == token.UseForAccessToken {
+			assert.Equal(t, newUserID, userID)
+			return accessToken, &token.Payload{UserID: newUserID}, nil
+		}
+		// f. TokenMaker creates refresh token
+		if useFor == token.UseForRefreshToken {
+			assert.Equal(t, newUserID, userID)
+			return refreshToken, &token.Payload{UserID: newUserID, JTI: jti}, nil
+		}
+		return "", nil, errors.New("unexpected token type")
+	}
+
+	// g. TokenRepo saves the new JTI
+	mocks.TokenRepo.SaveFunc = func(c context.Context, pt *domain.PersonalToken) error {
+		assert.Equal(t, jti, pt.ID)
+		assert.Equal(t, newUserID, pt.UserID)
 		return nil
 	}
 
-	// --- Act (Tindakan) ---
-	err := sut.ForgotPassword(context.Background(), testEmail)
+	// h. Transaction commits
+	mocks.Tx.CommitFunc = func() error {
+		return nil
+	}
 
-	// --- Assert (Penegasan) ---
+	// i. Transaction rolls back
+	//    This stub will only be called if the test fails unexpectedly.
+	mocks.Tx.RollbackFunc = func() error {
+		t.Log("Unexpected rollback called") // Log this so we know something is wrong
+		return nil
+	}
+
+	// j. MailService sends email (asynchronously, stub so it doesn't error)
+	mocks.Mail.SendFunc = func(c context.Context, to, subject, plainBody, htmlBody string) error {
+		assert.Equal(t, email, to)
+		return nil
+	}
+
+	// 3. Act
+	resp, err := authService.Register(ctx, name, email, password)
+
+	// 4. Assert
 	require.NoError(t, err)
-	require.NotNil(t, capturedOTP, "otpRepo.Save() seharusnya dipanggil")
-	require.NotEmpty(t, capturedEmailOTP, "emailSvc.SendPasswordResetEmail() seharusnya dipanggil")
-	assert.Equal(t, testUser.Email, capturedEmailTo)
-	assert.Equal(t, testUser.ID, *capturedOTP.UserID)
-	assert.Equal(t, domain.OTPTypePasswordReset, capturedOTP.Type)
-	assert.Len(t, capturedOTP.Code, 6)
-	assert.Equal(t, capturedOTP.Code, capturedEmailOTP)
-	assert.WithinDuration(t, time.Now().Add(15*time.Minute), capturedOTP.ExpiresAt, 1*time.Minute)
+	require.NotNil(t, resp)
+	assert.Equal(t, accessToken, resp.AccessToken)
+	assert.Equal(t, refreshToken, resp.RefreshToken)
 }
 
-// Skenario 2: User Tidak Ditemukan
-func TestForgotPassword_UserNotFound(t *testing.T) {
-	sut, mockUserRepo, mockOtpRepo, mockEmailSvc := setup_auth_service(t)
-	testEmail := "nobody@example.com"
-	otpSaveCalled := false
-	emailSendCalled := false
+func TestRegister_EmailAlreadyInUse(t *testing.T) {
+	// 1. Setup
+	mocks, authService := setupAuthService(t)
+	ctx := context.Background()
 
-	mockUserRepo.MockFindByEmail = func(ctx context.Context, email string) (*domain.User, error) {
-		return nil, ports.ErrUserNotFound
-	}
-	mockOtpRepo.MockSave = func(ctx context.Context, otp *domain.OTP) error {
-		otpSaveCalled = true
-		return nil
-	}
-	mockEmailSvc.MockSendPasswordResetEmail = func(ctx context.Context, userEmail, name, otp string) error {
-		emailSendCalled = true
-		return nil
+	// 2. Stub Mocks
+	// a. UOW begins transaction
+	mocks.UOW.BeginFunc = func(c context.Context) (ports.Transaction, error) {
+		return mocks.Tx, nil
 	}
 
-	err := sut.ForgotPassword(context.Background(), testEmail)
-
-	require.NoError(t, err)
-	assert.False(t, otpSaveCalled)
-	assert.False(t, emailSendCalled)
-}
-
-// Skenario 3: Gagal Menyimpan OTP
-func TestForgotPassword_OtpSaveFails(t *testing.T) {
-	sut, mockUserRepo, mockOtpRepo, mockEmailSvc := setup_auth_service(t)
-	testUser := &domain.User{ID: 1, Email: "user@example.com", Name: "Test User"}
-	dbError := errors.New("database connection error")
-	emailSendCalled := false
-
-	mockUserRepo.MockFindByEmail = func(ctx context.Context, email string) (*domain.User, error) {
-		return testUser, nil
+	// b. UserRepo finds an *existing* user
+	mocks.UserRepo.FindByEmailFunc = func(c context.Context, e string) (*domain.User, error) {
+		return &domain.User{ID: "existing-id", Email: e}, nil // Success, user found
 	}
-	mockOtpRepo.MockSave = func(ctx context.Context, otp *domain.OTP) error {
-		return dbError
-	}
-	mockEmailSvc.MockSendPasswordResetEmail = func(ctx context.Context, userEmail, name, otp string) error {
-		emailSendCalled = true
+
+	// c. Transaction rolls back
+	mocks.Tx.RollbackFunc = func() error {
 		return nil
 	}
 
-	err := sut.ForgotPassword(context.Background(), "user@example.com")
+	// 3. Act
+	resp, err := authService.Register(ctx, "Test", "existing@example.com", "password")
 
+	// 4. Assert
 	require.Error(t, err)
-	assert.Equal(t, dbError, err)
-	assert.False(t, emailSendCalled)
+	assert.Equal(t, "email already in use", err.Error())
+	assert.Nil(t, resp)
 }
 
-// Skenario 4: Gagal Mengirim Email
-func TestForgotPassword_EmailSendFails(t *testing.T) {
-	sut, mockUserRepo, mockOtpRepo, mockEmailSvc := setup_auth_service(t)
-	testUser := &domain.User{ID: 1, Email: "user@example.com", Name: "Test User"}
-	emailError := errors.New("mailgun API down")
-	otpSaveCalled := false
+func TestLogin_Success(t *testing.T) {
+	// 1. Setup
+	mocks, authService := setupAuthService(t)
+	ctx := context.Background()
 
-	mockUserRepo.MockFindByEmail = func(ctx context.Context, email string) (*domain.User, error) {
-		return testUser, nil
+	email := "user@example.com"
+	password := "Password123!"
+	hashedPassword := "hashed_password"
+	userID := uuid.NewString()
+
+	// 2. Stub Mocks
+	// a. UOW begins
+	mocks.UOW.BeginFunc = func(c context.Context) (ports.Transaction, error) {
+		return mocks.Tx, nil
 	}
-	mockOtpRepo.MockSave = func(ctx context.Context, otp *domain.OTP) error {
-		otpSaveCalled = true
+
+	// b. UserRepo finds the user
+	mocks.UserRepo.FindByEmailFunc = func(c context.Context, e string) (*domain.User, error) {
+		assert.Equal(t, email, e)
+		return &domain.User{ID: userID, Email: email, PasswordHash: hashedPassword}, nil
+	}
+
+	// c. Hasher compares password (success)
+	mocks.Hasher.CompareFunc = func(h string, p string) bool {
+		assert.Equal(t, hashedPassword, h)
+		assert.Equal(t, password, p)
+		return true // Passwords match
+	}
+
+	// d. TokenMaker creates tokens (simplified)
+	mocks.Maker.CreateTokenFunc = func(uid, rid, useFor string, dur time.Duration) (string, *token.Payload, error) {
+		if useFor == token.UseForAccessToken {
+			return "access_token", &token.Payload{UserID: uid}, nil
+		}
+		return "refresh_token", &token.Payload{UserID: uid, JTI: "jti-123"}, nil
+	}
+
+	// e. TokenRepo saves JTI
+	mocks.TokenRepo.SaveFunc = func(c context.Context, pt *domain.PersonalToken) error {
 		return nil
 	}
-	mockEmailSvc.MockSendPasswordResetEmail = func(ctx context.Context, userEmail, name, otp string) error {
-		return emailError
+
+	// f. Transaction commits
+	mocks.Tx.CommitFunc = func() error {
+		return nil
 	}
 
-	err := sut.ForgotPassword(context.Background(), "user@example.com")
+	// 3. Act
+	resp, err := authService.Login(ctx, email, password)
 
+	// 4. Assert
 	require.NoError(t, err)
-	assert.True(t, otpSaveCalled)
+	require.NotNil(t, resp)
+	assert.Equal(t, "access_token", resp.AccessToken)
+}
+
+func TestLogin_WrongPassword(t *testing.T) {
+	// 1. Setup
+	mocks, authService := setupAuthService(t)
+	ctx := context.Background()
+
+	// 2. Stub Mocks
+	// a. UOW begins
+	mocks.UOW.BeginFunc = func(c context.Context) (ports.Transaction, error) {
+		return mocks.Tx, nil
+	}
+
+	// b. UserRepo finds user
+	mocks.UserRepo.FindByEmailFunc = func(c context.Context, e string) (*domain.User, error) {
+		return &domain.User{ID: "id-123", Email: e, PasswordHash: "real_hash"}, nil
+	}
+
+	// c. Hasher compares password (fail)
+	mocks.Hasher.CompareFunc = func(h string, p string) bool {
+		return false // Passwords do NOT match
+	}
+
+	// d. Transaction rolls back
+	mocks.Tx.RollbackFunc = func() error {
+		return nil
+	}
+
+	// 3. Act
+	resp, err := authService.Login(ctx, "user@example.com", "wrong_password")
+
+	// 4. Assert
+	require.Error(t, err)
+	assert.Equal(t, "invalid email or password", err.Error())
+	assert.Nil(t, resp)
+}
+
+func TestRefreshToken_Success(t *testing.T) {
+	// 1. Setup
+	mocks, authService := setupAuthService(t)
+	ctx := context.Background()
+
+	// Mocked data
+	oldRefreshToken := "old_refresh_token"
+	oldJTI := "old-jti-123"
+	userID := "user-uuid-abc"
+
+	newAccessToken := "new_access_token"
+	newRefreshToken := "new_refresh_token"
+	newJTI := "new-jti-456"
+
+	// 2. Stub all mock calls
+	// a. Token validation succeeds (Requirement 1.4.3.1)
+	mocks.Maker.ValidateTokenFunc = func(tokenStr string) (*token.Payload, error) {
+		assert.Equal(t, oldRefreshToken, tokenStr)
+		return &token.Payload{
+			JTI:    oldJTI,
+			UserID: userID,
+			UseFor: token.UseForRefreshToken,
+		}, nil
+	}
+
+	// b. UOW begins transaction
+	mocks.UOW.BeginFunc = func(c context.Context) (ports.Transaction, error) {
+		return mocks.Tx, nil
+	}
+
+	// c. TokenRepo finds the old JTI in the DB (Requirement 1.4.3.3)
+	mocks.TokenRepo.FindByIDFunc = func(c context.Context, jti string) (*domain.PersonalToken, error) {
+		assert.Equal(t, oldJTI, jti)
+		return &domain.PersonalToken{ID: oldJTI, UserID: userID}, nil
+	}
+
+	// d. TokenRepo deletes the old JTI (Requirement 1.4.3.8.1)
+	mocks.TokenRepo.DeleteFunc = func(c context.Context, jti string) error {
+		assert.Equal(t, oldJTI, jti)
+		return nil
+	}
+
+	// e. UserRepo finds the user for the new token (Requirement 1.4.3.6)
+	mocks.UserRepo.FindByIDFunc = func(c context.Context, id string) (*domain.User, error) {
+		assert.Equal(t, userID, id)
+		return &domain.User{ID: userID, Name: "Test User"}, nil
+	}
+
+	// f. TokenMaker creates the new tokens (Requirement 1.4.3.8.2 & .3)
+	mocks.Maker.CreateTokenFunc = func(uid, rid, useFor string, dur time.Duration) (string, *token.Payload, error) {
+		if useFor == token.UseForAccessToken {
+			return newAccessToken, &token.Payload{UserID: uid}, nil
+		}
+		// This is the new refresh token
+		return newRefreshToken, &token.Payload{UserID: uid, JTI: newJTI}, nil
+	}
+
+	// g. TokenRepo saves the new JTI (Requirement 1.4.3.8.4)
+	mocks.TokenRepo.SaveFunc = func(c context.Context, pt *domain.PersonalToken) error {
+		assert.Equal(t, newJTI, pt.ID)
+		assert.Equal(t, userID, pt.UserID)
+		return nil
+	}
+
+	// h. Transaction commits
+	mocks.Tx.CommitFunc = func() error {
+		return nil
+	}
+
+	// 3. Act
+	resp, err := authService.RefreshToken(ctx, oldRefreshToken)
+
+	// 4. Assert (Requirement 1.4.3.10)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, newAccessToken, resp.AccessToken)
+	assert.Equal(t, newRefreshToken, resp.RefreshToken)
+}
+
+func TestRefreshToken_JTI_NotFound(t *testing.T) {
+	// 1. Setup
+	mocks, authService := setupAuthService(t)
+	ctx := context.Background()
+	oldRefreshToken := "already_used_token"
+	oldJTI := "jti-that-was-revoked"
+
+	// 2. Stub Mocks
+	// a. Token validation succeeds (the token itself is valid)
+	mocks.Maker.ValidateTokenFunc = func(tokenStr string) (*token.Payload, error) {
+		return &token.Payload{
+			JTI:    oldJTI,
+			UserID: "user-uuid-abc",
+			UseFor: token.UseForRefreshToken,
+		}, nil
+	}
+
+	// b. UOW begins transaction
+	mocks.UOW.BeginFunc = func(c context.Context) (ports.Transaction, error) {
+		return mocks.Tx, nil
+	}
+
+	// c. TokenRepo *fails* to find the JTI (Requirement 1.4.3.4)
+	mocks.TokenRepo.FindByIDFunc = func(c context.Context, jti string) (*domain.PersonalToken, error) {
+		// This simulates a token reuse attack or a revoked token.
+		return nil, gorm.ErrRecordNotFound
+	}
+
+	// d. Transaction rolls back
+	mocks.Tx.RollbackFunc = func() error {
+		return nil
+	}
+
+	// 3. Act
+	resp, err := authService.RefreshToken(ctx, oldRefreshToken)
+
+	// 4. Assert
+	require.Error(t, err)
+	// This error comes from our service logic
+	assert.Equal(t, "invalid refresh token", err.Error())
+	assert.Nil(t, resp)
+}
+
+func TestLogout_Success(t *testing.T) {
+	// 1. Setup
+	mocks, authService := setupAuthService(t)
+	ctx := context.Background()
+
+	refreshToken := "valid_refresh_token"
+	jti := "jti-to-revoke"
+	userID := "user-uuid-abc"
+
+	// 2. Stub Mocks
+	// a. Token validation succeeds (Requirement 1.3.3.1)
+	mocks.Maker.ValidateTokenFunc = func(tokenStr string) (*token.Payload, error) {
+		assert.Equal(t, refreshToken, tokenStr)
+		return &token.Payload{
+			JTI:    jti,
+			UserID: userID,
+			UseFor: token.UseForRefreshToken,
+		}, nil
+	}
+
+	// b. UOW begins transaction
+	mocks.UOW.BeginFunc = func(c context.Context) (ports.Transaction, error) {
+		return mocks.Tx, nil
+	}
+
+	// c. TokenRepo finds the JTI in the DB (Requirement 1.3.3.3)
+	mocks.TokenRepo.FindByIDFunc = func(c context.Context, j string) (*domain.PersonalToken, error) {
+		assert.Equal(t, jti, j)
+		return &domain.PersonalToken{ID: jti, UserID: userID}, nil
+	}
+
+	// d. TokenRepo deletes the JTI (Requirement 1.3.3.7)
+	mocks.TokenRepo.DeleteFunc = func(c context.Context, j string) error {
+		assert.Equal(t, jti, j)
+		return nil
+	}
+
+	// e. Transaction commits
+	mocks.Tx.CommitFunc = func() error {
+		return nil
+	}
+
+	// 3. Act
+	err := authService.Logout(ctx, refreshToken)
+
+	// 4. Assert (Requirement 1.3.3.8)
+	require.NoError(t, err)
+}
+
+func TestLogout_AlreadyLoggedOut(t *testing.T) {
+	// 1. Setup
+	mocks, authService := setupAuthService(t)
+	ctx := context.Background()
+	refreshToken := "already_logged_out_token"
+	jti := "jti-revoked-earlier"
+
+	// 2. Stub Mocks
+	// a. Token validation succeeds
+	mocks.Maker.ValidateTokenFunc = func(tokenStr string) (*token.Payload, error) {
+		return &token.Payload{
+			JTI:    jti,
+			UserID: "user-uuid-abc",
+			UseFor: token.UseForRefreshToken,
+		}, nil
+	}
+
+	// b. UOW begins transaction
+	mocks.UOW.BeginFunc = func(c context.Context) (ports.Transaction, error) {
+		return mocks.Tx, nil
+	}
+
+	// c. TokenRepo *fails* to find the JTI (Requirement 1.3.3.4)
+	mocks.TokenRepo.FindByIDFunc = func(c context.Context, j string) (*domain.PersonalToken, error) {
+		return nil, gorm.ErrRecordNotFound
+	}
+
+	// d. Transaction still commits (service logic treats this as success)
+	mocks.Tx.CommitFunc = func() error {
+		return nil
+	}
+
+	// 3. Act
+	err := authService.Logout(ctx, refreshToken)
+
+	// 4. Assert
+	// The service correctly returns no error, as the token is effectively logged out.
+	require.NoError(t, err)
 }

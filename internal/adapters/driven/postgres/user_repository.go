@@ -65,11 +65,24 @@ func (r *userRepository) FindAll(ctx context.Context) ([]*domain.User, error) {
 // Update saves all fields of the domain user struct.
 // GORM's .Save() will update all fields for a record if a primary key is present.
 func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
-	// panic("not implemented")
-	userModel := models.FromDomain(user)
-	// We set UpdatedAt manually just in case, though GORM hooks can also do this.
-	userModel.UpdatedAt = time.Now()
-	return r.db.WithContext(ctx).Save(userModel).Error
+	// 1. Create a map of fields to update.
+	//    This is much safer than .Save() as it's explicit.
+	updates := map[string]interface{}{
+		"name":              user.Name,
+		"email":             user.Email,
+		"email_verified_at": user.EmailVerifiedAt,
+		"password_hash":     user.PasswordHash,
+		"disabled_at":       user.DisabledAt,
+		"updated_at":        time.Now(), // Explicitly set UpdatedAt
+		// We deliberately omit "created_at" and "deleted_at"
+	}
+
+	// 2. Use Model().Where().Updates() for a targeted update.
+	//    This targets the user by ID and applies *only* the fields in the map.
+	return r.db.WithContext(ctx).
+		Model(&models.UserDBModel{}).
+		Where("id = ?", user.ID).
+		Updates(updates).Error
 }
 
 func (r *userRepository) Delete(ctx context.Context, id string) error {

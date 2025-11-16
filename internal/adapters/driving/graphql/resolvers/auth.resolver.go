@@ -114,6 +114,49 @@ func (r *mutationResolver) Logout(ctx context.Context, refreshToken string) (boo
 	return true, nil
 }
 
+// ForgotPassword is the resolver for the forgotPassword field.
+func (r *mutationResolver) ForgotPassword(ctx context.Context, email string) (bool, error) {
+	// --- Validation Step ---
+	// We can use the 'email' tag directly from the validator.
+	if err := validate.Var(email, "required,email"); err != nil {
+		return false, formatValidationErrors(err)
+	}
+	// --- End Validation ---
+
+	// Call the auth service.
+	// This function handles the "ambiguous response" logic internally.
+	if err := r.Resolver.authService.ForgotPassword(ctx, email); err != nil {
+		// This path should ideally not be hit, as the service returns nil.
+		return false, err
+	}
+
+	// Per the requirements, always return true on success[cite: 550].
+	return true, nil
+}
+
+// ResetPassword is the resolver for the resetPassword field.
+func (r *mutationResolver) ResetPassword(ctx context.Context, input models.ResetPasswordInput) (bool, error) {
+	// --- Validation Step ---
+	vInput := resetPasswordInputValidation{
+		Token:       input.Token,
+		NewPassword: input.NewPassword,
+	}
+
+	// Run the validation.
+	if err := validate.Struct(vInput); err != nil {
+		// Use our helper to format the error.
+		return false, formatValidationErrors(err)
+	}
+	// --- End Validation ---
+
+	// Call the auth service.
+	if err := r.Resolver.authService.ResetPassword(ctx, input.Token, input.NewPassword); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
 // Mutation returns generated.MutationResolver implementation.
 func (r *Resolver) Mutation() generated.MutationResolver { return &mutationResolver{r} }
 

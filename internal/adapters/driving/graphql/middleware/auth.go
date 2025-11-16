@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -24,7 +25,24 @@ func NewAuthMiddleware(maker token.Maker) *AuthMiddleware {
 // writeError is a helper to return a standard HTTP error.
 // We are in middleware, so we must respond with HTTP, not GraphQL JSON.
 func writeError(w http.ResponseWriter, message string, statusCode int) {
-	http.Error(w, message, statusCode)
+	// Set the content type to JSON, as GraphQL clients expect this.
+	w.Header().Set("Content-Type", "application/json")
+	// Set the HTTP status code (e.g., 401 Unauthorized).
+	w.WriteHeader(statusCode)
+
+	// Construct a standard GraphQL error object.
+	// This structure {"errors": [{"message": "..."}]} is what the client (Playground) expects.
+	errResponse := map[string]any{
+		"errors": []map[string]any{
+			{
+				"message": message,
+			},
+		},
+		"data": nil,
+	}
+
+	// Encode the error map to JSON and write it to the response.
+	json.NewEncoder(w).Encode(errResponse)
 }
 
 // Handler is the actual HTTP middleware function.

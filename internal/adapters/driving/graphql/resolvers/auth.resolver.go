@@ -13,14 +13,29 @@ import (
 
 // Register is the resolver for the register field.
 func (r *mutationResolver) Register(ctx context.Context, input models.RegisterInput) (*models.AuthResponse, error) {
-	// Call the auth service
+	// --- Validation Step ---
+	// Map the generated model to our internal validation struct.
+	vInput := registerInputValidation{
+		Name:     input.Name,
+		Email:    input.Email,
+		Password: input.Password,
+	}
+
+	// Run the validation against the struct.
+	if err := validate.Struct(vInput); err != nil {
+		// Use our new helper to format the error.
+		return nil, formatValidationErrors(err)
+	}
+	// --- End Validation ---
+
+	// If validation passes, proceed to call the core service.
 	res, err := r.Resolver.authService.Register(ctx, input.Name, input.Email, input.Password)
 	if err != nil {
-		// You should map errors to GraphQL errors, but for now, this is fine
+		// This handles errors from the service (e.g., "email already in use").
 		return nil, err
 	}
 
-	// Map domain response to GraphQL model
+	// Map the service's domain response to the GraphQL model.
 	return &models.AuthResponse{
 		AccessToken:  res.AccessToken,
 		RefreshToken: res.RefreshToken,
@@ -29,13 +44,26 @@ func (r *mutationResolver) Register(ctx context.Context, input models.RegisterIn
 
 // Login is the resolver for the login field.
 func (r *mutationResolver) Login(ctx context.Context, input models.LoginInput) (*models.AuthResponse, error) {
-	// Call the auth service
+	// --- Validation Step ---
+	vInput := loginInputValidation{
+		Email:    input.Email,
+		Password: input.Password,
+	}
+
+	// Run the validation.
+	if err := validate.Struct(vInput); err != nil {
+		// Use our new helper to format the error.
+		return nil, formatValidationErrors(err)
+	}
+	// --- End Validation ---
+
+	// Call the auth service.
 	res, err := r.Resolver.authService.Login(ctx, input.Email, input.Password)
 	if err != nil {
 		return nil, err
 	}
 
-	// Map domain response to GraphQL model
+	// Map domain response to GraphQL model.
 	return &models.AuthResponse{
 		AccessToken:  res.AccessToken,
 		RefreshToken: res.RefreshToken,
@@ -44,6 +72,17 @@ func (r *mutationResolver) Login(ctx context.Context, input models.LoginInput) (
 
 // RefreshToken is the resolver for the refreshToken field.
 func (r *mutationResolver) RefreshToken(ctx context.Context, refreshToken string) (*models.AuthResponse, error) {
+	// --- Validation Step ---
+	vInput := tokenValidation{Token: refreshToken}
+
+	// Run the validation.
+	if err := validate.Struct(vInput); err != nil {
+		// Use our new helper to format the error.
+		return nil, formatValidationErrors(err)
+	}
+	// --- End Validation ---
+
+	// Call the auth service.
 	res, err := r.Resolver.authService.RefreshToken(ctx, refreshToken)
 	if err != nil {
 		return nil, err
@@ -57,6 +96,17 @@ func (r *mutationResolver) RefreshToken(ctx context.Context, refreshToken string
 
 // Logout is the resolver for the logout field.
 func (r *mutationResolver) Logout(ctx context.Context, refreshToken string) (bool, error) {
+	// --- Validation Step ---
+	vInput := tokenValidation{Token: refreshToken}
+
+	// Run the validation.
+	if err := validate.Struct(vInput); err != nil {
+		// Use our new helper to format the error.
+		return false, formatValidationErrors(err)
+	}
+	// --- End Validation ---
+
+	// Call the auth service.
 	if err := r.Resolver.authService.Logout(ctx, refreshToken); err != nil {
 		return false, err
 	}

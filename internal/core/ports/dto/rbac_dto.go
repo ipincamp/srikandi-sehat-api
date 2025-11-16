@@ -2,8 +2,8 @@ package dto
 
 // -- Request DTOs ---
 
-// CreateRoleUserRequest represents the data required to create a new role.
-type CreateRoleUserRequest struct {
+// CreateRoleRequest represents the data required to create a new role.
+type CreateRoleRequest struct {
 	// Name is the name of the role to be created.
 	Name string
 
@@ -11,44 +11,58 @@ type CreateRoleUserRequest struct {
 	Description *string
 }
 
-// AssignPermissionToRoleUserRequest represents the data required to add permissions to a role.
-type AssignPermissionToRoleUserRequest struct {
+type CreatePermissionRequest struct {
+	// Name is the name of the permission to be created.
+	Name string
+
+	// Description is an optional description of the permission.
+	Description *string
+}
+
+// IdRoleRequest represents a request containing only a role ID.
+type IdRoleRequest struct {
+	// ID is the unique identifier of the role.
+	ID string
+}
+
+// AssignPermissionsToRoleRequest represents the data required to assign permissions to a role.
+type AssignPermissionsToRoleRequest struct {
 	// RoleID is the unique identifier of the role.
-	RoleID string
+	IdRoleRequest
 
 	// PermissionIDs is a list of permission IDs to be associated with the role.
 	PermissionIDs []string
 }
 
-// RemovePermissionFromRoleUserRequest represents the data required to remove permissions from a role.
-type RemovePermissionFromRoleUserRequest struct {
+// RemovePermissionsFromRoleRequest represents the data required to remove permissions from a role.
+type RemovePermissionsFromRoleRequest struct {
 	// RoleID is the unique identifier of the role.
-	RoleID string
+	IdRoleRequest
 
 	// PermissionIDs is a list of permission IDs to be disassociated from the role.
 	PermissionIDs []string
 }
 
-// AssignRoleUserRequest represents the data required to assign a role to a user.
-type AssignRoleUserRequest struct {
+// AssignRolesToUserRequest represents the data required to assign roles to a user.
+type AssignRolesToUserRequest struct {
 	// UserID is the unique identifier of the user.
 	IdUserRequest
 
-	// RoleID is the unique identifier of the role to be assigned.
-	RoleID string
+	// RoleIDs is a list of role IDs to be assigned to the user.
+	RoleIDs []string
 }
 
-// RemoveRoleUserRequest represents the data required to remove a role from a user.
-type RemoveRoleUserRequest struct {
+// RemoveRolesFromUserRequest represents the data required to remove roles from a user.
+type RemoveRolesFromUserRequest struct {
 	// UserID is the unique identifier of the user.
 	IdUserRequest
 
-	// RoleID is the unique identifier of the role to be removed.
-	RoleID string
+	// RoleIDs is a list of role IDs to be removed from the user.
+	RoleIDs []string
 }
 
-// AssignDirectPermissionUserRequest represents the data required to assign direct permissions to a user.
-type AssignDirectPermissionUserRequest struct {
+// AssignDirectPermissionsToUserRequest represents the data required to assign direct permissions to a user.
+type AssignDirectPermissionsToUserRequest struct {
 	// UserID is the unique identifier of the user.
 	IdUserRequest
 
@@ -56,8 +70,8 @@ type AssignDirectPermissionUserRequest struct {
 	PermissionIDs []string
 }
 
-// RemoveDirectPermissionUserRequest represents the data required to remove direct permissions from a user.
-type RemoveDirectPermissionUserRequest struct {
+// RemoveDirectPermissionsFromUserRequest represents the data required to remove direct permissions from a user.
+type RemoveDirectPermissionsFromUserRequest struct {
 	// UserID is the unique identifier of the user.
 	IdUserRequest
 

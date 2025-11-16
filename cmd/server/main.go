@@ -63,37 +63,37 @@ func main() {
 	}
 
 	// 4b. Inisialisasi Repositories (Driven Adapters)
+	// This repo is for non-transactional reads (e.g., UserService.GetByID)
 	userRepoLogger := log.With().Str("component", "UserRepository").Logger()
 	userRepo := postgres.NewUserRepository(db, userRepoLogger)
 
-	tokenRepoLogger := log.With().Str("component", "PersonalTokenRepository").Logger()
-	personalTokenRepo := postgres.NewPersonalTokenRepository(db, tokenRepoLogger)
+	// 4c. Inisialisasi Unit of Work (for transactional mutations)
+	uowLogger := log.With().Str("component", "UnitOfWork").Logger()
+	uow := postgres.NewUnitOfWork(db, uowLogger)
 
-	// 4c. Inisialisasi Core Services
+	// 4d. Inisialisasi Core Services
 	userServiceLogger := log.With().Str("component", "UserService").Logger()
-	// Note: We update NewUserService to take the hasher, as per your docs.
-	// You will need to update internal/core/service/user_service.go for this.
-	// (I'll skip that small step, but you should add the hasher to UserService too)
+	// UserService still uses the non-transactional repo for reads
 	userService := service.NewUserService(userRepo, userServiceLogger)
 
 	authServiceLogger := log.With().Str("component", "AuthService").Logger()
+	// AuthService now uses the Unit of Work for its mutations
 	authService := service.NewAuthService(
-		userRepo,
-		personalTokenRepo,
+		uow,
 		hasher,
 		tokenMaker,
 		cfg.Token,
 		authServiceLogger,
 	)
 
-	// 4d. Inisialisasi GraphQL (Driving Adapter)
+	// 4e. Inisialisasi GraphQL (Driving Adapter)
 	resolverLogger := log.With().Str("component", "GraphQLResolver").Logger()
 	gqlResolver := resolvers.NewResolver(userService, authService, resolverLogger)
 
 	gqlConfig := generated.Config{Resolvers: gqlResolver}
 	gqlServer := handler.NewDefaultServer(generated.NewExecutableSchema(gqlConfig))
 
-	// 4e. Inisialisasi Middleware
+	// 4f. Inisialisasi Middleware
 	authMw := middleware.NewAuthMiddleware(tokenMaker)
 
 	// --- 5. Setup HTTP Server & Routing ---

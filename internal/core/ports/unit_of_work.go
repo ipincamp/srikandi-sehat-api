@@ -2,37 +2,22 @@ package ports
 
 import "context"
 
-// TransactionalUnit represents a database transaction that provides access to transactional repositories.
-type TransactionalUnit interface {
-	// Commit persists all changes made within the transaction to the database.
-	Commit(ctx context.Context) error
-
-	// Rollback discards all changes made within the transaction.
-	Rollback(ctx context.Context) error
-
-	// --- Repository Getters ---
-
-	// GetUserRepository returns a transactional instance of UserRepository.
+// Transaction defines the interface for a single atomic transaction.
+// It provides access to transactional repositories.
+type Transaction interface {
+	// GetUserRepository returns a UserRepository bound to this transaction.
 	GetUserRepository() UserRepository
+	// GetPersonalTokenRepository returns a PersonalTokenRepository bound to this transaction.
+	GetPersonalTokenRepository() PersonalTokenRepository
 
-	// GetUserTokenRepository returns a transactional instance of UserTokenRepository.
-	GetUserTokenRepository() UserTokenRepository
-
-	// GetRoleRepository returns a transactional instance of RoleRepository.
-	GetRoleRepository() RoleRepository
-
-	// GetPermissionRepository returns a transactional instance of PermissionRepository.
-	GetPermissionRepository() PermissionRepository
-
-	// GetActivityLogRepository returns a transactional instance of ActivityLogRepository.
-	GetActivityLogRepository() ActivityLogRepository
-
-	// GetRefreshTokenRepository returns a transactional instance of RefreshTokenRepository.
-	GetRefreshTokenRepository() RefreshTokenRepository
+	// Commit finalizes the transaction.
+	Commit() error
+	// Rollback discards the transaction.
+	Rollback() error
 }
 
-// UnitOfWork manages database transactions ensuring atomicity across multiple repository operations.
+// UnitOfWork defines the interface for starting and managing transactions.
 type UnitOfWork interface {
-	// Begin starts a new database transaction and returns a TransactionalUnit.
-	Begin(ctx context.Context) (TransactionalUnit, error)
+	// Begin starts a new transaction.
+	Begin(ctx context.Context) (Transaction, error)
 }

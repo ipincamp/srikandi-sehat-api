@@ -35,17 +35,27 @@ func (s *mailService) Send(
 ) error {
 	// 1. Check context cancellation before proceeding.
 	if err := ctx.Err(); err != nil {
+		s.logger.Warn().Err(err).Msg("Context cancelled before email send")
 		return err
 	}
 
-	// 2. Set up the authentication mechanism.
-	// We use PlainAuth for standard SMTP username/password.
-	auth := smtp.PlainAuth(
-		"",                 // identity (usually empty)
-		s.cfg.SMTPUser,     // username
-		s.cfg.SMTPPassword, // password
-		s.cfg.Host,         // host
-	)
+	// 2. Conditionally set up the authentication mechanism.
+	var auth smtp.Auth
+
+	// We only set up authentication if a username is configured.
+	// This allows Mailpit (no user) to work, while Google SMTP (has user)
+	// will still authenticate properly.
+	if s.cfg.SMTPUser != "" {
+		s.logger.Debug().Msg("SMTPUser is set, using PlainAuth.")
+		auth = smtp.PlainAuth(
+			"",                 // identity (usually empty)
+			s.cfg.SMTPUser,     // username
+			s.cfg.SMTPPassword, // password
+			s.cfg.Host,         // host
+		)
+	} else {
+		s.logger.Debug().Msg("SMTPUser is empty, using nil Auth (Mailpit).")
+	}
 
 	// 3. Construct the email message with MIME headers.
 	msg, err := s.buildMIMEMessage(to, subject, plainBody, htmlBody)
@@ -54,13 +64,14 @@ func (s *mailService) Send(
 		return err
 	}
 
-	// 4. Set the server address (e.g., "smtp.gmail.com:587").
+	// 4. Set the server address (e.g., "localhost:1025").
 	addr := fmt.Sprintf("%s:%d", s.cfg.Host, s.cfg.Port)
 
 	// 5. Send the email.
+	// When 'auth' is nil, SendMail does not attempt to authenticate.
 	err = smtp.SendMail(
 		addr,              // SMTP server address
-		auth,              // Authentication
+		auth,              // Authentication (nil for Mailpit)
 		s.cfg.FromAddress, // FROM address
 		[]string{to},      // TO address(es)
 		[]byte(msg),       // The full message body

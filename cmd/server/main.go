@@ -12,9 +12,11 @@ import (
 	"github.com/99designs/gqlgen/graphql/playground"
 
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driven/postgres"
+	"github.com/ipincamp/srikandi-sehat/internal/adapters/driven/smtp"
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/generated"
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/middleware"
-	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/resolvers" // <-- IMPORT PORTS
+	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/resolvers"
+	"github.com/ipincamp/srikandi-sehat/internal/core/ports"
 	"github.com/ipincamp/srikandi-sehat/internal/core/service"
 	"github.com/ipincamp/srikandi-sehat/pkg/config"
 	"github.com/ipincamp/srikandi-sehat/pkg/logger"
@@ -71,7 +73,17 @@ func main() {
 	uowLogger := log.With().Str("component", "UnitOfWork").Logger()
 	uow := postgres.NewUnitOfWork(db, uowLogger)
 
-	// 4d. Inisialisasi Core Services
+	// 4d. Initialize Mail Service (Driven Adapter)
+	mailServiceLogger := log.With().Str("component", "SMTPService").Logger()
+	var mailService ports.MailService // Depend on the interface
+	if cfg.Mail.Driver == "smtp" {
+		mailService = smtp.NewSMTPService(cfg.Mail, mailServiceLogger)
+	} else {
+		// You could add a Mailgun adapter here later
+		log.Fatal().Str("driver", cfg.Mail.Driver).Msg("Unsupported mail driver")
+	}
+
+	// 4e. Inisialisasi Core Services
 	userServiceLogger := log.With().Str("component", "UserService").Logger()
 	// UserService still uses the non-transactional repo for reads
 	userService := service.NewUserService(userRepo, userServiceLogger)
@@ -84,16 +96,17 @@ func main() {
 		tokenMaker,
 		cfg.Token,
 		authServiceLogger,
+		mailService,
 	)
 
-	// 4e. Inisialisasi GraphQL (Driving Adapter)
+	// 4f. Inisialisasi GraphQL (Driving Adapter)
 	resolverLogger := log.With().Str("component", "GraphQLResolver").Logger()
 	gqlResolver := resolvers.NewResolver(userService, authService, resolverLogger)
 
 	gqlConfig := generated.Config{Resolvers: gqlResolver}
 	gqlServer := handler.NewDefaultServer(generated.NewExecutableSchema(gqlConfig))
 
-	// 4f. Inisialisasi Middleware
+	// 4g. Inisialisasi Middleware
 	authMw := middleware.NewAuthMiddleware(tokenMaker)
 
 	// --- 5. Setup HTTP Server & Routing ---

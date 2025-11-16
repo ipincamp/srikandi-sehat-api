@@ -18,11 +18,12 @@ import (
 var _ ports.AuthService = (*authService)(nil)
 
 type authService struct {
-	uow        ports.UnitOfWork
-	hasher     password.Hasher
-	tokenMaker token.Maker
-	tokenCfg   config.Token
-	logger     zerolog.Logger
+	uow         ports.UnitOfWork
+	hasher      password.Hasher
+	tokenMaker  token.Maker
+	tokenCfg    config.Token
+	logger      zerolog.Logger
+	mailService ports.MailService
 }
 
 // NewAuthService is the constructor for AuthService
@@ -32,13 +33,15 @@ func NewAuthService(
 	tokenMaker token.Maker,
 	tokenCfg config.Token,
 	logger zerolog.Logger,
+	mailService ports.MailService,
 ) ports.AuthService {
 	return &authService{
-		uow:        uow,
-		hasher:     hasher,
-		tokenMaker: tokenMaker,
-		tokenCfg:   tokenCfg,
-		logger:     logger,
+		uow:         uow,
+		hasher:      hasher,
+		tokenMaker:  tokenMaker,
+		tokenCfg:    tokenCfg,
+		logger:      logger,
+		mailService: mailService,
 	}
 }
 
@@ -115,6 +118,23 @@ func (s *authService) Register(ctx context.Context, name, email, password string
 		s.logger.Error().Err(err).Msg("Failed to commit transaction for Register")
 		return nil, errors.New("registration failed")
 	}
+
+	// 9. Send welcome email asynchronously
+	// This happens *after* the transaction is committed.
+	// We run this in a goroutine so it doesn't block the user's response.
+	go func() {
+		// We create a new background context for the goroutine.
+		emailCtx := context.Background()
+		subject := "Welcome to Srikandi Sehat!"
+		plainBody := fmt.Sprintf("Hi %s,\n\nWelcome! Please verify your email. (OTP logic to be added).", name)
+		htmlBody := fmt.Sprintf("<h1>Hi %s,</h1><p>Welcome! Please verify your email. (OTP logic to be added).</p>", name)
+
+		// The service calls the interface, completely unaware of "SMTP".
+		if err := s.mailService.Send(emailCtx, email, subject, plainBody, htmlBody); err != nil {
+			// Log the error, but don't return it to the user who already registered.
+			s.logger.Error().Err(err).Str("user_email", email).Msg("Failed to send welcome email")
+		}
+	}()
 
 	return authResponse, nil
 }

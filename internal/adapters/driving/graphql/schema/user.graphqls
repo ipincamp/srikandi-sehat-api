@@ -5,8 +5,8 @@ type User {
   id: String!
   name: String!
   email: String!
-  createdAt: String! # Using String for ISO 8601 timestamp
-  updatedAt: String! # Using String for ISO 8601 timestamp
+  created_at: String! # Using String for ISO 8601 timestamp
+  updated_at: String! # Using String for ISO 8601 timestamp
 }
 
 # Extend the base Query type

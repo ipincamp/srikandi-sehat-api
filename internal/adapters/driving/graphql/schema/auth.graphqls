@@ -13,8 +13,8 @@ input LoginInput {
 
 # Response type for successful auth
 type AuthResponse {
-  accessToken: String!
-  refreshToken: String!
+  access_token: String!
+  refresh_token: String!
 }
 
 # Extend the Mutation type

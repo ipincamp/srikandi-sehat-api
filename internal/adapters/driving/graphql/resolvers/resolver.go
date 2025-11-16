@@ -19,21 +19,22 @@ const AuthUserUUIDKey contextKey = "authUserUUID"
 
 var ErrNotAuthenticated = errors.New("not authenticated")
 
+// Resolver sekarang menampung semua service yang dibutuhkan
 type Resolver struct {
-	authService ports.AuthService
 	userService ports.UserService
+	authService ports.AuthService
 	logger      zerolog.Logger
 }
 
 // It's the entry point for injecting core services into the adapter.
 func NewResolver(
-	authService ports.AuthService,
 	userService ports.UserService,
+	authService ports.AuthService,
 	logger zerolog.Logger,
 ) *Resolver {
 	return &Resolver{
-		authService: authService,
 		userService: userService,
+		authService: authService,
 		logger:      logger,
 	}
 }

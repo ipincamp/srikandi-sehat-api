@@ -1,56 +1,33 @@
-# This type mirrors the 'ports.AuthResponse' DTO from the core service.
-type AuthResponse {
-  accessToken: String!
-  refreshToken: String!
-}
-
-# Input DTO for the 'register' mutation.
+# Input type for user registration
 input RegisterInput {
   name: String!
   email: String!
   password: String!
 }
 
-# Input DTO for the 'login' mutation.
+# Input type for user login
 input LoginInput {
   email: String!
   password: String!
 }
 
-# Input DTO for the 'changePassword' mutation.
-input ChangePasswordInput {
-  oldPassword: String!
-  newPassword: String!
+# Response type for successful auth
+type AuthResponse {
+  accessToken: String!
+  refreshToken: String!
 }
 
-input UpdateProfileInput {
-  name: String!
-}
-
+# Extend the Mutation type
 type Mutation {
+  # Register creates a new user account
   register(input: RegisterInput!): AuthResponse!
+
+  # Login authenticates a user
   login(input: LoginInput!): AuthResponse!
 
-  # Mutation to logout.
-  # In a stateless setup, the service layer might be a no-op,
-  # but we provide the hook for stateful (e.g., blocklist)
-  # implementations. Client is still responsible for deleting tokens.
-  logout(refreshToken: String!): Boolean!
-
+  # refreshToken issues a new token pair from a valid refresh token
   refreshToken(refreshToken: String!): AuthResponse!
-  changePassword(input: ChangePasswordInput!): Boolean!
-  updateProfile(input: UpdateProfileInput!): User! # Mengembalikan user yang diperbarui
-  # --- Blueprints ---
 
-  # 5. Forgot Password
-  forgotPassword(email: String!): Boolean!
-
-  # 6. Verification Email
-  verifyEmail(otp: String!): Boolean!
-
-  # 7. Delete My Account (Membutuhkan autentikasi)
-  deleteMyAccount: Boolean!
-
-  # 10. Change Email (Membutuhkan autentikasi)
-  requestEmailChange(newEmail: String!): Boolean!
+  # Logout revokes a refresh token
+  logout(refreshToken: String!): Boolean!
 }

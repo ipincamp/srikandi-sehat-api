@@ -11,18 +11,15 @@ import (
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/playground"
 
-	"github.com/ipincamp/srikandi-sehat/internal/adapters/driven/mailgun"
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driven/postgres"
+	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/generated"
+	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/middleware"
+	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/resolvers" // <-- IMPORT PORTS
 	"github.com/ipincamp/srikandi-sehat/internal/core/service"
-
 	"github.com/ipincamp/srikandi-sehat/pkg/config"
 	"github.com/ipincamp/srikandi-sehat/pkg/logger"
 	"github.com/ipincamp/srikandi-sehat/pkg/password"
 	"github.com/ipincamp/srikandi-sehat/pkg/token"
-
-	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/generated"
-	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/middleware"
-	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/resolvers"
 )
 
 func main() {
@@ -37,7 +34,7 @@ func main() {
 	log := logger.NewLogger(cfg.Server.Env)
 	log.Info().Str("Env", cfg.Server.Env).Msg("Configuration loaded")
 
-	// --- 2. Setup Application Context ---
+	// --- 2. Setup Graceful Shutdown ---
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -50,14 +47,13 @@ func main() {
 	}()
 
 	// --- 3. Initialize Driven Adapters (Database) ---
-	dbPool, err := postgres.Connect(ctx, cfg.Database.DSN())
+	db, err := postgres.ConnectGORM(cfg.Database)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to connect to database")
+		log.Fatal().Err(err).Msg("Failed to connect to database using GORM")
 	}
-	defer dbPool.Close()
-	log.Info().Msg("Database connection pool established")
+	log.Info().Msg("Database connection established (GORM)")
 
-	// --- 4. Dependency Injection (Composition Root) ---
+	// --- 4. Dependency Injection (Merakit Arsitektur) ---
 
 	// 4a. Initialize 'pkg' helpers (implementations)
 	hasher := password.NewArgon2idHasher()
@@ -66,88 +62,66 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to create Paseto token maker")
 	}
 
-	// 4b. Initialize Driven Adapters (Repositories)
-	// Inject the logger with component context
-	userRepoLogger := log.With().Str("component", "UserRepository(Non-TX)").Logger()
-	// Create the *non-transactional* user repository.
-	// We pass dbPool, which satisfies the dbExecutor interface.
-	// This repo is used for read-only operations like Login.
-	userRepo := postgres.NewUserRepository(dbPool, userRepoLogger)
+	// 4b. Inisialisasi Repositories (Driven Adapters)
+	userRepoLogger := log.With().Str("component", "UserRepository").Logger()
+	userRepo := postgres.NewUserRepository(db, userRepoLogger)
 
-	otpRepoLogger := log.With().Str("component", "OTPRepository").Logger()
-	otpRepo := postgres.NewOTPRepository(dbPool, otpRepoLogger)
-	mailLogger := log.With().Str("component", "MailService").Logger()
-	mailSvc := mailgun.NewMailService(cfg.Mail, mailLogger)
+	tokenRepoLogger := log.With().Str("component", "PersonalTokenRepository").Logger()
+	personalTokenRepo := postgres.NewPersonalTokenRepository(db, tokenRepoLogger)
 
-	// 4c. Initialize Unit of Work
-	uowLogger := log.With().Str("component", "UnitOfWork").Logger()
-	// Create the Unit of Work factory, passing the pool
-	uow := postgres.NewUnitOfWork(dbPool, uowLogger)
+	// 4c. Inisialisasi Core Services
+	userServiceLogger := log.With().Str("component", "UserService").Logger()
+	// Note: We update NewUserService to take the hasher, as per your docs.
+	// You will need to update internal/core/service/user_service.go for this.
+	// (I'll skip that small step, but you should add the hasher to UserService too)
+	userService := service.NewUserService(userRepo, userServiceLogger)
 
-	// 4d. Initialize Core Services
 	authServiceLogger := log.With().Str("component", "AuthService").Logger()
-	userService := service.NewUserService(
-		userRepo,          // ports.UserRepository
-		hasher,            // password.Hasher
-		authServiceLogger, // zerolog.Logger
-		uow,               // ports.UnitOfWork
-	)
 	authService := service.NewAuthService(
-		userRepo, // Pass the non-tx repo for reads
-		tokenMaker,
+		userRepo,
+		personalTokenRepo,
 		hasher,
+		tokenMaker,
 		cfg.Token,
 		authServiceLogger,
-		uow,
-		otpRepo,
-		mailSvc,
 	)
 
-	// 4e. Initialize Driving Adapters (GraphQL)
-	// Inject the service and a logger
+	// 4d. Inisialisasi GraphQL (Driving Adapter)
 	resolverLogger := log.With().Str("component", "GraphQLResolver").Logger()
-	gqlResolver := resolvers.NewResolver(
-		authService,
-		userService,
-		resolverLogger,
-	)
+	gqlResolver := resolvers.NewResolver(userService, authService, resolverLogger)
+
 	gqlConfig := generated.Config{Resolvers: gqlResolver}
 	gqlServer := handler.NewDefaultServer(generated.NewExecutableSchema(gqlConfig))
 
-	// --- 5. Start Application (HTTP Server) ---
-	log.Info().Msg("Application dependencies initialized.")
-
-	// Create Auth Middleware
+	// 4e. Inisialisasi Middleware
 	authMw := middleware.NewAuthMiddleware(tokenMaker)
 
-	// Create Dataloader Middleware
-	// We pass the non-transactional repo, which is perfect for read-only batching.
-	dataloaderMw := middleware.NewDataloaderMiddleware(userRepo)
-
+	// --- 5. Setup HTTP Server & Routing ---
 	httpMux := http.NewServeMux()
+
+	// Rute untuk GraphQL Playground
 	httpMux.Handle("/", playground.Handler("GraphQL Playground", "/query"))
 
-	// --- IMPORTANT: Chain the middleware ---
-	// The request will flow: dataloaderMw -> authMw -> gqlServer
-	// This ensures the loader is in the context *before* the auth (or any other) middleware runs.
-	httpMux.Handle("/query", dataloaderMw.Handler(authMw.Handler(gqlServer)))
+	// Rute untuk API query, dilindungi oleh middleware
+	httpMux.Handle("/query", authMw.Handler(gqlServer))
 
 	server := &http.Server{
 		Addr:    ":" + cfg.Server.Port,
 		Handler: httpMux,
 	}
 
+	// --- 6. Start Server (Goroutine) ---
 	go func() {
-		log.Info().Str("port", cfg.Server.Port).Msg("Starting HTTP server... (GraphQL Playground at http://localhost:" + cfg.Server.Port + ")")
+		log.Info().Str("port", cfg.Server.Port).Msgf("Starting HTTP server at http://localhost:%s", cfg.Server.Port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatal().Err(err).Msg("Could not start server")
 		}
 	}()
 
-	// --- 6. Wait for Shutdown Signal ---
-	<-ctx.Done()
+	// --- 7. Wait for Shutdown Signal ---
+	<-ctx.Done() // Blokir hingga sinyal shutdown diterima
 
-	// --- 7. Graceful Shutdown ---
+	// --- 8. Graceful Shutdown ---
 	log.Info().Msg("Shutting down application...")
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)

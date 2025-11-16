@@ -2,7 +2,7 @@
 # exposes fields that are safe for the client.
 # It explicitly omits 'password'.
 type User {
-  uuid: String!
+  id: String!
   name: String!
   email: String!
   createdAt: String! # Using String for ISO 8601 timestamp

@@ -3,6 +3,8 @@ package token
 import (
 	"errors"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // ErrTokenExpired is a custom error returned when validation fails
@@ -25,6 +27,7 @@ const (
 // This struct is the "public" data structure for the token package,
 // used by both the interface and the implementations.
 type Payload struct {
+	JTI       string    `json:"jti"`
 	UserID    string    `json:"uid"`
 	RoleID    string    `json:"rid"`
 	UseFor    string    `json:"for"` // e.g., "access_token" or "refresh_token"
@@ -45,6 +48,7 @@ func NewPayload(userID, roleID, useFor string, duration time.Duration) (*Payload
 
 	now := time.Now().UTC() // Use UTC for consistency
 	return &Payload{
+		JTI:       uuid.NewString(),
 		UserID:    userID,
 		RoleID:    roleID, // Can be empty (e.g., for refresh_token)
 		UseFor:    useFor,

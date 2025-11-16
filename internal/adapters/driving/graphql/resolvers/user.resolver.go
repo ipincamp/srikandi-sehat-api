@@ -6,45 +6,36 @@ package resolvers
 
 import (
 	"context"
-	"errors"
-	"time"
+	"fmt"
 
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/generated"
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/models"
-	"github.com/ipincamp/srikandi-sehat/internal/core/ports"
 )
 
 // Me is the resolver for the me field.
 func (r *queryResolver) Me(ctx context.Context) (*models.User, error) {
-	// 1. Extract user UUID from context.
-	// This is set by the (unseen) auth middleware.
-	uuid, ok := ctx.Value(AuthUserUUIDKey).(string)
-	if !ok || uuid == "" {
-		r.logger.Warn().Msg("Resolver 'Me' failed: No user UUID in context")
-		// This error signals that the auth middleware likely failed or wasn't run.
+	// 1. Ambil User ID dari context (yang di-inject oleh middleware/auth.go)
+	userID, ok := ctx.Value(AuthUserUUIDKey).(string)
+	if !ok || userID == "" {
+		r.Resolver.logger.Warn().Msg("No user ID in context for 'me' query")
 		return nil, ErrNotAuthenticated
 	}
 
-	// 2. Call the injected userService
-	user, err := r.userService.GetUserByID(ctx, uuid)
+	r.Resolver.logger.Info().Str("user_id", userID).Msg("Processing 'me' query")
+
+	// 2. Panggil Core Service (Logika Bisnis)
+	domainUser, err := r.Resolver.userService.GetByID(ctx, userID)
 	if err != nil {
-		log := r.logger.Warn().Err(err).Str("uuid", uuid)
-		if errors.Is(err, ports.ErrUserNotFound) {
-			log.Msg("Authenticated user not found in DB")
-		} else {
-			log.Msg("Failed to fetch user profile")
-		}
-		return nil, err
+		// Error bisa jadi 'user not found'
+		r.Resolver.logger.Error().Err(err).Str("user_id", userID).Msg("Failed to get user from service")
+		return nil, fmt.Errorf("failed to retrieve user data")
 	}
 
-	// 3. Convert from the service's 'domain.User' to the GraphQL 'models.User'.
-	return &models.User{
-		UUID:      user.UUID,
-		Name:      user.Name,
-		Email:     user.Email,
-		CreatedAt: user.CreatedAt.Format(time.RFC3339), // Format as ISO 8601 string
-		UpdatedAt: user.UpdatedAt.Format(time.RFC3339),
-	}, nil
+	// 3. Konversi dari domain.User (bisnis) ke models.User (GraphQL)
+	// 'models' adalah DTO (Data Transfer Object) untuk lapisan API.
+	gqlUser := mapDomainUserToGqlUser(domainUser)
+
+	return gqlUser, nil
 }
 
 // Query returns generated.QueryResolver implementation.

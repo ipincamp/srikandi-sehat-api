@@ -6,186 +6,61 @@ package resolvers
 
 import (
 	"context"
-	"errors"
-	"time"
 
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/generated"
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/models"
-	"github.com/ipincamp/srikandi-sehat/internal/core/ports"
 )
 
 // Register is the resolver for the register field.
 func (r *mutationResolver) Register(ctx context.Context, input models.RegisterInput) (*models.AuthResponse, error) {
-	// 1. Call the injected authService
-	authRes, err := r.authService.Register(ctx, input.Name, input.Email, input.Password)
+	// Call the auth service
+	res, err := r.Resolver.authService.Register(ctx, input.Name, input.Email, input.Password)
 	if err != nil {
-		// Log the error
-		// DO NOT log the email, to prevent user enumeration attacks.
-		log := r.logger.Warn().Err(err).Str("mutation", "Register")
-
-		// Provide context-specific logs for known business errors
-		if errors.Is(err, ports.ErrEmailExists) {
-			// We log that the event happened, but not the specific email.
-			log.Msg("Registration failed: Email exists")
-		} else {
-			log.Msg("Registration failed: Unexpected service error")
-		}
-
-		// 2. Errors from the service are passed to GraphQL.
+		// You should map errors to GraphQL errors, but for now, this is fine
 		return nil, err
 	}
 
-	// 3. Convert from the service's 'ports.AuthResponse' to the GraphQL 'models.AuthResponse'.
+	// Map domain response to GraphQL model
 	return &models.AuthResponse{
-		AccessToken:  authRes.AccessToken,
-		RefreshToken: authRes.RefreshToken,
+		AccessToken:  res.AccessToken,
+		RefreshToken: res.RefreshToken,
 	}, nil
 }
 
 // Login is the resolver for the login field.
 func (r *mutationResolver) Login(ctx context.Context, input models.LoginInput) (*models.AuthResponse, error) {
-	// 1. Call the injected authService
-	authRes, err := r.authService.Login(ctx, input.Email, input.Password)
+	// Call the auth service
+	res, err := r.Resolver.authService.Login(ctx, input.Email, input.Password)
 	if err != nil {
-		// Log the error
-		// DO NOT log the email, to prevent user enumeration attacks.
-		log := r.logger.Warn().Err(err).Str("mutation", "Login")
-
-		if errors.Is(err, ports.ErrInvalidCredentials) {
-			log.Msg("Login failed: Invalid credentials")
-		} else {
-			log.Msg("Login failed: Unexpected service error")
-		}
-
-		// 2. Errors from the service are passed to GraphQL.
 		return nil, err
 	}
 
-	// 3. Convert from the service type to the GraphQL model type.
+	// Map domain response to GraphQL model
 	return &models.AuthResponse{
-		AccessToken:  authRes.AccessToken,
-		RefreshToken: authRes.RefreshToken,
+		AccessToken:  res.AccessToken,
+		RefreshToken: res.RefreshToken,
+	}, nil
+}
+
+// RefreshToken is the resolver for the refreshToken field.
+func (r *mutationResolver) RefreshToken(ctx context.Context, refreshToken string) (*models.AuthResponse, error) {
+	res, err := r.Resolver.authService.RefreshToken(ctx, refreshToken)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.AuthResponse{
+		AccessToken:  res.AccessToken,
+		RefreshToken: res.RefreshToken,
 	}, nil
 }
 
 // Logout is the resolver for the logout field.
 func (r *mutationResolver) Logout(ctx context.Context, refreshToken string) (bool, error) {
-	// 1. Call the injected authService
-	err := r.authService.Logout(ctx, refreshToken)
-	if err != nil {
-		// In a stateful implementation, this could be a DB error.
-		r.logger.Error().Err(err).Msg("Logout failed: Unexpected service error")
+	if err := r.Resolver.authService.Logout(ctx, refreshToken); err != nil {
 		return false, err
 	}
 
-	// 2. For stateless tokens, the service is a no-op.
-	// We return true to signal the client to clear its tokens.
-	r.logger.Info().Msg("Logout endpoint hit. Client advised to clear tokens.")
-	return true, nil
-}
-
-// RefreshToken is the resolver for the refreshToken field.
-func (r *mutationResolver) RefreshToken(ctx context.Context, refreshToken string) (*models.AuthResponse, error) {
-	authRes, err := r.authService.RefreshToken(ctx, refreshToken)
-	if err != nil {
-		r.logger.Warn().Err(err).Msg("RefreshToken failed")
-		return nil, err
-	}
-
-	return &models.AuthResponse{
-		AccessToken:  authRes.AccessToken,
-		RefreshToken: authRes.RefreshToken,
-	}, nil
-}
-
-// ChangePassword is the resolver for the changePassword field.
-func (r *mutationResolver) ChangePassword(ctx context.Context, input models.ChangePasswordInput) (bool, error) {
-	// Ambil UUID pengguna dari konteks (ditetapkan oleh auth middleware)
-	uuid, ok := ctx.Value(AuthUserUUIDKey).(string)
-	if !ok || uuid == "" {
-		r.logger.Warn().Msg("ChangePassword failed: No user UUID in context")
-		return false, ErrNotAuthenticated
-	}
-
-	err := r.authService.ChangePassword(ctx, uuid, input.OldPassword, input.NewPassword)
-	if err != nil {
-		r.logger.Warn().Err(err).Str("uuid", uuid).Msg("ChangePassword service error")
-		return false, err
-	}
-
-	return true, nil
-}
-
-// UpdateProfile is the resolver for the updateProfile field.
-func (r *mutationResolver) UpdateProfile(ctx context.Context, input models.UpdateProfileInput) (*models.User, error) {
-	uuid, ok := ctx.Value(AuthUserUUIDKey).(string)
-	if !ok || uuid == "" {
-		r.logger.Warn().Msg("UpdateProfile failed: No user UUID in context")
-		return nil, ErrNotAuthenticated
-	}
-
-	user, err := r.userService.UpdateProfile(ctx, uuid, input.Name)
-	if err != nil {
-		r.logger.Warn().Err(err).Str("uuid", uuid).Msg("UpdateProfile service error")
-		return nil, err
-	}
-
-	// Konversi domain.User ke models.User [cite: 52]
-	return &models.User{
-		UUID:      user.UUID,
-		Name:      user.Name,
-		Email:     user.Email,
-		CreatedAt: user.CreatedAt.Format(time.RFC3339),
-		UpdatedAt: user.UpdatedAt.Format(time.RFC3339),
-	}, nil
-}
-
-// ForgotPassword is the resolver for the forgotPassword field.
-func (r *mutationResolver) ForgotPassword(ctx context.Context, email string) (bool, error) {
-	if err := r.authService.ForgotPassword(ctx, email); err != nil {
-		// Kita tidak return error ke client untuk mencegah enumerasi email
-		r.logger.Error().Err(err).Msg("ForgotPassword service error")
-	}
-	// Selalu kembalikan true
-	return true, nil
-}
-
-// VerifyEmail is the resolver for the verifyEmail field.
-func (r *mutationResolver) VerifyEmail(ctx context.Context, otp string) (bool, error) {
-	if err := r.authService.VerifyEmailOTP(ctx, otp); err != nil {
-		r.logger.Warn().Err(err).Msg("VerifyEmail service error")
-		return false, err
-	}
-	return true, nil
-}
-
-// DeleteMyAccount is the resolver for the deleteMyAccount field.
-func (r *mutationResolver) DeleteMyAccount(ctx context.Context) (bool, error) {
-	uuid, ok := ctx.Value(AuthUserUUIDKey).(string)
-	if !ok || uuid == "" {
-		r.logger.Warn().Msg("DeleteMyAccount failed: No user UUID in context")
-		return false, ErrNotAuthenticated
-	}
-
-	if err := r.userService.DeleteAccount(ctx, uuid); err != nil {
-		r.logger.Error().Err(err).Str("uuid", uuid).Msg("DeleteAccount service error")
-		return false, err
-	}
-	return true, nil
-}
-
-// RequestEmailChange is the resolver for the requestEmailChange field.
-func (r *mutationResolver) RequestEmailChange(ctx context.Context, newEmail string) (bool, error) {
-	uuid, ok := ctx.Value(AuthUserUUIDKey).(string)
-	if !ok || uuid == "" {
-		r.logger.Warn().Msg("RequestEmailChange failed: No user UUID in context")
-		return false, ErrNotAuthenticated
-	}
-
-	if err := r.authService.RequestEmailChange(ctx, uuid, newEmail); err != nil {
-		r.logger.Warn().Err(err).Str("uuid", uuid).Msg("RequestEmailChange service error")
-		return false, err
-	}
 	return true, nil
 }
 

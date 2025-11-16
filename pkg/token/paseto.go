@@ -84,6 +84,7 @@ func (m *pasetoMaker) CreateToken(userID, roleID, useFor string, duration time.D
 		IssuedAt:   payload.IssuedAt,  // 'iat' claim
 		Expiration: payload.ExpiresAt, // 'exp' claim
 		Subject:    payload.UserID,    // 'sub' claim
+		Jti:        payload.JTI,       // 'jti' claim
 	}
 
 	// 3. Add our application-specific custom claims.
@@ -142,6 +143,7 @@ func (m *pasetoMaker) ValidateToken(token string) (*Payload, error) {
 
 	// 5. Re-create our public Payload struct from the claims.
 	payload := &Payload{
+		JTI:       jsonToken.Jti,
 		UserID:    userID,
 		RoleID:    roleID,
 		UseFor:    useFor,

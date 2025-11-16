@@ -2,254 +2,67 @@ package postgres
 
 import (
 	"context"
-	"errors"
-	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
-
-	"github.com/rs/zerolog"
-
+	"github.com/ipincamp/srikandi-sehat/internal/adapters/driven/postgres/models"
 	"github.com/ipincamp/srikandi-sehat/internal/core/domain"
 	"github.com/ipincamp/srikandi-sehat/internal/core/ports"
+	"github.com/rs/zerolog"
+	"gorm.io/gorm"
 )
 
-// Compile-time check to ensure userRepository implements ports.UserRepository
 var _ ports.UserRepository = (*userRepository)(nil)
 
-// userRepository implements the ports.UserRepository interface
-// using a pgxpool.Pool for database connections.
 type userRepository struct {
-	db     dbExecutor
+	db     *gorm.DB
 	logger zerolog.Logger
 }
 
-// NewUserRepository creates a new repository instance.
-func NewUserRepository(db dbExecutor, logger zerolog.Logger) ports.UserRepository {
+// NewUserRepository adalah constructor untuk DI (Dependency Injection)
+func NewUserRepository(db *gorm.DB, logger zerolog.Logger) ports.UserRepository {
 	return &userRepository{
 		db:     db,
 		logger: logger,
 	}
 }
 
-// Save creates a new user in the database.
-func (r *userRepository) Save(ctx context.Context, user *domain.User) error {
-	// Map domain model to database model
-	dbUser := fromDomain(user)
+// FindByID mengambil user dari DB berdasarkan ID
+func (r *userRepository) FindByID(ctx context.Context, id string) (*domain.User, error) {
+	var userModel models.UserDBModel
 
-	// Set timestamps for creation
-	now := time.Now().UTC()
-	dbUser.CreatedAt = now
-	dbUser.UpdatedAt = now
-
-	query := `
-		INSERT INTO users (uuid, name, email, password, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		RETURNING id, created_at, updated_at
-	`
-
-	err := r.db.QueryRow(ctx, query,
-		dbUser.UUID,
-		dbUser.Name,
-		dbUser.Email,
-		dbUser.Password,
-		dbUser.CreatedAt,
-		dbUser.UpdatedAt,
-	).Scan(&dbUser.ID, &dbUser.CreatedAt, &dbUser.UpdatedAt)
-
-	if err != nil {
-		// --- Enhanced Error Handling ---
-		var pgErr *pgconn.PgError
-		// Check if the error is a PostgreSQL error
-		if errors.As(err, &pgErr) {
-			// Check for unique_violation (e.g., duplicate email)
-			if pgErr.Code == "23505" {
-				r.logger.Warn().
-					Str("email", dbUser.Email).
-					Str("constraint", pgErr.ConstraintName).
-					Msg("User save failed: unique constraint violation")
-				return ports.ErrDuplicateEmail
-			}
-		}
-
-		// Log any other database error
-		r.logger.Error().Err(err).Str("email", dbUser.Email).Msg("Failed to save user")
-		return ports.ErrUnexpectedSave
+	if err := r.db.WithContext(ctx).Where("id = ?", id).First(&userModel).Error; err != nil {
+		// Error bisa jadi gorm.ErrRecordNotFound
+		return nil, err
 	}
 
-	// Update the original domain model with new data (ID, timestamps)
-	user.ID = dbUser.ID
-	user.CreatedAt = dbUser.CreatedAt
-	user.UpdatedAt = dbUser.UpdatedAt
-
-	r.logger.Debug().Str("uuid", user.UUID).Msg("User saved successfully")
-	return nil
+	// Konversi model DB ke model Domain murni
+	return userModel.ToDomain(), nil
 }
 
-// FindByID retrieves a user by their public UUID.
-func (r *userRepository) FindByID(ctx context.Context, uuid string) (*domain.User, error) {
-	query := `
-		SELECT id, uuid, name, email, password, created_at, updated_at
-		FROM users
-		WHERE uuid = $1
-	`
-
-	dbUser := &User{}
-	err := r.db.QueryRow(ctx, query, uuid).Scan(
-		&dbUser.ID,
-		&dbUser.UUID,
-		&dbUser.Name,
-		&dbUser.Email,
-		&dbUser.Password,
-		&dbUser.CreatedAt,
-		&dbUser.UpdatedAt,
-	)
-
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			r.logger.Debug().Str("uuid", uuid).Msg("User not found by UUID")
-			return nil, ports.ErrUserNotFound
-		}
-		// Log other errors
-		r.logger.Error().Err(err).Str("uuid", uuid).Msg("Error finding user by UUID")
-		return nil, ports.ErrUnexpectedFind
-	}
-
-	return dbUser.toDomain(), nil
-}
-
-// FindByEmail retrieves a user by their email address.
+// FindByEmail mengambil user dari DB berdasarkan Email
 func (r *userRepository) FindByEmail(ctx context.Context, email string) (*domain.User, error) {
-	query := `
-		SELECT id, uuid, name, email, password, created_at, updated_at
-		FROM users
-		WHERE email = $1
-	`
+	var userModel models.UserDBModel
 
-	dbUser := &User{}
-	err := r.db.QueryRow(ctx, query, email).Scan(
-		&dbUser.ID,
-		&dbUser.UUID,
-		&dbUser.Name,
-		&dbUser.Email,
-		&dbUser.Password,
-		&dbUser.CreatedAt,
-		&dbUser.UpdatedAt,
-	)
-
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			r.logger.Debug().Str("email", email).Msg("User not found by email")
-			return nil, ports.ErrUserNotFound
-		}
-		// Log other errors
-		r.logger.Error().Err(err).Str("email", email).Msg("Error finding user by email")
-		return nil, ports.ErrUnexpectedFind
+	// Gunakan index unik (active email) yang ada di migrasi
+	if err := r.db.WithContext(ctx).Where("email = ? AND deleted_at IS NULL", email).First(&userModel).Error; err != nil {
+		return nil, err
 	}
 
-	return dbUser.toDomain(), nil
+	return userModel.ToDomain(), nil
 }
 
-// FindMapByUUIDs implements the batch fetch method for the UserRepository port.
-func (r *userRepository) FindMapByUUIDs(ctx context.Context, uuids []string) (map[string]*domain.User, error) {
-	query := `
-		SELECT id, uuid, name, email, password, created_at, updated_at
-		FROM users
-		WHERE uuid = ANY($1)
-	`
-	// Handle empty input UUIDs to avoid a query error
-	if len(uuids) == 0 {
-		return make(map[string]*domain.User), nil
-	}
-
-	rows, err := r.db.Query(ctx, query, uuids)
-	if err != nil {
-		r.logger.Error().Err(err).Strs("uuids", uuids).Msg("Failed to query users by UUIDs")
-		return nil, ports.ErrUnexpectedFind
-	}
-	defer rows.Close()
-
-	// Initialize a map to store results, keyed by UUID
-	userMap := make(map[string]*domain.User, len(uuids))
-
-	for rows.Next() {
-		dbUser := &User{}
-		err := rows.Scan(
-			&dbUser.ID,
-			&dbUser.UUID,
-			&dbUser.Name,
-			&dbUser.Email,
-			&dbUser.Password,
-			&dbUser.CreatedAt,
-			&dbUser.UpdatedAt,
-		)
-		if err != nil {
-			r.logger.Error().Err(err).Msg("Error scanning user row in batch find")
-			return nil, ports.ErrUnexpectedFind
-		}
-		// Map the database model to domain model and add to map
-		userMap[dbUser.UUID] = dbUser.toDomain()
-	}
-
-	if err := rows.Err(); err != nil {
-		r.logger.Error().Err(err).Msg("Error after iterating user rows in batch find")
-		return nil, ports.ErrUnexpectedFind
-	}
-
-	r.logger.Debug().Int("found", len(userMap)).Int("requested", len(uuids)).Msg("Batch user find complete")
-	return userMap, nil
+// Save (untuk membuat user baru)
+func (r *userRepository) Save(ctx context.Context, user *domain.User) error {
+	userModel := models.FromDomain(user)
+	return r.db.WithContext(ctx).Create(userModel).Error
 }
 
-// Update memperbarui data pengguna di database.
+// --- Implementasi fungsi lain (Update, Delete, FindAll) ---
+func (r *userRepository) FindAll(ctx context.Context) ([]*domain.User, error) {
+	panic("not implemented")
+}
 func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
-	// Perbarui timestamp
-	user.UpdatedAt = time.Now().UTC()
-
-	query := `
-		UPDATE users
-		SET name = $1, password = $2, updated_at = $3
-		WHERE uuid = $4
-	`
-	// Catatan: Ini mengasumsikan kita *selalu* mengupdate nama dan password.
-	// Implementasi yang lebih baik akan membangun query secara dinamis
-	// atau memiliki metode terpisah untuk UpdatePassword vs UpdateProfile.
-	// Untuk saat ini, ini sudah cukup.
-	cmdTag, err := r.db.Exec(ctx, query,
-		user.Name,
-		user.Password,
-		user.UpdatedAt,
-		user.UUID,
-	)
-
-	if err != nil {
-		r.logger.Error().Err(err).Str("uuid", user.UUID).Msg("Failed to update user")
-		return ports.ErrUnexpectedSave
-	}
-
-	if cmdTag.RowsAffected() == 0 {
-		r.logger.Warn().Str("uuid", user.UUID).Msg("Update user failed, user not found")
-		return ports.ErrUserNotFound
-	}
-
-	r.logger.Debug().Str("uuid", user.UUID).Msg("User updated successfully")
-	return nil
+	panic("not implemented")
 }
-
-// Delete menghapus pengguna dari database.
-func (r *userRepository) Delete(ctx context.Context, uuid string) error {
-	query := `DELETE FROM users WHERE uuid = $1`
-
-	cmdTag, err := r.db.Exec(ctx, query, uuid)
-	if err != nil {
-		r.logger.Error().Err(err).Str("uuid", uuid).Msg("Failed to delete user")
-		return ports.ErrUnexpectedSave
-	}
-
-	if cmdTag.RowsAffected() == 0 {
-		r.logger.Warn().Str("uuid", uuid).Msg("Delete user failed, user not found")
-		return ports.ErrUserNotFound
-	}
-
-	r.logger.Debug().Str("uuid", uuid).Msg("User deleted successfully")
-	return nil
+func (r *userRepository) Delete(ctx context.Context, id string) error {
+	panic("not implemented")
 }

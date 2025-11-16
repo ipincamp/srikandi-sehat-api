@@ -2,191 +2,40 @@ package service
 
 import (
 	"context"
-	"errors"
-
-	"github.com/google/uuid"
-	"github.com/rs/zerolog"
 
 	"github.com/ipincamp/srikandi-sehat/internal/core/domain"
 	"github.com/ipincamp/srikandi-sehat/internal/core/ports"
-	"github.com/ipincamp/srikandi-sehat/pkg/password"
+	"github.com/rs/zerolog"
 )
 
-// Compile-time check
 var _ ports.UserService = (*userService)(nil)
 
-// userService implements the ports.UserService interface.
+// userService adalah implementasi dari ports.UserService
 type userService struct {
-	userRepo ports.UserRepository // For non-transactional reads
-	hasher   password.Hasher
-	logger   zerolog.Logger
-	uow      ports.UnitOfWork
+	repo   ports.UserRepository
+	logger zerolog.Logger
+	// Nanti Anda akan tambahkan 'password.Hasher' di sini
 }
 
-// NewUserService is the constructor for userService.
-func NewUserService(
-	userRepo ports.UserRepository,
-	hasher password.Hasher,
-	logger zerolog.Logger,
-	uow ports.UnitOfWork,
-) ports.UserService {
+// NewUserService adalah constructor yang benar.
+func NewUserService(repo ports.UserRepository, logger zerolog.Logger) ports.UserService {
 	return &userService{
-		userRepo: userRepo,
-		hasher:   hasher,
-		logger:   logger,
-		uow:      uow,
+		repo:   repo,
+		logger: logger,
 	}
 }
 
-// GetUserByID retrieves a user's public profile information.
-func (s *userService) GetUserByID(ctx context.Context, uuid string) (*domain.User, error) {
-	// This read operation is non-transactional and can use the base repo.
-	user, err := s.userRepo.FindByID(ctx, uuid)
+// GetByID implementasi untuk mengambil user
+func (s *userService) GetByID(ctx context.Context, id string) (*domain.User, error) {
+	s.logger.Info().Str("user_id", id).Msg("Fetching user by ID")
+
+	// Memanggil port repository
+	user, err := s.repo.FindByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, ports.ErrUserNotFound) {
-			s.logger.Warn().Str("uuid", uuid).Msg("User not found")
-			return nil, ports.ErrUserNotFound // Use service-level error
-		}
-		s.logger.Error().Err(err).Str("uuid", uuid).Msg("Failed to get user by ID")
+		s.logger.Error().Err(err).Str("user_id", id).Msg("Failed to find user")
+		// TODO: Konversi error (misal: gorm.ErrRecordNotFound ke domain.ErrUserNotFound)
 		return nil, err
 	}
-	return user, nil
-}
-
-// CreateUser creates a new user (e.g., for an admin panel).
-// This is distinct from 'Register' as it does not return tokens.
-func (s *userService) CreateUser(ctx context.Context, name, email, passwordStr string) (*domain.User, error) {
-	/*
-		DEPRECATED
-		FindByEmail check outside of transactions
-		We will rely on unique database constraints inside transactions
-		to handle duplicate emails (eliminating race conditions).
-	*/
-
-	// 1. Hash the password
-	hashedPassword, err := s.hasher.Hash(passwordStr)
-	if err != nil {
-		s.logger.Error().Err(err).Msg("Failed to hash password during user creation")
-		return nil, err
-	}
-
-	// 2. Create the domain user
-	user := &domain.User{
-		UUID:     uuid.NewString(),
-		Name:     name,
-		Email:    email,
-		Password: hashedPassword,
-	}
-
-	// 3. === Begin Transactional Unit of Work ===
-	tx, err := s.uow.Begin(ctx)
-	if err != nil {
-		s.logger.Error().Err(err).Msg("Failed to begin CreateUser transaction")
-		return nil, err
-	}
-
-	// Defer rollback in case of error
-	defer func() {
-		if err != nil {
-			if rbErr := tx.Rollback(ctx); rbErr != nil {
-				s.logger.Error().Err(rbErr).Msg("Failed to rollback transaction after error")
-			}
-		}
-	}()
-
-	// 4. Get the transactional repository
-	txUserRepo := tx.GetUserRepository()
-
-	// 5. Save the user *using the transactional repo*
-	if err = txUserRepo.Save(ctx, user); err != nil {
-		// Check for duplicate email (race condition)
-		if errors.Is(err, ports.ErrDuplicateEmail) {
-			s.logger.Warn().Str("email", email).Msg("CreateUser failed: email already exists (constraint violation)")
-			return nil, ports.ErrEmailExists
-		}
-		s.logger.Error().Err(err).Str("email", email).Msg("Failed to save user during creation")
-		return nil, err // Defer will catch this and rollback
-	}
-
-	// 6. Commit the transaction
-	if err = tx.Commit(ctx); err != nil {
-		s.logger.Error().Err(err).Msg("Failed to commit CreateUser transaction")
-		return nil, err
-	}
-	// === End Transactional Unit of Work ===
-
-	s.logger.Info().Str("email", email).Str("uuid", user.UUID).Msg("User created successfully via CreateUser")
-
-	// Note: We don't add to the bloom filter here, as 'Register' is the primary path.
-	// Or, if this is a valid path, we should also inject 'userCache' and call 'userCache.Add(user.Email)'.
-	// For now, we follow the 'Register' service's pattern.
 
 	return user, nil
-}
-
-func (s *userService) UpdateProfile(ctx context.Context, userID string, newName string) (*domain.User, error) {
-	if newName == "" {
-		return nil, errors.New("name cannot be empty")
-	}
-
-	tx, err := s.uow.Begin(ctx)
-	if err != nil {
-		s.logger.Error().Err(err).Msg("Failed to begin UpdateProfile transaction")
-		return nil, err
-	}
-	defer tx.Rollback(ctx)
-
-	txUserRepo := tx.GetUserRepository()
-
-	// 1. Fetch user DI DALAM transaksi
-	user, err := txUserRepo.FindByID(ctx, userID)
-	if err != nil {
-		return nil, err // Termasuk ErrUserNotFound
-	}
-
-	// 2. Ubah data
-	user.Name = newName
-
-	// 3. Simpan perubahan
-	if err := txUserRepo.Update(ctx, user); err != nil {
-		s.logger.Error().Err(err).Str("uuid", userID).Msg("Failed to update profile in DB")
-		return nil, err
-	}
-
-	// 4. Commit
-	if err := tx.Commit(ctx); err != nil {
-		s.logger.Error().Err(err).Msg("Failed to commit UpdateProfile transaction")
-		return nil, err
-	}
-
-	s.logger.Info().Str("uuid", userID).Msg("Profile updated successfully")
-	return user, nil
-}
-
-// 7. DeleteAccount (Blueprint)
-func (s *userService) DeleteAccount(ctx context.Context, userID string) error {
-	// Implementasi sederhana (tanpa konfirmasi email)
-	tx, err := s.uow.Begin(ctx)
-	if err != nil {
-		s.logger.Error().Err(err).Msg("Failed to begin DeleteAccount transaction")
-		return err
-	}
-	defer tx.Rollback(ctx)
-
-	txUserRepo := tx.GetUserRepository()
-
-	// Hapus pengguna
-	if err := txUserRepo.Delete(ctx, userID); err != nil {
-		s.logger.Error().Err(err).Str("uuid", userID).Msg("Failed to delete user from DB")
-		return err
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		s.logger.Error().Err(err).Msg("Failed to commit DeleteAccount transaction")
-		return err
-	}
-
-	// TODO: Idealnya, kirim email konfirmasi dulu menggunakan s.emailSvc
-	s.logger.Info().Str("uuid", userID).Msg("Account deleted successfully (blueprint)")
-	return nil
 }

@@ -52,10 +52,12 @@ type Token struct {
 // Mail holds configuration for the email service.
 type Mail struct {
 	Driver        string // "mailgun" or "smtp"
-	Host          string // "localhost" for Mailpit
-	Port          int    // 1025 for Mailpit
+	Host          string // "localhost" for Mailpit, "smtp.gmail.com" for Google
+	Port          int    // 1025 for Mailpit, 587 for Google (TLS)
 	FromAddress   string
 	FromName      string
+	SMTPUser      string
+	SMTPPassword  string
 	MailgunDomain string
 	MailgunAPIKey string
 }
@@ -113,6 +115,8 @@ func Load() (*Config, error) {
 			Port:          mailPort,
 			FromAddress:   getEnv("MAIL_FROM_ADDRESS", "no-reply@example.com"),
 			FromName:      getEnv("MAIL_FROM_NAME", "Example App"),
+			SMTPUser:      getEnv("MAIL_SMTP_USER", ""),
+			SMTPPassword:  getEnv("MAIL_SMTP_PASS", ""),
 			MailgunDomain: getEnv("MAILGUN_DOMAIN", ""),
 			MailgunAPIKey: getEnv("MAILGUN_API_KEY", ""),
 		},

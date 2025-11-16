@@ -89,8 +89,11 @@ func (m *MockUserRepository) FindAll(ctx context.Context) ([]*domain.User, error
 	panic("not implemented")
 }
 func (m *MockUserRepository) Update(ctx context.Context, user *domain.User) error {
-	// return m.UpdateFunc(ctx)
-	panic("not implemented")
+	// This is the implemented mock function
+	if m.UpdateFunc != nil {
+		return m.UpdateFunc(ctx, user)
+	}
+	return errors.New("UpdateFunc not stubbed")
 }
 func (m *MockUserRepository) Delete(ctx context.Context, id string) error {
 	// return m.DeleteFunc(ctx)
@@ -100,9 +103,10 @@ func (m *MockUserRepository) Delete(ctx context.Context, id string) error {
 // --- PersonalTokenRepository Mock ---
 
 type MockPersonalTokenRepository struct {
-	SaveFunc     func(ctx context.Context, token *domain.PersonalToken) error
-	FindByIDFunc func(ctx context.Context, jti string) (*domain.PersonalToken, error)
-	DeleteFunc   func(ctx context.Context, jti string) error
+	SaveFunc           func(ctx context.Context, token *domain.PersonalToken) error
+	FindByIDFunc       func(ctx context.Context, jti string) (*domain.PersonalToken, error)
+	DeleteFunc         func(ctx context.Context, jti string) error
+	DeleteByUserIDFunc func(ctx context.Context, userID string) error
 }
 
 func (m *MockPersonalTokenRepository) Save(ctx context.Context, token *domain.PersonalToken) error {
@@ -114,14 +118,50 @@ func (m *MockPersonalTokenRepository) FindByID(ctx context.Context, jti string) 
 func (m *MockPersonalTokenRepository) Delete(ctx context.Context, jti string) error {
 	return m.DeleteFunc(ctx, jti)
 }
+func (m *MockPersonalTokenRepository) DeleteByUserID(ctx context.Context, userID string) error {
+	if m.DeleteByUserIDFunc != nil {
+		return m.DeleteByUserIDFunc(ctx, userID)
+	}
+	return errors.New("DeleteByUserIDFunc not stubbed")
+}
+
+// --- UserTokenRepository Mock ---
+
+type MockUserTokenRepository struct {
+	SaveFunc                     func(ctx context.Context, token *domain.UserToken) error
+	FindByUserIDAndPurposeFunc   func(ctx context.Context, userID string, purpose string) (*domain.UserToken, error)
+	DeleteByUserIDAndPurposeFunc func(ctx context.Context, userID string, purpose string) error
+}
+
+func (m *MockUserTokenRepository) Save(ctx context.Context, token *domain.UserToken) error {
+	if m.SaveFunc != nil {
+		return m.SaveFunc(ctx, token)
+	}
+	return errors.New("SaveFunc not stubbed")
+}
+
+func (m *MockUserTokenRepository) FindByUserIDAndPurpose(ctx context.Context, userID string, purpose string) (*domain.UserToken, error) {
+	if m.FindByUserIDAndPurposeFunc != nil {
+		return m.FindByUserIDAndPurposeFunc(ctx, userID, purpose)
+	}
+	return nil, errors.New("FindByUserIDAndPurposeFunc not stubbed")
+}
+
+func (m *MockUserTokenRepository) DeleteByUserIDAndPurpose(ctx context.Context, userID string, purpose string) error {
+	if m.DeleteByUserIDAndPurposeFunc != nil {
+		return m.DeleteByUserIDAndPurposeFunc(ctx, userID, purpose)
+	}
+	return errors.New("DeleteByUserIDAndPurposeFunc not stubbed")
+}
 
 // --- UnitOfWork & Transaction Mocks ---
 
 // MockTransaction implements the Transaction port
 type MockTransaction struct {
 	// We embed the mock repos here so the transaction can return them
-	MockUserRepo  ports.UserRepository
-	MockTokenRepo ports.PersonalTokenRepository
+	MockUserRepo      ports.UserRepository
+	MockTokenRepo     ports.PersonalTokenRepository
+	MockUserTokenRepo ports.UserTokenRepository
 	// We add functions to control Commit and Rollback
 	CommitFunc   func() error
 	RollbackFunc func() error
@@ -132,6 +172,9 @@ func (m *MockTransaction) GetUserRepository() ports.UserRepository {
 }
 func (m *MockTransaction) GetPersonalTokenRepository() ports.PersonalTokenRepository {
 	return m.MockTokenRepo // Returns the mock repo
+}
+func (m *MockTransaction) GetUserTokenRepository() ports.UserTokenRepository {
+	return m.MockUserTokenRepo // Returns the mock repo
 }
 func (m *MockTransaction) Commit() error {
 	return m.CommitFunc()

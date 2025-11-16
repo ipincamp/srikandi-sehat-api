@@ -3,6 +3,7 @@ package service_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -20,14 +21,15 @@ import (
 
 // Test complex setup for AuthService
 type authServiceMocks struct {
-	UOW       *MockUnitOfWork
-	Tx        *MockTransaction
-	UserRepo  *MockUserRepository
-	TokenRepo *MockPersonalTokenRepository
-	Hasher    *MockHasher
-	Maker     *MockTokenMaker
-	Mail      *MockMailService
-	TokenCfg  config.Token
+	UOW           *MockUnitOfWork
+	Tx            *MockTransaction
+	UserRepo      *MockUserRepository
+	TokenRepo     *MockPersonalTokenRepository
+	UserTokenRepo *MockUserTokenRepository
+	Hasher        *MockHasher
+	Maker         *MockTokenMaker
+	Mail          *MockMailService
+	TokenCfg      config.Token
 }
 
 // setupAuthService initializes an AuthService with all its dependencies mocked.
@@ -36,12 +38,13 @@ func setupAuthService(t *testing.T) (authServiceMocks, ports.AuthService) {
 
 	// 1. Create all mock dependencies
 	mocks := authServiceMocks{
-		UOW:       &MockUnitOfWork{},
-		UserRepo:  &MockUserRepository{},
-		TokenRepo: &MockPersonalTokenRepository{},
-		Hasher:    &MockHasher{},
-		Maker:     &MockTokenMaker{},
-		Mail:      &MockMailService{},
+		UOW:           &MockUnitOfWork{},
+		UserRepo:      &MockUserRepository{},
+		TokenRepo:     &MockPersonalTokenRepository{},
+		UserTokenRepo: &MockUserTokenRepository{},
+		Hasher:        &MockHasher{},
+		Maker:         &MockTokenMaker{},
+		Mail:          &MockMailService{},
 		TokenCfg: config.Token{
 			AccessTokenTTL:  15 * time.Minute,
 			RefreshTokenTTL: 7 * 24 * time.Hour,
@@ -50,8 +53,9 @@ func setupAuthService(t *testing.T) (authServiceMocks, ports.AuthService) {
 
 	// 2. Create the mock transaction that holds the mock repos
 	mocks.Tx = &MockTransaction{
-		MockUserRepo:  mocks.UserRepo,
-		MockTokenRepo: mocks.TokenRepo,
+		MockUserRepo:      mocks.UserRepo,
+		MockTokenRepo:     mocks.TokenRepo,
+		MockUserTokenRepo: mocks.UserTokenRepo,
 	}
 
 	// 3. Initialize the service, injecting all mocks
@@ -498,5 +502,103 @@ func TestLogout_AlreadyLoggedOut(t *testing.T) {
 
 	// 4. Assert
 	// The service correctly returns no error, as the token is effectively logged out.
+	require.NoError(t, err)
+}
+
+// This new test verifies the fix for your scenario
+func TestResetPassword_Success(t *testing.T) {
+	// 1. Setup
+	mocks, authService := setupAuthService(t)
+	ctx := context.Background()
+
+	// Test inputs
+	userID := "user-uuid-123"
+	plainToken := "my-secret-reset-token-string"
+	// The token format required by the service is "uid.tokenstring"
+	fullToken := fmt.Sprintf("%s.%s", userID, plainToken)
+	newPassword := "NewS3cureP@ssword!"
+
+	// Mocked data
+	hashedPlainToken := "fe1fba9a0f2a5f75deaa2b136fc87079c2a6475bc85ec4469d1ab903b6d09cfe"
+	newHashedPassword := "new-argon-hashed-password"
+
+	// This is the user object as it exists in the DB *before* the update
+	userToUpdate := &domain.User{
+		ID:           userID,
+		Name:         "Test User",
+		Email:        "test@example.com",
+		PasswordHash: "old-argon-hash",
+	}
+
+	// This is the token object as it exists in the DB
+	resetToken := &domain.UserToken{
+		UserID:    userID,
+		Purpose:   domain.TokenPurposePasswordReset,
+		TokenHash: hashedPlainToken, // This must match the hash of plainToken
+		ExpiresAt: time.Now().Add(15 * time.Minute),
+	}
+
+	// 2. Stub Mocks (in order of execution)
+	// a. UOW begins transaction
+	mocks.UOW.BeginFunc = func(c context.Context) (ports.Transaction, error) {
+		return mocks.Tx, nil
+	}
+
+	// b. UserTokenRepo finds the reset token in the DB
+	mocks.UserTokenRepo.FindByUserIDAndPurposeFunc = func(c context.Context, uid string, purpose string) (*domain.UserToken, error) {
+		assert.Equal(t, userID, uid)
+		assert.Equal(t, domain.TokenPurposePasswordReset, purpose)
+		return resetToken, nil
+	}
+
+	// c. Hasher hashes the *new* password
+	mocks.Hasher.HashFunc = func(p string) (string, error) {
+		assert.Equal(t, newPassword, p)
+		return newHashedPassword, nil
+	}
+
+	// d. UserRepo finds the user to update
+	mocks.UserRepo.FindByIDFunc = func(c context.Context, id string) (*domain.User, error) {
+		assert.Equal(t, userID, id)
+		return userToUpdate, nil
+	}
+
+	// e. UserRepo *updates* the user (This is what we fixed)
+	mocks.UserRepo.UpdateFunc = func(c context.Context, u *domain.User) error {
+		// Assert that the user object being passed for update
+		// has the *new* password hash.
+		assert.Equal(t, userID, u.ID)
+		assert.Equal(t, newHashedPassword, u.PasswordHash)
+		return nil
+	}
+
+	// f. PersonalTokenRepo deletes all refresh tokens (log out everywhere)
+	mocks.TokenRepo.DeleteByUserIDFunc = func(c context.Context, uid string) error {
+		assert.Equal(t, userID, uid)
+		return nil
+	}
+
+	// g. UserTokenRepo deletes the used reset token
+	mocks.UserTokenRepo.DeleteByUserIDAndPurposeFunc = func(c context.Context, uid string, purpose string) error {
+		assert.Equal(t, userID, uid)
+		assert.Equal(t, domain.TokenPurposePasswordReset, purpose)
+		return nil
+	}
+
+	// h. Transaction commits
+	mocks.Tx.CommitFunc = func() error {
+		return nil
+	}
+
+	// i. Transaction rolls back (should not be called)
+	mocks.Tx.RollbackFunc = func() error {
+		t.Log("Unexpected rollback called")
+		return nil
+	}
+
+	// 3. Act
+	err := authService.ResetPassword(ctx, fullToken, newPassword)
+
+	// 4. Assert
 	require.NoError(t, err)
 }

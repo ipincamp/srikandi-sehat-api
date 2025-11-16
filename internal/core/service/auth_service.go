@@ -2,8 +2,15 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/ipincamp/srikandi-sehat/internal/core/domain"
 	"github.com/ipincamp/srikandi-sehat/internal/core/ports"
@@ -50,6 +57,25 @@ func (s *authService) handleRollback(tx ports.Transaction, logMsg string) {
 	if err := tx.Rollback(); err != nil {
 		s.logger.Error().Err(err).Msg(logMsg)
 	}
+}
+
+// generateSecureToken creates a URL-safe, random string.
+func generateSecureToken(length int) (string, error) {
+	b := make([]byte, length)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	// Use URL-safe encoding to avoid issues with email clients.
+	return base64.URLEncoding.EncodeToString(b), nil
+}
+
+// hashToken uses SHA256 to hash the one-time-use token.
+// We don't use Argon2 (s.hasher) as it's too slow for this purpose.
+// A fast hash is appropriate here because the token's entropy comes
+// from its high randomness (32 bytes), not a user-generated password.
+func hashToken(token string) string {
+	hash := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(hash[:])
 }
 
 // Register implements the registration logic
@@ -342,5 +368,201 @@ func (s *authService) Logout(ctx context.Context, refreshToken string) error {
 		return errors.New("logout failed")
 	}
 
+	return nil
+}
+
+// ForgotPassword implements the logic from section 1.5.3.
+func (s *authService) ForgotPassword(ctx context.Context, email string) error {
+	// This logic *always* returns a nil error to prevent email enumeration.
+	// The actual work (DB operations, email) happens only if the user is found.
+	log := s.logger.With().Str("method", "ForgotPassword").Str("email", email).Logger()
+
+	// We must use a transaction to get repositories.
+	tx, err := s.uow.Begin(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to begin transaction")
+		return nil // Still return nil to user
+	}
+
+	userRepo := tx.GetUserRepository()
+	user, err := userRepo.FindByEmail(ctx, email)
+
+	// If user not found  or any other DB error, just commit and return.
+	if err != nil {
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Error().Err(err).Msg("Failed to query user by email")
+		}
+		// Commit the (empty) transaction and return.
+		_ = tx.Commit()
+		return nil
+	}
+
+	// --- User was found, proceed with logic  ---
+	tokenRepo := tx.GetUserTokenRepository()
+
+	// 1. Delete any old password reset tokens.
+	if err := tokenRepo.DeleteByUserIDAndPurpose(ctx, user.ID, domain.TokenPurposePasswordReset); err != nil {
+		log.Error().Err(err).Msg("Failed to delete old reset tokens")
+		s.handleRollback(tx, "Rollback ForgotPassword: failed to delete old tokens")
+		return nil
+	}
+
+	// 2. Generate new token.
+	// We create a 32-byte random token.
+	tokenString, err := generateSecureToken(32)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to generate secure token")
+		s.handleRollback(tx, "Rollback ForgotPassword: failed to generate token")
+		return nil
+	}
+
+	// 3. Hash the token for storage.
+	tokenHash := hashToken(tokenString)
+	tokenExpiry := time.Now().Add(15 * time.Minute) // 15-minute expiry.
+
+	// 4. Save the new token hash to the DB.
+	userToken := &domain.UserToken{
+		UserID:    user.ID,
+		Purpose:   domain.TokenPurposePasswordReset,
+		TokenHash: tokenHash,
+		ExpiresAt: tokenExpiry,
+		CreatedAt: time.Now(),
+	}
+	if err := tokenRepo.Save(ctx, userToken); err != nil {
+		log.Error().Err(err).Msg("Failed to save new reset token")
+		s.handleRollback(tx, "Rollback ForgotPassword: failed to save token")
+		return nil
+	}
+
+	// 5. Commit the transaction.
+	if err := tx.Commit(); err != nil {
+		log.Error().Err(err).Msg("Failed to commit transaction")
+		return nil
+	}
+
+	// 6. Send email asynchronously.
+	go func() {
+		emailCtx := context.Background()
+		log.Info().Msg("Dispatching password reset email")
+
+		// The token sent to the user is in the format `uid.tokenstring`.
+		fullToken := fmt.Sprintf("%s.%s", user.ID, tokenString)
+
+		subject := "Your Password Reset Instructions"
+		plainBody := fmt.Sprintf("Hi %s,\n\nYou requested a password reset. Use this token (it will expire in 15 minutes):\n\n%s\n\nIf you did not request this, please ignore this email.", user.Name, fullToken)
+		htmlBody := fmt.Sprintf("<h1>Hi %s,</h1><p>You requested a password reset. Use this token (it will expire in 15 minutes):</p><h2>%s</h2><p>If you did not request this, please ignore this email.</p>", user.Name, fullToken)
+
+		if err := s.mailService.Send(emailCtx, user.Email, subject, plainBody, htmlBody); err != nil {
+			log.Error().Err(err).Msg("Failed to send password reset email")
+		}
+	}()
+
+	return nil
+}
+
+// ResetPassword implements the logic from section 1.6.3.
+func (s *authService) ResetPassword(ctx context.Context, token string, newPassword string) error {
+	log := s.logger.With().Str("method", "ResetPassword").Logger()
+
+	// 1. Validate token format: "uid.tokenstring".
+	parts := strings.Split(token, ".")
+	if len(parts) != 2 {
+		return errors.New("invalid token format")
+	}
+	userID, tokenString := parts[0], parts[1]
+
+	if userID == "" || tokenString == "" {
+		return errors.New("invalid token format")
+	}
+
+	// 2. Start Transaction.
+	tx, err := s.uow.Begin(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to begin transaction")
+		return errors.New("password reset failed")
+	}
+
+	// 3. Find token in DB.
+	tokenRepo := tx.GetUserTokenRepository()
+	userToken, err := tokenRepo.FindByUserIDAndPurpose(ctx, userID, domain.TokenPurposePasswordReset)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Warn().Msg("Password reset token not found in DB")
+		} else {
+			log.Error().Err(err).Msg("Failed to find token")
+		}
+		s.handleRollback(tx, "Rollback ResetPassword: token not found")
+		return errors.New("invalid or expired token")
+	}
+
+	// 4. Hash the token from the user.
+	tokenHash := hashToken(tokenString)
+
+	// 5. Validate the token hash and expiry.
+	// Use constant-time compare to prevent timing attacks.
+	if subtle.ConstantTimeCompare([]byte(userToken.TokenHash), []byte(tokenHash)) != 1 {
+		log.Warn().Msg("Token hash mismatch")
+		s.handleRollback(tx, "Rollback ResetPassword: token hash mismatch")
+		return errors.New("invalid or expired token")
+	}
+
+	// Check expiry.
+	if time.Now().After(userToken.ExpiresAt) {
+		log.Warn().Msg("Token expired")
+		// Delete the expired token.
+		_ = tokenRepo.DeleteByUserIDAndPurpose(ctx, userID, domain.TokenPurposePasswordReset)
+		s.handleRollback(tx, "Rollback ResetPassword: token expired")
+		return errors.New("invalid or expired token")
+	}
+
+	// --- Token is valid ---
+
+	// 6. Update user's password.
+	// Hash the new password.
+	hashedPassword, err := s.hasher.Hash(newPassword)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to hash new password")
+		s.handleRollback(tx, "Rollback ResetPassword: password hash failed")
+		return errors.New("password reset failed")
+	}
+
+	userRepo := tx.GetUserRepository()
+	user, err := userRepo.FindByID(ctx, userID) // Find user to update
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to find user associated with token")
+		s.handleRollback(tx, "Rollback ResetPassword: user find failed")
+		return errors.New("password reset failed")
+	}
+
+	user.PasswordHash = hashedPassword                 // Update the hash
+	if err := userRepo.Update(ctx, user); err != nil { // Save changes
+		log.Error().Err(err).Msg("Failed to update user password")
+		s.handleRollback(tx, "Rollback ResetPassword: user update failed")
+		return errors.New("password reset failed")
+	}
+
+	// 7. Cabut Sesi (Log out all other sessions).
+	// This deletes all their *refresh tokens*.
+	personalTokenRepo := tx.GetPersonalTokenRepository()
+	if err := personalTokenRepo.DeleteByUserID(ctx, userID); err != nil {
+		log.Error().Err(err).Msg("Failed to revoke refresh tokens")
+		s.handleRollback(tx, "Rollback ResetPassword: token revocation failed")
+		return errors.New("password reset failed")
+	}
+
+	// 8. Cabut Token Reset (Delete the used token).
+	if err := tokenRepo.DeleteByUserIDAndPurpose(ctx, userID, domain.TokenPurposePasswordReset); err != nil {
+		log.Error().Err(err).Msg("Failed to delete used reset token")
+		s.handleRollback(tx, "Rollback ResetPassword: reset token deletion failed")
+		return errors.New("password reset failed")
+	}
+
+	// 9. Commit Transaksi.
+	if err := tx.Commit(); err != nil {
+		log.Error().Err(err).Msg("Failed to commit transaction")
+		return errors.New("password reset failed")
+	}
+
+	log.Info().Str("user_id", userID).Msg("Password reset successfully")
 	return nil
 }

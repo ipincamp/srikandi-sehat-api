@@ -46,3 +46,11 @@ func (r *personalTokenRepository) Delete(ctx context.Context, jti string) error 
 	// We delete using the JTI, which is the 'ID' field
 	return r.db.WithContext(ctx).Delete(&models.PersonalTokenDBModel{ID: jti}).Error
 }
+
+// DeleteByUserID removes all tokens for a specific user.
+// This is used to "log out everywhere" e.g. on password reset[cite: 614].
+func (r *personalTokenRepository) DeleteByUserID(ctx context.Context, userID string) error {
+	return r.db.WithContext(ctx).
+		Where("user_id = ?", userID).
+		Delete(&models.PersonalTokenDBModel{}).Error
+}

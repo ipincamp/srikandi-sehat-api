@@ -46,6 +46,12 @@ type tokenValidation struct {
 	Token string `validate:"required"`
 }
 
+// resetPasswordInputValidation maps to the ResetPasswordInput.
+type resetPasswordInputValidation struct {
+	Token       string `validate:"required"`
+	NewPassword string `validate:"required,min=8,max=32,passwordcomplex"`
+}
+
 // --- 3. Custom Validation Functions ---
 
 // validateEmailDomain implements the custom 'emaildomain' validation rule.

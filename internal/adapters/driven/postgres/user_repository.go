@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"time"
 
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driven/postgres/models"
 	"github.com/ipincamp/srikandi-sehat/internal/core/domain"
@@ -60,9 +61,17 @@ func (r *userRepository) Save(ctx context.Context, user *domain.User) error {
 func (r *userRepository) FindAll(ctx context.Context) ([]*domain.User, error) {
 	panic("not implemented")
 }
+
+// Update saves all fields of the domain user struct.
+// GORM's .Save() will update all fields for a record if a primary key is present.
 func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
-	panic("not implemented")
+	// panic("not implemented")
+	userModel := models.FromDomain(user)
+	// We set UpdatedAt manually just in case, though GORM hooks can also do this.
+	userModel.UpdatedAt = time.Now()
+	return r.db.WithContext(ctx).Save(userModel).Error
 }
+
 func (r *userRepository) Delete(ctx context.Context, id string) error {
 	panic("not implemented")
 }

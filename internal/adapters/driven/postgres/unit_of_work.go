@@ -56,6 +56,12 @@ func (t *transaction) GetPersonalTokenRepository() ports.PersonalTokenRepository
 	return NewPersonalTokenRepository(t.tx, t.logger)
 }
 
+// GetUserTokenRepository vends a repo bound to the transaction.
+func (t *transaction) GetUserTokenRepository() ports.UserTokenRepository {
+	// Pass the transaction (t.tx) to the repository constructor
+	return NewUserTokenRepository(t.tx, t.logger)
+}
+
 // Commit commits the GORM transaction.
 func (t *transaction) Commit() error {
 	return t.tx.Commit().Error

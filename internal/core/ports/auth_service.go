@@ -12,4 +12,7 @@ type AuthService interface {
 	Login(ctx context.Context, email, password string) (*domain.AuthResponse, error)
 	RefreshToken(ctx context.Context, tokenString string) (*domain.AuthResponse, error)
 	Logout(ctx context.Context, refreshToken string) error
+
+	ForgotPassword(ctx context.Context, email string) error
+	ResetPassword(ctx context.Context, token string, newPassword string) error
 }

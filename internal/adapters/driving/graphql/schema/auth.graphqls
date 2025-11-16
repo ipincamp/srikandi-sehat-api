@@ -30,4 +30,17 @@ type Mutation {
 
   # Logout revokes a refresh token
   logout(refreshToken: String!): Boolean!
+
+  # forgotPassword triggers the password reset flow
+  # Always returns true to prevent email enumeration
+  forgotPassword(email: String!): Boolean!
+
+  # resetPassword sets a new password using a valid token
+  resetPassword(input: ResetPasswordInput!): Boolean!
+}
+
+# Input type for password reset
+input ResetPasswordInput {
+  token: String!
+  newPassword: String!
 }

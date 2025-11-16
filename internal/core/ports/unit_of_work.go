@@ -9,6 +9,8 @@ type Transaction interface {
 	GetUserRepository() UserRepository
 	// GetPersonalTokenRepository returns a PersonalTokenRepository bound to this transaction.
 	GetPersonalTokenRepository() PersonalTokenRepository
+	// GetUserTokenRepository returns a UserTokenRepository bound to this transaction.
+	GetUserTokenRepository() UserTokenRepository
 
 	// Commit finalizes the transaction.
 	Commit() error

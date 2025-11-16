@@ -8,6 +8,7 @@ import (
 	"github.com/ipincamp/srikandi-sehat/internal/core/ports"
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // Ensure implementation matches the interface.
@@ -26,11 +27,18 @@ func NewUserTokenRepository(db *gorm.DB, logger zerolog.Logger) ports.UserTokenR
 	}
 }
 
-// Save uses GORM's Save() for an "Upsert" behavior based on the composite primary key.
+// Save uses GORM's OnConflict to perform an "Upsert" behavior.
 // This fulfills the "Update-or-Insert" requirement.
 func (r *userTokenRepository) Save(ctx context.Context, token *domain.UserToken) error {
 	model := models.UserTokenFromDomain(token)
-	return r.db.WithContext(ctx).Save(model).Error
+
+	// Use Clauses.OnConflict to handle "Upsert".
+	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
+		// Specify the composite primary key columns.
+		Columns: []clause.Column{{Name: "user_id"}, {Name: "purpose"}},
+		// On conflict, update the 'token_hash' and 'expires_at' columns.
+		DoUpdates: clause.AssignmentColumns([]string{"token_hash", "expires_at"}),
+	}).Create(model).Error // Use Create() with OnConflict to perform the upsert.
 }
 
 // FindByUserIDAndPurpose finds the token in the database.

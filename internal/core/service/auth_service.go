@@ -400,14 +400,7 @@ func (s *authService) ForgotPassword(ctx context.Context, email string) error {
 	// --- User was found, proceed with logic  ---
 	tokenRepo := tx.GetUserTokenRepository()
 
-	// 1. Delete any old password reset tokens.
-	if err := tokenRepo.DeleteByUserIDAndPurpose(ctx, user.ID, domain.TokenPurposePasswordReset); err != nil {
-		log.Error().Err(err).Msg("Failed to delete old reset tokens")
-		s.handleRollback(tx, "Rollback ForgotPassword: failed to delete old tokens")
-		return nil
-	}
-
-	// 2. Generate new token.
+	// 1. Generate new token.
 	// We create a 32-byte random token.
 	tokenString, err := generateSecureToken(32)
 	if err != nil {
@@ -416,31 +409,31 @@ func (s *authService) ForgotPassword(ctx context.Context, email string) error {
 		return nil
 	}
 
-	// 3. Hash the token for storage.
+	// 2. Hash the token for storage.
 	tokenHash := hashToken(tokenString)
 	tokenExpiry := time.Now().Add(15 * time.Minute) // 15-minute expiry.
 
-	// 4. Save the new token hash to the DB.
+	// 3. Save the new token hash to the DB.
+	// This now uses our Upsert logic.
 	userToken := &domain.UserToken{
 		UserID:    user.ID,
 		Purpose:   domain.TokenPurposePasswordReset,
 		TokenHash: tokenHash,
 		ExpiresAt: tokenExpiry,
-		CreatedAt: time.Now(),
 	}
 	if err := tokenRepo.Save(ctx, userToken); err != nil {
 		log.Error().Err(err).Msg("Failed to save new reset token")
-		s.handleRollback(tx, "Rollback ForgotPassword: failed to save token")
+		s.handleRollback(tx, "Rollback ForgotPassword: failed to upsert token")
 		return nil
 	}
 
-	// 5. Commit the transaction.
+	// 4. Commit the transaction.
 	if err := tx.Commit(); err != nil {
 		log.Error().Err(err).Msg("Failed to commit transaction")
 		return nil
 	}
 
-	// 6. Send email asynchronously.
+	// 5. Send email asynchronously.
 	go func() {
 		emailCtx := context.Background()
 		log.Info().Msg("Dispatching password reset email")

@@ -1180,3 +1180,168 @@ func (s *authService) ConfirmAccountReactivation(ctx context.Context, token stri
 	log.Info().Str("user_id", userID).Msg("Account reactivated successfully")
 	return nil
 }
+
+// RequestAccountDeletion initiates the two-step account deletion
+func (s *authService) RequestAccountDeletion(ctx context.Context, userID string, currentPassword string) error {
+	log := s.logger.With().Str("method", "RequestAccountDeletion").Str("user_id", userID).Logger()
+
+	// 1. Start Transaction
+	tx, err := s.uow.Begin(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to begin transaction")
+		return errors.New("request failed")
+	}
+
+	// Get transactional repositories
+	userRepo := tx.GetUserRepository()
+	tokenRepo := tx.GetUserTokenRepository()
+
+	// 2. Find user
+	user, err := userRepo.FindByID(ctx, userID)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to query user")
+		s.handleRollback(tx, "Rollback RequestDeletion: user not found")
+		return errors.New("request failed")
+	}
+
+	// 3. Verify Password
+	if !s.hasher.Compare(user.PasswordHash, currentPassword) {
+		log.Warn().Msg("Invalid current password provided for deletion request")
+		s.handleRollback(tx, "Rollback RequestDeletion: invalid password")
+		return errors.New("invalid password")
+	}
+
+	// 4. Generate and save (Upsert) the new token
+	tokenString, err := generateSecureToken(32)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to generate secure token")
+		s.handleRollback(tx, "Rollback RequestDeletion: token generation failed")
+		return errors.New("request failed")
+	}
+
+	tokenHash := hashToken(tokenString)
+	tokenExpiry := time.Now().Add(15 * time.Minute) // 15-minute expiry
+
+	userToken := &domain.UserToken{
+		UserID:    user.ID,
+		Purpose:   domain.TokenPurposeAccountDeletion, // Use the existing domain constant
+		TokenHash: tokenHash,
+		ExpiresAt: tokenExpiry,
+	}
+	if err := tokenRepo.Save(ctx, userToken); err != nil {
+		log.Error().Err(err).Msg("Failed to upsert deletion token")
+		s.handleRollback(tx, "Rollback RequestDeletion: token save failed")
+		return errors.New("request failed")
+	}
+
+	// 5. Commit the transaction
+	if err := tx.Commit(); err != nil {
+		log.Error().Err(err).Msg("Failed to commit transaction")
+		return errors.New("request failed")
+	}
+
+	// 6. Send email asynchronously
+	go func() {
+		emailCtx := context.Background()
+		log.Info().Msg("Dispatching account deletion confirmation email")
+		// Use the same token format: uid.tokenstring
+		fullToken := fmt.Sprintf("%s.%s", user.ID, tokenString)
+
+		subject := "Confirm Account Deletion"
+		plainBody := fmt.Sprintf("Hi %s,\n\nWe received a request to delete your account. This action is irreversible. Use this token to confirm (it will expire in 15 minutes):\n\n%s\n\nIf you did not request this, please ignore this email.", user.Name, fullToken)
+		htmlBody := fmt.Sprintf("<h1>Hi %s,</h1><p>We received a request to delete your account. <b>This action is irreversible.</b></p><p>Use this token to confirm (it will expire in 15 minutes):</p><h2>%s</h2><p>If you did not request this, please ignore this email.</p>", user.Name, fullToken)
+
+		if err := s.mailService.Send(emailCtx, user.Email, subject, plainBody, htmlBody); err != nil {
+			log.Error().Err(err).Msg("Failed to send deletion confirmation email")
+		}
+	}()
+
+	return nil
+}
+
+// ConfirmAccountDeletion validates a token and soft-deletes the account
+func (s *authService) ConfirmAccountDeletion(ctx context.Context, token string) error {
+	log := s.logger.With().Str("method", "ConfirmAccountDeletion").Logger()
+
+	// 1. Validate token format: "uid.tokenstring"
+	parts := strings.Split(token, ".")
+	if len(parts) != 2 {
+		return errors.New("invalid token format")
+	}
+	userID, tokenString := parts[0], parts[1]
+	if userID == "" || tokenString == "" {
+		return errors.New("invalid token format")
+	}
+
+	// 2. Hash the provided token string
+	tokenHash := hashToken(tokenString)
+
+	// 3. Start Transaction
+	tx, err := s.uow.Begin(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to begin transaction")
+		return errors.New("account deletion failed")
+	}
+
+	// 4. Find token in DB
+	tokenRepo := tx.GetUserTokenRepository()
+	userToken, err := tokenRepo.FindByUserIDAndPurpose(ctx, userID, domain.TokenPurposeAccountDeletion)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Warn().Msg("Deletion token not found in DB")
+		} else {
+			log.Error().Err(err).Msg("Failed to find token")
+		}
+		s.handleRollback(tx, "Rollback ConfirmDeletion: token not found")
+		return errors.New("invalid or expired token")
+	}
+
+	// 5. Validate the token hash and expiry
+	if subtle.ConstantTimeCompare([]byte(userToken.TokenHash), []byte(tokenHash)) != 1 {
+		log.Warn().Msg("Token hash mismatch")
+		s.handleRollback(tx, "Rollback ConfirmDeletion: token hash mismatch")
+		return errors.New("invalid or expired token")
+	}
+
+	if time.Now().After(userToken.ExpiresAt) {
+		log.Warn().Msg("Token expired")
+		_ = tokenRepo.DeleteByUserIDAndPurpose(ctx, userID, domain.TokenPurposeAccountDeletion) // Clean up
+		s.handleRollback(tx, "Rollback ConfirmDeletion: token expired")
+		return errors.New("invalid or expired token")
+	}
+
+	// --- Token is valid, proceed with deletion ---
+
+	// 6. Soft Delete Akun
+	userRepo := tx.GetUserRepository()
+	// We call our new repository method, which performs a soft delete
+	if err := userRepo.Delete(ctx, userID); err != nil {
+		log.Error().Err(err).Msg("Failed to soft-delete user")
+		s.handleRollback(tx, "Rollback ConfirmDeletion: user delete failed")
+		return errors.New("account deletion failed")
+	}
+
+	// 7. Cabut Sesi (Log out everywhere)
+	personalTokenRepo := tx.GetPersonalTokenRepository()
+	if err := personalTokenRepo.DeleteByUserID(ctx, userID); err != nil {
+		log.Error().Err(err).Msg("Failed to revoke refresh tokens")
+		s.handleRollback(tx, "Rollback ConfirmDeletion: token revocation failed")
+		return errors.New("account deletion failed")
+	}
+
+	// 8. Delete the used token
+	if err := tokenRepo.DeleteByUserIDAndPurpose(ctx, userID, domain.TokenPurposeAccountDeletion); err != nil {
+		log.Error().Err(err).Msg("Failed to delete used deletion token")
+		s.handleRollback(tx, "Rollback ConfirmDeletion: token deletion failed")
+		return errors.New("account deletion failed")
+	}
+
+	// 9. Commit Transaction
+	if err := tx.Commit(); err != nil {
+		log.Error().Err(err).Msg("Failed to commit transaction")
+		return errors.New("account deletion failed")
+	}
+
+	log.Info().Str("user_id", userID).Msg("User account soft-deleted successfully")
+	return nil
+}

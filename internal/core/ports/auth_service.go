@@ -26,4 +26,7 @@ type AuthService interface {
 
 	RequestAccountReactivation(ctx context.Context, email string) error
 	ConfirmAccountReactivation(ctx context.Context, token string) error
+
+	RequestAccountDeletion(ctx context.Context, userID string, currentPassword string) error
+	ConfirmAccountDeletion(ctx context.Context, token string) error
 }

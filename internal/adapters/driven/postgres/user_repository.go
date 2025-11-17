@@ -85,6 +85,12 @@ func (r *userRepository) Update(ctx context.Context, user *domain.User) error {
 		Updates(updates).Error
 }
 
+// Delete performs a soft delete on the user.
+// GORM will automatically use the "deleted_at" column because
+// it is defined as gorm.DeletedAt in the UserDBModel.
 func (r *userRepository) Delete(ctx context.Context, id string) error {
-	panic("not implemented")
+	// We execute a GORM Delete operation, targeting the model by its ID.
+	return r.db.WithContext(ctx).
+		Where("id = ?", id).
+		Delete(&models.UserDBModel{}).Error
 }

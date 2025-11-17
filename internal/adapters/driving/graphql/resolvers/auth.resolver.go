@@ -130,7 +130,7 @@ func (r *mutationResolver) ForgotPassword(ctx context.Context, email string) (bo
 		return false, err
 	}
 
-	// Per the requirements, always return true on success[cite: 550].
+	// Per the requirements, always return true on success
 	return true, nil
 }
 
@@ -227,6 +227,31 @@ func (r *mutationResolver) ConfirmEmailChange(ctx context.Context, token string)
 		return false, err // Service will handle "invalid or expired token"
 	}
 
+	return true, nil
+}
+
+// DisableMyAccount is the resolver for the disableMyAccount field.
+func (r *mutationResolver) DisableMyAccount(ctx context.Context, input models.DisableAccountInput) (bool, error) {
+	// 1. Get User ID from context (this is an authenticated route)
+	userID, ok := ctx.Value(AuthUserUUIDKey).(string)
+	if !ok || userID == "" {
+		return false, ErrNotAuthenticated
+	}
+
+	// 2. Validation Step
+	vInput := disableAccountInputValidation{
+		CurrentPassword: input.CurrentPassword,
+	}
+	if err := validate.Struct(vInput); err != nil {
+		return false, formatValidationErrors(err)
+	}
+
+	// 3. Call the auth service
+	if err := r.Resolver.authService.DisableAccount(ctx, userID, input.CurrentPassword); err != nil {
+		return false, err // Service will handle "invalid password" or other failures
+	}
+
+	// 4. Return success
 	return true, nil
 }
 

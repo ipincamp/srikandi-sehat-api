@@ -64,6 +64,12 @@ type updateProfileInputValidation struct {
 	Name string `validate:"required,min=3,max=100"`
 }
 
+// disableAccountInputValidation maps to the DisableAccountInput.
+// We just need to ensure the password field is present.
+type disableAccountInputValidation struct {
+	CurrentPassword string `validate:"required"`
+}
+
 // --- 3. Custom Validation Functions ---
 
 // validateEmailDomain implements the custom 'emaildomain' validation rule.

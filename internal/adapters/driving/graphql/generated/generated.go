@@ -53,6 +53,7 @@ type ComplexityRoot struct {
 
 	Mutation struct {
 		ConfirmEmailChange      func(childComplexity int, token string) int
+		DisableMyAccount        func(childComplexity int, input models.DisableAccountInput) int
 		ForgotPassword          func(childComplexity int, email string) int
 		Login                   func(childComplexity int, input models.LoginInput) int
 		Logout                  func(childComplexity int, refreshToken string) int
@@ -90,6 +91,7 @@ type MutationResolver interface {
 	VerifyEmail(ctx context.Context, token string) (bool, error)
 	RequestEmailChange(ctx context.Context, input models.RequestEmailChangeInput) (bool, error)
 	ConfirmEmailChange(ctx context.Context, token string) (bool, error)
+	DisableMyAccount(ctx context.Context, input models.DisableAccountInput) (bool, error)
 	UpdateProfile(ctx context.Context, input models.UpdateProfileInput) (*models.User, error)
 }
 type QueryResolver interface {
@@ -140,6 +142,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Mutation.ConfirmEmailChange(childComplexity, args["token"].(string)), true
+	case "Mutation.disableMyAccount":
+		if e.complexity.Mutation.DisableMyAccount == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_disableMyAccount_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.DisableMyAccount(childComplexity, args["input"].(models.DisableAccountInput)), true
 	case "Mutation.forgotPassword":
 		if e.complexity.Mutation.ForgotPassword == nil {
 			break
@@ -298,6 +311,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 	opCtx := graphql.GetOperationContext(ctx)
 	ec := executionContext{opCtx, e, 0, 0, make(chan graphql.DeferredResult)}
 	inputUnmarshalMap := graphql.BuildUnmarshalerMap(
+		ec.unmarshalInputDisableAccountInput,
 		ec.unmarshalInputLoginInput,
 		ec.unmarshalInputRegisterInput,
 		ec.unmarshalInputRequestEmailChangeInput,
@@ -425,6 +439,11 @@ input RequestEmailChangeInput {
   current_password: String!
 }
 
+# Input type for disabling a user's own account
+input DisableAccountInput {
+  current_password: String!
+}
+
 # Response type for successful auth
 type AuthResponse {
   access_token: String!
@@ -467,6 +486,10 @@ type Mutation {
   # confirmEmailChange validates the token and updates the user's email
   # This is a public route.
   confirmEmailChange(token: String!): Boolean!
+
+  # disableMyAccount disables the authenticated user's account
+  # This is an authenticated route.
+  disableMyAccount(input: DisableAccountInput!): Boolean!
 }
 `, BuiltIn: false},
 	{Name: "../schema/health.graphqls", Input: `# A simple query type for testing server initialization.
@@ -521,6 +544,17 @@ func (ec *executionContext) field_Mutation_confirmEmailChange_args(ctx context.C
 		return nil, err
 	}
 	args["token"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_disableMyAccount_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input", ec.unmarshalNDisableAccountInput2githubᚗcomᚋipincampᚋsrikandiᚑsehatᚋinternalᚋadaptersᚋdrivingᚋgraphqlᚋmodelsᚐDisableAccountInput)
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
 	return args, nil
 }
 
@@ -1154,6 +1188,47 @@ func (ec *executionContext) fieldContext_Mutation_confirmEmailChange(ctx context
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_confirmEmailChange_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_disableMyAccount(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_disableMyAccount,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().DisableMyAccount(ctx, fc.Args["input"].(models.DisableAccountInput))
+		},
+		nil,
+		ec.marshalNBoolean2bool,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_disableMyAccount(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_disableMyAccount_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -2982,6 +3057,33 @@ func (ec *executionContext) fieldContext___Type_isOneOf(_ context.Context, field
 
 // region    **************************** input.gotpl *****************************
 
+func (ec *executionContext) unmarshalInputDisableAccountInput(ctx context.Context, obj any) (models.DisableAccountInput, error) {
+	var it models.DisableAccountInput
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"current_password"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "current_password":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("current_password"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.CurrentPassword = data
+		}
+	}
+
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputLoginInput(ctx context.Context, obj any) (models.LoginInput, error) {
 	var it models.LoginInput
 	asMap := map[string]any{}
@@ -3289,6 +3391,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		case "confirmEmailChange":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_confirmEmailChange(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "disableMyAccount":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_disableMyAccount(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -3839,6 +3948,11 @@ func (ec *executionContext) marshalNBoolean2bool(ctx context.Context, sel ast.Se
 		}
 	}
 	return res
+}
+
+func (ec *executionContext) unmarshalNDisableAccountInput2githubᚗcomᚋipincampᚋsrikandiᚑsehatᚋinternalᚋadaptersᚋdrivingᚋgraphqlᚋmodelsᚐDisableAccountInput(ctx context.Context, v any) (models.DisableAccountInput, error) {
+	res, err := ec.unmarshalInputDisableAccountInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
 }
 
 func (ec *executionContext) unmarshalNLoginInput2githubᚗcomᚋipincampᚋsrikandiᚑsehatᚋinternalᚋadaptersᚋdrivingᚋgraphqlᚋmodelsᚐLoginInput(ctx context.Context, v any) (models.LoginInput, error) {

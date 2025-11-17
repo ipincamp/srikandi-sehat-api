@@ -23,6 +23,11 @@ input RequestEmailChangeInput {
   current_password: String!
 }
 
+# Input type for disabling a user's own account
+input DisableAccountInput {
+  current_password: String!
+}
+
 # Response type for successful auth
 type AuthResponse {
   access_token: String!
@@ -65,4 +70,8 @@ type Mutation {
   # confirmEmailChange validates the token and updates the user's email
   # This is a public route.
   confirmEmailChange(token: String!): Boolean!
+
+  # disableMyAccount disables the authenticated user's account
+  # This is an authenticated route.
+  disableMyAccount(input: DisableAccountInput!): Boolean!
 }

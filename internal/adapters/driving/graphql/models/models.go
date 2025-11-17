@@ -7,6 +7,10 @@ type AuthResponse struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
+type DisableAccountInput struct {
+	CurrentPassword string `json:"current_password"`
+}
+
 type LoginInput struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`

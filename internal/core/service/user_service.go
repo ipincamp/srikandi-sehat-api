@@ -39,3 +39,30 @@ func (s *userService) GetByID(ctx context.Context, id string) (*domain.User, err
 
 	return user, nil
 }
+
+// UpdateProfile implements the logic for section 1.11.4.
+func (s *userService) UpdateProfile(ctx context.Context, userID string, newName string) (*domain.User, error) {
+	log := s.logger.With().Str("method", "UpdateProfile").Str("user_id", userID).Logger()
+
+	// 1. Fetch the existing user
+	user, err := s.repo.FindByID(ctx, userID)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to find user for update")
+		return nil, err // This will handle "not found" or other DB errors
+	}
+
+	// 2. Apply the change
+	user.Name = newName
+
+	// 3. Save the updated user object
+	// The repository's Update method handles updating the "updated_at" timestamp
+	if err := s.repo.Update(ctx, user); err != nil {
+		log.Error().Err(err).Msg("Failed to save user updates to repository")
+		return nil, err
+	}
+
+	log.Info().Msg("User profile updated successfully")
+
+	// 4. Return the updated user, as required
+	return user, nil
+}

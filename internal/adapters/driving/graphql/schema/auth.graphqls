@@ -74,4 +74,12 @@ type Mutation {
   # disableMyAccount disables the authenticated user's account
   # This is an authenticated route.
   disableMyAccount(input: DisableAccountInput!): Boolean!
+
+  # requestAccountReactivation triggers a reactivation email
+  # This is a public route.
+  requestAccountReactivation(email: String!): Boolean!
+
+  # confirmAccountReactivation validates the token and re-enables the account
+  # This is a public route.
+  confirmAccountReactivation(token: String!): Boolean!
 }

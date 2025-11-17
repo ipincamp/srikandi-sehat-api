@@ -255,6 +255,39 @@ func (r *mutationResolver) DisableMyAccount(ctx context.Context, input models.Di
 	return true, nil
 }
 
+// RequestAccountReactivation is the resolver for the requestAccountReactivation field.
+func (r *mutationResolver) RequestAccountReactivation(ctx context.Context, email string) (bool, error) {
+	// 1. Validation Step
+	if err := validate.Var(email, "required,email"); err != nil {
+		return false, formatValidationErrors(err)
+	}
+
+	// 2. Call the auth service
+	// The service handles ambiguous success, so we don't expect an error here
+	if err := r.Resolver.authService.RequestAccountReactivation(ctx, email); err != nil {
+		return false, err // Should not happen, but good practice
+	}
+
+	// 3. Always return true
+	return true, nil
+}
+
+// ConfirmAccountReactivation is the resolver for the confirmAccountReactivation field.
+func (r *mutationResolver) ConfirmAccountReactivation(ctx context.Context, token string) (bool, error) {
+	// 1. Validation Step
+	if err := validate.Var(token, "required"); err != nil {
+		return false, formatValidationErrors(err)
+	}
+
+	// 2. Call the auth service
+	if err := r.Resolver.authService.ConfirmAccountReactivation(ctx, token); err != nil {
+		return false, err // Service will return "invalid or expired token"
+	}
+
+	// 3. Return success
+	return true, nil
+}
+
 // Mutation returns generated.MutationResolver implementation.
 func (r *Resolver) Mutation() generated.MutationResolver { return &mutationResolver{r} }
 

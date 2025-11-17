@@ -52,18 +52,20 @@ type ComplexityRoot struct {
 	}
 
 	Mutation struct {
-		ConfirmEmailChange      func(childComplexity int, token string) int
-		DisableMyAccount        func(childComplexity int, input models.DisableAccountInput) int
-		ForgotPassword          func(childComplexity int, email string) int
-		Login                   func(childComplexity int, input models.LoginInput) int
-		Logout                  func(childComplexity int, refreshToken string) int
-		RefreshToken            func(childComplexity int, refreshToken string) int
-		Register                func(childComplexity int, input models.RegisterInput) int
-		RequestEmailChange      func(childComplexity int, input models.RequestEmailChangeInput) int
-		ResendVerificationEmail func(childComplexity int) int
-		ResetPassword           func(childComplexity int, input models.ResetPasswordInput) int
-		UpdateProfile           func(childComplexity int, input models.UpdateProfileInput) int
-		VerifyEmail             func(childComplexity int, token string) int
+		ConfirmAccountReactivation func(childComplexity int, token string) int
+		ConfirmEmailChange         func(childComplexity int, token string) int
+		DisableMyAccount           func(childComplexity int, input models.DisableAccountInput) int
+		ForgotPassword             func(childComplexity int, email string) int
+		Login                      func(childComplexity int, input models.LoginInput) int
+		Logout                     func(childComplexity int, refreshToken string) int
+		RefreshToken               func(childComplexity int, refreshToken string) int
+		Register                   func(childComplexity int, input models.RegisterInput) int
+		RequestAccountReactivation func(childComplexity int, email string) int
+		RequestEmailChange         func(childComplexity int, input models.RequestEmailChangeInput) int
+		ResendVerificationEmail    func(childComplexity int) int
+		ResetPassword              func(childComplexity int, input models.ResetPasswordInput) int
+		UpdateProfile              func(childComplexity int, input models.UpdateProfileInput) int
+		VerifyEmail                func(childComplexity int, token string) int
 	}
 
 	Query struct {
@@ -92,6 +94,8 @@ type MutationResolver interface {
 	RequestEmailChange(ctx context.Context, input models.RequestEmailChangeInput) (bool, error)
 	ConfirmEmailChange(ctx context.Context, token string) (bool, error)
 	DisableMyAccount(ctx context.Context, input models.DisableAccountInput) (bool, error)
+	RequestAccountReactivation(ctx context.Context, email string) (bool, error)
+	ConfirmAccountReactivation(ctx context.Context, token string) (bool, error)
 	UpdateProfile(ctx context.Context, input models.UpdateProfileInput) (*models.User, error)
 }
 type QueryResolver interface {
@@ -131,6 +135,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.AuthResponse.RefreshToken(childComplexity), true
 
+	case "Mutation.confirmAccountReactivation":
+		if e.complexity.Mutation.ConfirmAccountReactivation == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_confirmAccountReactivation_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.ConfirmAccountReactivation(childComplexity, args["token"].(string)), true
 	case "Mutation.confirmEmailChange":
 		if e.complexity.Mutation.ConfirmEmailChange == nil {
 			break
@@ -208,6 +223,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Mutation.Register(childComplexity, args["input"].(models.RegisterInput)), true
+	case "Mutation.requestAccountReactivation":
+		if e.complexity.Mutation.RequestAccountReactivation == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_requestAccountReactivation_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.RequestAccountReactivation(childComplexity, args["email"].(string)), true
 	case "Mutation.requestEmailChange":
 		if e.complexity.Mutation.RequestEmailChange == nil {
 			break
@@ -490,6 +516,14 @@ type Mutation {
   # disableMyAccount disables the authenticated user's account
   # This is an authenticated route.
   disableMyAccount(input: DisableAccountInput!): Boolean!
+
+  # requestAccountReactivation triggers a reactivation email
+  # This is a public route.
+  requestAccountReactivation(email: String!): Boolean!
+
+  # confirmAccountReactivation validates the token and re-enables the account
+  # This is a public route.
+  confirmAccountReactivation(token: String!): Boolean!
 }
 `, BuiltIn: false},
 	{Name: "../schema/health.graphqls", Input: `# A simple query type for testing server initialization.
@@ -535,6 +569,17 @@ var parsedSchema = gqlparser.MustLoadSchema(sources...)
 // endregion ************************** generated!.gotpl **************************
 
 // region    ***************************** args.gotpl *****************************
+
+func (ec *executionContext) field_Mutation_confirmAccountReactivation_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "token", ec.unmarshalNString2string)
+	if err != nil {
+		return nil, err
+	}
+	args["token"] = arg0
+	return args, nil
+}
 
 func (ec *executionContext) field_Mutation_confirmEmailChange_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
@@ -610,6 +655,17 @@ func (ec *executionContext) field_Mutation_register_args(ctx context.Context, ra
 		return nil, err
 	}
 	args["input"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_requestAccountReactivation_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "email", ec.unmarshalNString2string)
+	if err != nil {
+		return nil, err
+	}
+	args["email"] = arg0
 	return args, nil
 }
 
@@ -1229,6 +1285,88 @@ func (ec *executionContext) fieldContext_Mutation_disableMyAccount(ctx context.C
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_disableMyAccount_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_requestAccountReactivation(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_requestAccountReactivation,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().RequestAccountReactivation(ctx, fc.Args["email"].(string))
+		},
+		nil,
+		ec.marshalNBoolean2bool,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_requestAccountReactivation(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_requestAccountReactivation_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_confirmAccountReactivation(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_confirmAccountReactivation,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().ConfirmAccountReactivation(ctx, fc.Args["token"].(string))
+		},
+		nil,
+		ec.marshalNBoolean2bool,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_confirmAccountReactivation(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_confirmAccountReactivation_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -3398,6 +3536,20 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		case "disableMyAccount":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_disableMyAccount(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "requestAccountReactivation":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_requestAccountReactivation(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "confirmAccountReactivation":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_confirmAccountReactivation(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++

@@ -1481,9 +1481,19 @@ func (s *authService) ChangePassword(ctx context.Context, userID string, current
 		log.Info().Msg("All sessions revoked")
 	}
 
-	// 5. TODO: Create Activity Log (Req 1.12.3.7)
-	// (Add this after activity log feature is implemented)
-	// tx.GetActivityLogRepository().Save(...)
+	// 5. Log Activity (Req 1.12.3.7)
+	logRepo := tx.GetActivityLogRepository()
+	activityLog := &domain.ActivityLog{
+		ActorUserID: &user.ID,
+		Action:      domain.ActionChangePassword,
+		TargetTable: ptrString("users"),
+		TargetID:    &user.ID,
+		// IPAddress and UserAgent would need to be passed down from the resolver
+	}
+	if err := logRepo.Save(ctx, activityLog); err != nil {
+		// Log the error, but don't fail the whole transaction
+		log.Error().Err(err).Msg("Failed to save activity log for password change")
+	}
 
 	// 6. Commit Transaction (Req 1.12.3.8)
 	if err := tx.Commit(); err != nil {
@@ -1493,4 +1503,9 @@ func (s *authService) ChangePassword(ctx context.Context, userID string, current
 
 	log.Info().Msg("Password changed successfully")
 	return nil // As per Req 200 OK
+}
+
+// ptrString returns a pointer to the given string.
+func ptrString(s string) *string {
+	return &s
 }

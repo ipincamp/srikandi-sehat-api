@@ -7,7 +7,7 @@ const (
 	TokenPurposeVerification        = "email_verification"
 	TokenPurposePasswordReset       = "password_reset"
 	TokenPurposeEmailChange         = "email_change_confirmation"
-	TokenPurposeAccountDeletion     = "account_deletion"
+	TokenPurposeAccountDeletion     = "account_deletion" // DEPRECATED
 	TokenPurposeAccountReactivation = "account_reactivation"
 )
 

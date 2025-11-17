@@ -28,8 +28,14 @@ input DisableAccountInput {
   current_password: String!
 }
 
+# DEPRECATED: Use deleteMyAccount instead
 # Input type for requesting an account deletion
 input RequestAccountDeletionInput {
+  current_password: String!
+}
+
+# Input type for deleting a user's own account
+input DeleteMyAccountInput {
   current_password: String!
 }
 
@@ -88,11 +94,17 @@ type Mutation {
   # This is a public route.
   confirmAccountReactivation(token: String!): Boolean!
 
+  # DEPRECATED: Use deleteMyAccount instead
   # requestAccountDeletion triggers a confirmation email for deletion
   # This is an authenticated route.
   requestAccountDeletion(input: RequestAccountDeletionInput!): Boolean!
 
+  # DEPRECATED: Use deleteMyAccount instead
   # confirmAccountDeletion validates the token and soft-deletes the account
   # This is a public route.
   confirmAccountDeletion(token: String!): Boolean!
+
+  # deleteMyAccount permanently deletes the authenticated user's account
+  # This is an authenticated route.
+  deleteMyAccount(input: DeleteMyAccountInput!): Boolean!
 }

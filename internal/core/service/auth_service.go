@@ -1189,6 +1189,7 @@ func (s *authService) ConfirmAccountReactivation(ctx context.Context, token stri
 	return nil
 }
 
+// DEPRECATED: Use DeleteMyAccount instead
 // RequestAccountDeletion initiates the two-step account deletion
 func (s *authService) RequestAccountDeletion(ctx context.Context, userID string, currentPassword string) error {
 	log := s.logger.With().Str("method", "RequestAccountDeletion").Str("user_id", userID).Logger()
@@ -1267,6 +1268,7 @@ func (s *authService) RequestAccountDeletion(ctx context.Context, userID string,
 	return nil
 }
 
+// DEPRECATED: Use DeleteMyAccount instead
 // ConfirmAccountDeletion validates a token and soft-deletes the account
 func (s *authService) ConfirmAccountDeletion(ctx context.Context, token string) error {
 	log := s.logger.With().Str("method", "ConfirmAccountDeletion").Logger()
@@ -1351,5 +1353,69 @@ func (s *authService) ConfirmAccountDeletion(ctx context.Context, token string) 
 	}
 
 	log.Info().Str("user_id", userID).Msg("User account soft-deleted successfully")
+	return nil
+}
+
+// DeleteMyAccount implements the logic for authenticated users to delete their own accounts
+func (s *authService) DeleteMyAccount(ctx context.Context, userID string, currentPassword string) error {
+	log := s.logger.With().Str("method", "DeleteMyAccount").Str("user_id", userID).Logger()
+
+	// 1. Begin Database Transaction
+	tx, err := s.uow.Begin(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to begin transaction")
+		return errors.New("account deletion failed")
+	}
+
+	// 2. Get transactional repositories
+	userRepo := tx.GetUserRepository()
+	personalTokenRepo := tx.GetPersonalTokenRepository()
+
+	// 3. Verify Password
+	user, err := userRepo.FindByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Warn().Msg("User not found")
+		} else {
+			log.Error().Err(err).Msg("Failed to query user")
+		}
+		s.handleRollback(tx, "Rollback DeleteMyAccount: user not found")
+		return errors.New("account deletion failed")
+	}
+
+	if !s.hasher.Compare(user.PasswordHash, currentPassword) {
+		log.Warn().Msg("Invalid current password provided for deletion")
+		s.handleRollback(tx, "Rollback DeleteMyAccount: invalid password")
+		return errors.New("invalid password")
+	}
+
+	// --- Password valid, proceed ---
+
+	// 3. Soft Delete Account
+	// (userRepo.Delete will perform a soft delete based on the GORM model)
+	if err := userRepo.Delete(ctx, userID); err != nil {
+		log.Error().Err(err).Msg("Failed to soft-delete user")
+		s.handleRollback(tx, "Rollback DeleteMyAccount: user delete failed")
+		return errors.New("account deletion failed")
+	}
+
+	// 4. Revoke Sessions (Log out everywhere)
+	if err := personalTokenRepo.DeleteByUserID(ctx, userID); err != nil {
+		log.Error().Err(err).Msg("Failed to revoke refresh tokens")
+		s.handleRollback(tx, "Rollback DeleteMyAccount: token revocation failed")
+		return errors.New("account deletion failed")
+	}
+
+	// 5. (Optional) Delete 'account_deletion' token if it exists (cleanup)
+	//    If you follow step 5, this token will no longer exist.
+	//    _ = tx.GetUserTokenRepository().DeleteByUserIDAndPurpose(ctx, userID, domain.TokenPurposeAccountDeletion)
+
+	// 6. Commit Transaction
+	if err := tx.Commit(); err != nil {
+		log.Error().Err(err).Msg("Failed to commit transaction")
+		return errors.New("account deletion failed")
+	}
+
+	log.Info().Msg("User account soft-deleted successfully")
 	return nil
 }

@@ -55,6 +55,7 @@ type ComplexityRoot struct {
 		ConfirmAccountDeletion     func(childComplexity int, token string) int
 		ConfirmAccountReactivation func(childComplexity int, token string) int
 		ConfirmEmailChange         func(childComplexity int, token string) int
+		DeleteMyAccount            func(childComplexity int, input models.DeleteMyAccountInput) int
 		DisableMyAccount           func(childComplexity int, input models.DisableAccountInput) int
 		ForgotPassword             func(childComplexity int, email string) int
 		Login                      func(childComplexity int, input models.LoginInput) int
@@ -100,6 +101,7 @@ type MutationResolver interface {
 	ConfirmAccountReactivation(ctx context.Context, token string) (bool, error)
 	RequestAccountDeletion(ctx context.Context, input models.RequestAccountDeletionInput) (bool, error)
 	ConfirmAccountDeletion(ctx context.Context, token string) (bool, error)
+	DeleteMyAccount(ctx context.Context, input models.DeleteMyAccountInput) (bool, error)
 	UpdateProfile(ctx context.Context, input models.UpdateProfileInput) (*models.User, error)
 }
 type QueryResolver interface {
@@ -172,6 +174,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Mutation.ConfirmEmailChange(childComplexity, args["token"].(string)), true
+	case "Mutation.deleteMyAccount":
+		if e.complexity.Mutation.DeleteMyAccount == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_deleteMyAccount_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.DeleteMyAccount(childComplexity, args["input"].(models.DeleteMyAccountInput)), true
 	case "Mutation.disableMyAccount":
 		if e.complexity.Mutation.DisableMyAccount == nil {
 			break
@@ -363,6 +376,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 	opCtx := graphql.GetOperationContext(ctx)
 	ec := executionContext{opCtx, e, 0, 0, make(chan graphql.DeferredResult)}
 	inputUnmarshalMap := graphql.BuildUnmarshalerMap(
+		ec.unmarshalInputDeleteMyAccountInput,
 		ec.unmarshalInputDisableAccountInput,
 		ec.unmarshalInputLoginInput,
 		ec.unmarshalInputRegisterInput,
@@ -497,8 +511,14 @@ input DisableAccountInput {
   current_password: String!
 }
 
+# DEPRECATED: Use deleteMyAccount instead
 # Input type for requesting an account deletion
 input RequestAccountDeletionInput {
+  current_password: String!
+}
+
+# Input type for deleting a user's own account
+input DeleteMyAccountInput {
   current_password: String!
 }
 
@@ -557,13 +577,19 @@ type Mutation {
   # This is a public route.
   confirmAccountReactivation(token: String!): Boolean!
 
+  # DEPRECATED: Use deleteMyAccount instead
   # requestAccountDeletion triggers a confirmation email for deletion
   # This is an authenticated route.
   requestAccountDeletion(input: RequestAccountDeletionInput!): Boolean!
 
+  # DEPRECATED: Use deleteMyAccount instead
   # confirmAccountDeletion validates the token and soft-deletes the account
   # This is a public route.
   confirmAccountDeletion(token: String!): Boolean!
+
+  # deleteMyAccount permanently deletes the authenticated user's account
+  # This is an authenticated route.
+  deleteMyAccount(input: DeleteMyAccountInput!): Boolean!
 }
 `, BuiltIn: false},
 	{Name: "../schema/health.graphqls", Input: `# A simple query type for testing server initialization.
@@ -640,6 +666,17 @@ func (ec *executionContext) field_Mutation_confirmEmailChange_args(ctx context.C
 		return nil, err
 	}
 	args["token"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Mutation_deleteMyAccount_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input", ec.unmarshalNDeleteMyAccountInput2githubᚗcomᚋipincampᚋsrikandiᚑsehatᚋinternalᚋadaptersᚋdrivingᚋgraphqlᚋmodelsᚐDeleteMyAccountInput)
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
 	return args, nil
 }
 
@@ -1511,6 +1548,47 @@ func (ec *executionContext) fieldContext_Mutation_confirmAccountDeletion(ctx con
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_confirmAccountDeletion_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_deleteMyAccount(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_deleteMyAccount,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().DeleteMyAccount(ctx, fc.Args["input"].(models.DeleteMyAccountInput))
+		},
+		nil,
+		ec.marshalNBoolean2bool,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_deleteMyAccount(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_deleteMyAccount_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -3339,6 +3417,33 @@ func (ec *executionContext) fieldContext___Type_isOneOf(_ context.Context, field
 
 // region    **************************** input.gotpl *****************************
 
+func (ec *executionContext) unmarshalInputDeleteMyAccountInput(ctx context.Context, obj any) (models.DeleteMyAccountInput, error) {
+	var it models.DeleteMyAccountInput
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"current_password"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "current_password":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("current_password"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.CurrentPassword = data
+		}
+	}
+
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputDisableAccountInput(ctx context.Context, obj any) (models.DisableAccountInput, error) {
 	var it models.DisableAccountInput
 	asMap := map[string]any{}
@@ -3735,6 +3840,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		case "confirmAccountDeletion":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_confirmAccountDeletion(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "deleteMyAccount":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_deleteMyAccount(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -4285,6 +4397,11 @@ func (ec *executionContext) marshalNBoolean2bool(ctx context.Context, sel ast.Se
 		}
 	}
 	return res
+}
+
+func (ec *executionContext) unmarshalNDeleteMyAccountInput2githubᚗcomᚋipincampᚋsrikandiᚑsehatᚋinternalᚋadaptersᚋdrivingᚋgraphqlᚋmodelsᚐDeleteMyAccountInput(ctx context.Context, v any) (models.DeleteMyAccountInput, error) {
+	res, err := ec.unmarshalInputDeleteMyAccountInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
 }
 
 func (ec *executionContext) unmarshalNDisableAccountInput2githubᚗcomᚋipincampᚋsrikandiᚑsehatᚋinternalᚋadaptersᚋdrivingᚋgraphqlᚋmodelsᚐDisableAccountInput(ctx context.Context, v any) (models.DisableAccountInput, error) {

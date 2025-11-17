@@ -27,6 +27,9 @@ type AuthService interface {
 	RequestAccountReactivation(ctx context.Context, email string) error
 	ConfirmAccountReactivation(ctx context.Context, token string) error
 
+	// DEPRECATED: Use DeleteMyAccount instead
 	RequestAccountDeletion(ctx context.Context, userID string, currentPassword string) error
 	ConfirmAccountDeletion(ctx context.Context, token string) error
+
+	DeleteMyAccount(ctx context.Context, userID string, currentPassword string) error
 }

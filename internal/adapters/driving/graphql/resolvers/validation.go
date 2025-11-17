@@ -70,8 +70,13 @@ type disableAccountInputValidation struct {
 	CurrentPassword string `validate:"required"`
 }
 
+// DEPRECATED: use deleteMyAccountInputValidation instead.
 // requestAccountDeletionInputValidation maps to RequestAccountDeletionInput.
 type requestAccountDeletionInputValidation struct {
+	CurrentPassword string `validate:"required"`
+}
+
+type deleteMyAccountInputValidation struct {
 	CurrentPassword string `validate:"required"`
 }
 

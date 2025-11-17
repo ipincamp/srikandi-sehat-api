@@ -329,6 +329,31 @@ func (r *mutationResolver) ConfirmAccountDeletion(ctx context.Context, token str
 	return true, nil
 }
 
+// DeleteMyAccount is the resolver for the deleteMyAccount field.
+func (r *mutationResolver) DeleteMyAccount(ctx context.Context, input models.DeleteMyAccountInput) (bool, error) {
+	// 1. Get User ID dari context (authenticated route)
+	userID, ok := ctx.Value(AuthUserUUIDKey).(string)
+	if !ok || userID == "" {
+		return false, ErrNotAuthenticated
+	}
+
+	// 2. Validasi Input
+	vInput := deleteMyAccountInputValidation{
+		CurrentPassword: input.CurrentPassword,
+	}
+	if err := validate.Struct(vInput); err != nil {
+		return false, formatValidationErrors(err)
+	}
+
+	// 3. Panggil auth service
+	if err := r.Resolver.authService.DeleteMyAccount(ctx, userID, input.CurrentPassword); err != nil {
+		return false, err // Service akan mengembalikan "invalid password" dll.
+	}
+
+	// 4. Kembalikan sukses
+	return true, nil
+}
+
 // Mutation returns generated.MutationResolver implementation.
 func (r *Resolver) Mutation() generated.MutationResolver { return &mutationResolver{r} }
 

@@ -731,3 +731,216 @@ func (s *authService) VerifyEmail(ctx context.Context, token string) error {
 	log.Info().Str("user_id", userID).Msg("Email verified successfully")
 	return nil
 }
+
+// RequestEmailChange implements the logic from section 1.9.4.
+func (s *authService) RequestEmailChange(ctx context.Context, userID string, newEmail string, currentPassword string) error {
+	log := s.logger.With().Str("method", "RequestEmailChange").Str("user_id", userID).Logger()
+
+	// 1. Start Transaction
+	tx, err := s.uow.Begin(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to begin transaction")
+		return errors.New("request failed")
+	}
+
+	// Get transactional repositories
+	userRepo := tx.GetUserRepository()
+	tokenRepo := tx.GetUserTokenRepository()
+
+	// 2. Find user
+	user, err := userRepo.FindByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Warn().Msg("User not found")
+		} else {
+			log.Error().Err(err).Msg("Failed to query user")
+		}
+		s.handleRollback(tx, "Rollback RequestEmailChange: user not found")
+		return errors.New("request failed")
+	}
+
+	// 3. Check if current email is verified
+	if !user.IsVerified() {
+		log.Warn().Msg("User's current email is not verified")
+		s.handleRollback(tx, "Rollback RequestEmailChange: current email not verified")
+		return errors.New("must verify current email before changing it")
+	}
+
+	// 4. Verifikasi Password
+	if !s.hasher.Compare(user.PasswordHash, currentPassword) {
+		log.Warn().Msg("Invalid current password provided")
+		s.handleRollback(tx, "Rollback RequestEmailChange: invalid password")
+		return errors.New("invalid password") //
+	}
+
+	// 5. Cek Duplikasi Email Baru
+	_, err = userRepo.FindByEmail(ctx, newEmail)
+	if err == nil {
+		// An active user with this email already exists
+		log.Warn().Str("new_email", newEmail).Msg("New email already in use")
+		s.handleRollback(tx, "Rollback RequestEmailChange: new email in use")
+		return errors.New("new email already in use") //
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		// A database error occurred
+		log.Error().Err(err).Msg("Failed to check new email")
+		s.handleRollback(tx, "Rollback RequestEmailChange: db error")
+		return errors.New("request failed")
+	}
+
+	// 6. Generate and save (Upsert) the new token
+	tokenString, err := generateSecureToken(32)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to generate secure token")
+		s.handleRollback(tx, "Rollback RequestEmailChange: token generation failed")
+		return errors.New("request failed")
+	}
+
+	tokenHash := hashToken(tokenString)
+	tokenExpiry := time.Now().Add(15 * time.Minute) // 15-minute expiry
+
+	userToken := &domain.UserToken{
+		UserID:    user.ID,
+		Purpose:   domain.TokenPurposeEmailChange,
+		TokenHash: tokenHash,
+		ExpiresAt: tokenExpiry,
+	}
+	if err := tokenRepo.Save(ctx, userToken); err != nil {
+		log.Error().Err(err).Msg("Failed to upsert email change token")
+		s.handleRollback(tx, "Rollback RequestEmailChange: token save failed")
+		return errors.New("request failed")
+	}
+
+	// 7. Commit the transaction
+	if err := tx.Commit(); err != nil {
+		log.Error().Err(err).Msg("Failed to commit transaction")
+		return errors.New("request failed")
+	}
+
+	// 8. Send email asynchronously to the *new* email address
+	go func() {
+		emailCtx := context.Background()
+		log.Info().Str("new_email", newEmail).Msg("Dispatching email change confirmation")
+
+		// Create the token in the format: "uid.base64(new_email).tokenstring"
+		// This matches the requirement to extract all 3 parts
+		b64Email := base64.URLEncoding.EncodeToString([]byte(newEmail))
+		fullToken := fmt.Sprintf("%s.%s.%s", user.ID, b64Email, tokenString)
+
+		subject := "Confirm Your New Email Address"
+		plainBody := fmt.Sprintf("Hi %s,\n\nPlease use this token to confirm your new email address (it will expire in 15 minutes):\n\n%s\n\nIf you did not request this, please ignore this email.", user.Name, fullToken)
+		htmlBody := fmt.Sprintf("<h1>Hi %s,</h1><p>Please use this token to confirm your new email address (it will expire in 15 minutes):</p><h2>%s</h2><p>If you did not request this, please ignore this email.</p>", user.Name, fullToken)
+
+		if err := s.mailService.Send(emailCtx, newEmail, subject, plainBody, htmlBody); err != nil {
+			log.Error().Err(err).Str("new_email", newEmail).Msg("Failed to send email change confirmation")
+		}
+	}()
+
+	return nil
+}
+
+// ConfirmEmailChange implements the logic from section 1.10.3.
+func (s *authService) ConfirmEmailChange(ctx context.Context, token string) error {
+	log := s.logger.With().Str("method", "ConfirmEmailChange").Logger()
+
+	// 1. Validate token format: "uid.base64(new_email).tokenstring"
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return errors.New("invalid token format")
+	}
+	userID, b64Email, tokenString := parts[0], parts[1], parts[2]
+
+	// 2. Ekstrak Klaim
+	emailBytes, err := base64.URLEncoding.DecodeString(b64Email)
+	if err != nil || userID == "" || tokenString == "" {
+		return errors.New("invalid token format")
+	}
+	newEmail := string(emailBytes)
+
+	// 3. Hash Token
+	tokenHash := hashToken(tokenString)
+
+	// 4. Start Transaction
+	tx, err := s.uow.Begin(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to begin transaction")
+		return errors.New("email confirmation failed")
+	}
+
+	// 5. Find token in DB
+	tokenRepo := tx.GetUserTokenRepository()
+	userToken, err := tokenRepo.FindByUserIDAndPurpose(ctx, userID, domain.TokenPurposeEmailChange)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Warn().Msg("Email change token not found in DB")
+		} else {
+			log.Error().Err(err).Msg("Failed to find token")
+		}
+		s.handleRollback(tx, "Rollback ConfirmEmailChange: token not found")
+		return errors.New("invalid or expired token")
+	}
+
+	// 6. Validate Token (Hash and Expiry)
+	if subtle.ConstantTimeCompare([]byte(userToken.TokenHash), []byte(tokenHash)) != 1 {
+		log.Warn().Msg("Token hash mismatch")
+		s.handleRollback(tx, "Rollback ConfirmEmailChange: token hash mismatch")
+		return errors.New("invalid or expired token")
+	}
+
+	if time.Now().After(userToken.ExpiresAt) {
+		log.Warn().Msg("Token expired")
+		_ = tokenRepo.DeleteByUserIDAndPurpose(ctx, userID, domain.TokenPurposeEmailChange) // Clean up
+		s.handleRollback(tx, "Rollback ConfirmEmailChange: token expired")
+		return errors.New("invalid or expired token")
+	}
+
+	// --- Token is valid ---
+
+	// 7. Get old user data (for notification)
+	userRepo := tx.GetUserRepository()
+	user, err := userRepo.FindByID(ctx, userID)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to find user associated with token")
+		s.handleRollback(tx, "Rollback ConfirmEmailChange: user find failed")
+		return errors.New("email confirmation failed")
+	}
+	oldEmail := user.Email
+
+	// 8. Update Email
+	now := time.Now()
+	user.Email = newEmail
+	user.EmailVerifiedAt = &now // Mark the new email as verified
+	if err := userRepo.Update(ctx, user); err != nil {
+		log.Error().Err(err).Msg("Failed to update user email")
+		s.handleRollback(tx, "Rollback ConfirmEmailChange: user update failed")
+		return errors.New("email confirmation failed")
+	}
+
+	// 9. Cabut Token
+	if err := tokenRepo.DeleteByUserIDAndPurpose(ctx, userID, domain.TokenPurposeEmailChange); err != nil {
+		log.Error().Err(err).Msg("Failed to delete used email change token")
+		s.handleRollback(tx, "Rollback ConfirmEmailChange: token deletion failed")
+		return errors.New("email confirmation failed")
+	}
+
+	// 10. Commit Transaksi
+	if err := tx.Commit(); err != nil {
+		log.Error().Err(err).Msg("Failed to commit transaction")
+		return errors.New("email confirmation failed")
+	}
+
+	// 11. Send notification email to *old* address
+	go func() {
+		emailCtx := context.Background()
+		log.Info().Str("old_email", oldEmail).Msg("Dispatching notification to old email")
+		subject := "Your Email Address Has Been Changed"
+		plainBody := fmt.Sprintf("Hi %s,\n\nThis is a notification that the email address for your account has been successfully changed to %s.\n\nIf you did not make this change, please contact support immediately.", user.Name, newEmail)
+		htmlBody := fmt.Sprintf("<h1>Hi %s,</h1><p>This is a notification that the email address for your account has been successfully changed to <b>%s</b>.</p><p>If you did not make this change, please contact support immediately.</p>", user.Name, newEmail)
+
+		if err := s.mailService.Send(emailCtx, oldEmail, subject, plainBody, htmlBody); err != nil {
+			log.Error().Err(err).Str("old_email", oldEmail).Msg("Failed to send notification to old email")
+		}
+	}()
+
+	return nil
+}

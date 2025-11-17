@@ -18,4 +18,7 @@ type AuthService interface {
 
 	ResendVerificationEmail(ctx context.Context, userID string) error
 	VerifyEmail(ctx context.Context, token string) error
+
+	RequestEmailChange(ctx context.Context, userID string, newEmail string, currentPassword string) error
+	ConfirmEmailChange(ctx context.Context, token string) error
 }

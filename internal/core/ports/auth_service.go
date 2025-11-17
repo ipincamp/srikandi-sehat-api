@@ -23,4 +23,7 @@ type AuthService interface {
 	ConfirmEmailChange(ctx context.Context, token string) error
 
 	DisableAccount(ctx context.Context, userID string, currentPassword string) error
+
+	RequestAccountReactivation(ctx context.Context, email string) error
+	ConfirmAccountReactivation(ctx context.Context, token string) error
 }

@@ -4,10 +4,11 @@ import "time"
 
 // TokenPurpose constants define the various purposes for user tokens.
 const (
-	TokenPurposeVerification    = "email_verification"
-	TokenPurposePasswordReset   = "password_reset"
-	TokenPurposeEmailChange     = "email_change_confirmation"
-	TokenPurposeAccountDeletion = "account_deletion"
+	TokenPurposeVerification        = "email_verification"
+	TokenPurposePasswordReset       = "password_reset"
+	TokenPurposeEmailChange         = "email_change_confirmation"
+	TokenPurposeAccountDeletion     = "account_deletion"
+	TokenPurposeAccountReactivation = "account_reactivation"
 )
 
 // UserToken is the core domain model for a user token.

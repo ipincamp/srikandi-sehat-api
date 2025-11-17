@@ -1017,3 +1017,166 @@ func (s *authService) DisableAccount(ctx context.Context, userID string, current
 	log.Info().Msg("User account disabled successfully")
 	return nil
 }
+
+// RequestAccountReactivation sends a reactivation token
+func (s *authService) RequestAccountReactivation(ctx context.Context, email string) error {
+	log := s.logger.With().Str("method", "RequestAccountReactivation").Str("email", email).Logger()
+
+	// Start a transaction
+	tx, err := s.uow.Begin(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to begin transaction")
+		return nil // Always return nil to prevent email enumeration
+	}
+
+	userRepo := tx.GetUserRepository()
+	user, err := userRepo.FindByEmail(ctx, email)
+
+	// We only proceed if the user exists AND is currently disabled
+	if err != nil || !user.IsDisabled() {
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Error().Err(err).Msg("Failed to query user by email")
+		}
+		// If user not found, or is found but *not* disabled, we do nothing.
+		_ = tx.Commit() // Commit the empty transaction
+		return nil      // Return ambiguous success
+	}
+
+	// --- User was found and is disabled, proceed with logic ---
+	tokenRepo := tx.GetUserTokenRepository()
+
+	// 1. Generate new token
+	tokenString, err := generateSecureToken(32)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to generate secure token")
+		s.handleRollback(tx, "Rollback Reactivation: token generation failed")
+		return nil
+	}
+
+	// 2. Hash the token for storage
+	tokenHash := hashToken(tokenString)
+	tokenExpiry := time.Now().Add(15 * time.Minute) // 15-minute expiry
+
+	// 3. Save (Upsert) the new token hash
+	userToken := &domain.UserToken{
+		UserID:    user.ID,
+		Purpose:   domain.TokenPurposeAccountReactivation, // Use our new constant
+		TokenHash: tokenHash,
+		ExpiresAt: tokenExpiry,
+	}
+	if err := tokenRepo.Save(ctx, userToken); err != nil {
+		log.Error().Err(err).Msg("Failed to upsert reactivation token")
+		s.handleRollback(tx, "Rollback Reactivation: token save failed")
+		return nil
+	}
+
+	// 4. Commit the transaction
+	if err := tx.Commit(); err != nil {
+		log.Error().Err(err).Msg("Failed to commit transaction")
+		return nil
+	}
+
+	// 5. Send email asynchronously
+	go func() {
+		emailCtx := context.Background()
+		log.Info().Msg("Dispatching account reactivation email")
+		// Use the same token format as password reset: uid.tokenstring
+		fullToken := fmt.Sprintf("%s.%s", user.ID, tokenString)
+
+		subject := "Account Reactivation Request"
+		plainBody := fmt.Sprintf("Hi %s,\n\nWe received a request to reactivate your account. Use this token (it will expire in 15 minutes):\n\n%s\n\nIf you did not request this, please ignore this email.", user.Name, fullToken)
+		htmlBody := fmt.Sprintf("<h1>Hi %s,</h1><p>We received a request to reactivate your account. Use this token (it will expire in 15 minutes):</p><h2>%s</h2><p>If you did not request this, please ignore this email.</p>", user.Name, fullToken)
+
+		if err := s.mailService.Send(emailCtx, user.Email, subject, plainBody, htmlBody); err != nil {
+			log.Error().Err(err).Msg("Failed to send reactivation email")
+		}
+	}()
+
+	return nil
+}
+
+// ConfirmAccountReactivation validates a token and re-enables an account
+func (s *authService) ConfirmAccountReactivation(ctx context.Context, token string) error {
+	log := s.logger.With().Str("method", "ConfirmAccountReactivation").Logger()
+
+	// 1. Validate token format: "uid.tokenstring"
+	parts := strings.Split(token, ".")
+	if len(parts) != 2 {
+		return errors.New("invalid token format")
+	}
+	userID, tokenString := parts[0], parts[1]
+	if userID == "" || tokenString == "" {
+		return errors.New("invalid token format")
+	}
+
+	// 2. Hash the provided token string
+	tokenHash := hashToken(tokenString)
+
+	// 3. Start Transaction
+	tx, err := s.uow.Begin(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to begin transaction")
+		return errors.New("account reactivation failed")
+	}
+
+	// 4. Find token in DB
+	tokenRepo := tx.GetUserTokenRepository()
+	userToken, err := tokenRepo.FindByUserIDAndPurpose(ctx, userID, domain.TokenPurposeAccountReactivation)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Warn().Msg("Reactivation token not found in DB")
+		} else {
+			log.Error().Err(err).Msg("Failed to find token")
+		}
+		s.handleRollback(tx, "Rollback Reactivation: token not found")
+		return errors.New("invalid or expired token")
+	}
+
+	// 5. Validate the token hash and expiry
+	if subtle.ConstantTimeCompare([]byte(userToken.TokenHash), []byte(tokenHash)) != 1 {
+		log.Warn().Msg("Token hash mismatch")
+		s.handleRollback(tx, "Rollback Reactivation: token hash mismatch")
+		return errors.New("invalid or expired token")
+	}
+
+	if time.Now().After(userToken.ExpiresAt) {
+		log.Warn().Msg("Token expired")
+		_ = tokenRepo.DeleteByUserIDAndPurpose(ctx, userID, domain.TokenPurposeAccountReactivation) // Clean up
+		s.handleRollback(tx, "Rollback Reactivation: token expired")
+		return errors.New("invalid or expired token")
+	}
+
+	// --- Token is valid ---
+
+	// 6. Update user's status (set DisabledAt to NULL)
+	userRepo := tx.GetUserRepository()
+	user, err := userRepo.FindByID(ctx, userID)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to find user associated with token")
+		s.handleRollback(tx, "Rollback Reactivation: user find failed")
+		return errors.New("account reactivation failed")
+	}
+
+	user.DisabledAt = nil // This is the key step to re-enable the account
+	if err := userRepo.Update(ctx, user); err != nil {
+		log.Error().Err(err).Msg("Failed to update user disabled status")
+		s.handleRollback(tx, "Rollback Reactivation: user update failed")
+		return errors.New("account reactivation failed")
+	}
+
+	// 7. Delete the used token
+	if err := tokenRepo.DeleteByUserIDAndPurpose(ctx, userID, domain.TokenPurposeAccountReactivation); err != nil {
+		log.Error().Err(err).Msg("Failed to delete used reactivation token")
+		s.handleRollback(tx, "Rollback Reactivation: token deletion failed")
+		return errors.New("account reactivation failed")
+	}
+
+	// 8. Commit Transaction
+	if err := tx.Commit(); err != nil {
+		log.Error().Err(err).Msg("Failed to commit transaction")
+		return errors.New("account reactivation failed")
+	}
+
+	log.Info().Str("user_id", userID).Msg("Account reactivated successfully")
+	return nil
+}

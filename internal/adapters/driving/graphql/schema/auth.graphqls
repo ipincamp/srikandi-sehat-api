@@ -39,6 +39,13 @@ input DeleteMyAccountInput {
   current_password: String!
 }
 
+# Input type for changing password
+input ChangePasswordInput {
+  current_password: String!
+  new_password: String!
+  logout_all_sessions: Boolean # Optional, default true
+}
+
 # Response type for successful auth
 type AuthResponse {
   access_token: String!
@@ -107,4 +114,8 @@ type Mutation {
   # deleteMyAccount permanently deletes the authenticated user's account
   # This is an authenticated route.
   deleteMyAccount(input: DeleteMyAccountInput!): Boolean!
+
+  # changePassword allows an authenticated user to change their password
+  # This is an authenticated route.
+  changePassword(input: ChangePasswordInput!): Boolean!
 }

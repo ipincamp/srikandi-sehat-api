@@ -354,6 +354,38 @@ func (r *mutationResolver) DeleteMyAccount(ctx context.Context, input models.Del
 	return true, nil
 }
 
+// ChangePassword is the resolver for the changePassword field.
+func (r *mutationResolver) ChangePassword(ctx context.Context, input models.ChangePasswordInput) (bool, error) {
+	// 1. Get User ID dari context (authenticated route)
+	userID, ok := ctx.Value(AuthUserUUIDKey).(string)
+	if !ok || userID == "" {
+		return false, ErrNotAuthenticated
+	}
+
+	// 2. Validasi Input (Req 1.12.3.2)
+	vInput := changePasswordInputValidation{
+		CurrentPassword: input.CurrentPassword,
+		NewPassword:     input.NewPassword,
+	}
+	if err := validate.Struct(vInput); err != nil {
+		return false, formatValidationErrors(err)
+	}
+
+	// 3. Handle boolean opsional (default true) (Req 1.12.1.2.3)
+	logoutAll := true
+	if input.LogoutAllSessions != nil {
+		logoutAll = *input.LogoutAllSessions
+	}
+
+	// 4. Panggil core service (Req 1.12.3)
+	if err := r.Resolver.authService.ChangePassword(ctx, userID, input.CurrentPassword, input.NewPassword, logoutAll); err != nil {
+		return false, err // Akan mengembalikan error "invalid current password" dll.
+	}
+
+	// 5. Kembalikan sukses (Req 1.12.3.9)
+	return true, nil
+}
+
 // Mutation returns generated.MutationResolver implementation.
 func (r *Resolver) Mutation() generated.MutationResolver { return &mutationResolver{r} }
 

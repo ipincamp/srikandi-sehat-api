@@ -52,6 +52,7 @@ type ComplexityRoot struct {
 	}
 
 	Mutation struct {
+		ChangePassword             func(childComplexity int, input models.ChangePasswordInput) int
 		ConfirmAccountDeletion     func(childComplexity int, token string) int
 		ConfirmAccountReactivation func(childComplexity int, token string) int
 		ConfirmEmailChange         func(childComplexity int, token string) int
@@ -102,6 +103,7 @@ type MutationResolver interface {
 	RequestAccountDeletion(ctx context.Context, input models.RequestAccountDeletionInput) (bool, error)
 	ConfirmAccountDeletion(ctx context.Context, token string) (bool, error)
 	DeleteMyAccount(ctx context.Context, input models.DeleteMyAccountInput) (bool, error)
+	ChangePassword(ctx context.Context, input models.ChangePasswordInput) (bool, error)
 	UpdateProfile(ctx context.Context, input models.UpdateProfileInput) (*models.User, error)
 }
 type QueryResolver interface {
@@ -141,6 +143,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.AuthResponse.RefreshToken(childComplexity), true
 
+	case "Mutation.changePassword":
+		if e.complexity.Mutation.ChangePassword == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_changePassword_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.ChangePassword(childComplexity, args["input"].(models.ChangePasswordInput)), true
 	case "Mutation.confirmAccountDeletion":
 		if e.complexity.Mutation.ConfirmAccountDeletion == nil {
 			break
@@ -376,6 +389,7 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 	opCtx := graphql.GetOperationContext(ctx)
 	ec := executionContext{opCtx, e, 0, 0, make(chan graphql.DeferredResult)}
 	inputUnmarshalMap := graphql.BuildUnmarshalerMap(
+		ec.unmarshalInputChangePasswordInput,
 		ec.unmarshalInputDeleteMyAccountInput,
 		ec.unmarshalInputDisableAccountInput,
 		ec.unmarshalInputLoginInput,
@@ -522,6 +536,13 @@ input DeleteMyAccountInput {
   current_password: String!
 }
 
+# Input type for changing password
+input ChangePasswordInput {
+  current_password: String!
+  new_password: String!
+  logout_all_sessions: Boolean # Optional, default true
+}
+
 # Response type for successful auth
 type AuthResponse {
   access_token: String!
@@ -590,6 +611,10 @@ type Mutation {
   # deleteMyAccount permanently deletes the authenticated user's account
   # This is an authenticated route.
   deleteMyAccount(input: DeleteMyAccountInput!): Boolean!
+
+  # changePassword allows an authenticated user to change their password
+  # This is an authenticated route.
+  changePassword(input: ChangePasswordInput!): Boolean!
 }
 `, BuiltIn: false},
 	{Name: "../schema/health.graphqls", Input: `# A simple query type for testing server initialization.
@@ -635,6 +660,17 @@ var parsedSchema = gqlparser.MustLoadSchema(sources...)
 // endregion ************************** generated!.gotpl **************************
 
 // region    ***************************** args.gotpl *****************************
+
+func (ec *executionContext) field_Mutation_changePassword_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "input", ec.unmarshalNChangePasswordInput2githubᚗcomᚋipincampᚋsrikandiᚑsehatᚋinternalᚋadaptersᚋdrivingᚋgraphqlᚋmodelsᚐChangePasswordInput)
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
 
 func (ec *executionContext) field_Mutation_confirmAccountDeletion_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
@@ -1589,6 +1625,47 @@ func (ec *executionContext) fieldContext_Mutation_deleteMyAccount(ctx context.Co
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_deleteMyAccount_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_changePassword(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_changePassword,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Mutation().ChangePassword(ctx, fc.Args["input"].(models.ChangePasswordInput))
+		},
+		nil,
+		ec.marshalNBoolean2bool,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_changePassword(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_changePassword_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -3417,6 +3494,47 @@ func (ec *executionContext) fieldContext___Type_isOneOf(_ context.Context, field
 
 // region    **************************** input.gotpl *****************************
 
+func (ec *executionContext) unmarshalInputChangePasswordInput(ctx context.Context, obj any) (models.ChangePasswordInput, error) {
+	var it models.ChangePasswordInput
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"current_password", "new_password", "logout_all_sessions"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "current_password":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("current_password"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.CurrentPassword = data
+		case "new_password":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("new_password"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.NewPassword = data
+		case "logout_all_sessions":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("logout_all_sessions"))
+			data, err := ec.unmarshalOBoolean2ᚖbool(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.LogoutAllSessions = data
+		}
+	}
+
+	return it, nil
+}
+
 func (ec *executionContext) unmarshalInputDeleteMyAccountInput(ctx context.Context, obj any) (models.DeleteMyAccountInput, error) {
 	var it models.DeleteMyAccountInput
 	asMap := map[string]any{}
@@ -3847,6 +3965,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		case "deleteMyAccount":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_deleteMyAccount(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "changePassword":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_changePassword(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -4397,6 +4522,11 @@ func (ec *executionContext) marshalNBoolean2bool(ctx context.Context, sel ast.Se
 		}
 	}
 	return res
+}
+
+func (ec *executionContext) unmarshalNChangePasswordInput2githubᚗcomᚋipincampᚋsrikandiᚑsehatᚋinternalᚋadaptersᚋdrivingᚋgraphqlᚋmodelsᚐChangePasswordInput(ctx context.Context, v any) (models.ChangePasswordInput, error) {
+	res, err := ec.unmarshalInputChangePasswordInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
 }
 
 func (ec *executionContext) unmarshalNDeleteMyAccountInput2githubᚗcomᚋipincampᚋsrikandiᚑsehatᚋinternalᚋadaptersᚋdrivingᚋgraphqlᚋmodelsᚐDeleteMyAccountInput(ctx context.Context, v any) (models.DeleteMyAccountInput, error) {

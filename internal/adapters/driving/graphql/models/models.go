@@ -7,6 +7,12 @@ type AuthResponse struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
+type ChangePasswordInput struct {
+	CurrentPassword   string `json:"current_password"`
+	NewPassword       string `json:"new_password"`
+	LogoutAllSessions *bool  `json:"logout_all_sessions,omitempty"`
+}
+
 type DeleteMyAccountInput struct {
 	CurrentPassword string `json:"current_password"`
 }

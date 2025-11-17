@@ -76,8 +76,16 @@ type requestAccountDeletionInputValidation struct {
 	CurrentPassword string `validate:"required"`
 }
 
+// deleteMyAccountInputValidation maps to DeleteMyAccountInput.
 type deleteMyAccountInputValidation struct {
 	CurrentPassword string `validate:"required"`
+}
+
+// changePasswordInputValidation maps to ChangePasswordInput.
+type changePasswordInputValidation struct {
+	CurrentPassword string `validate:"required"`
+	NewPassword     string `validate:"required,min=8,max=32,passwordcomplex"`
+	// logout_all_sessions is optional, no 'required' validation needed
 }
 
 // --- 3. Custom Validation Functions ---

@@ -944,3 +944,66 @@ func (s *authService) ConfirmEmailChange(ctx context.Context, token string) erro
 
 	return nil
 }
+
+// DisableAccount implements the logic from section 1.12.4.
+func (s *authService) DisableAccount(ctx context.Context, userID string, currentPassword string) error {
+	log := s.logger.With().Str("method", "DisableAccount").Str("user_id", userID).Logger()
+
+	// 1. Start Transaction
+	tx, err := s.uow.Begin(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to begin transaction")
+		return errors.New("account disabling failed")
+	}
+
+	// Get transactional repositories
+	userRepo := tx.GetUserRepository()
+	personalTokenRepo := tx.GetPersonalTokenRepository()
+
+	// 2. Find user (required for password check)
+	user, err := userRepo.FindByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Warn().Msg("User not found")
+		} else {
+			log.Error().Err(err).Msg("Failed to query user")
+		}
+		s.handleRollback(tx, "Rollback DisableAccount: user not found")
+		return errors.New("account disabling failed")
+	}
+
+	// 3. Verifikasi Password
+	if !s.hasher.Compare(user.PasswordHash, currentPassword) {
+		log.Warn().Msg("Invalid current password provided for disable")
+		s.handleRollback(tx, "Rollback DisableAccount: invalid password")
+		return errors.New("invalid password") //
+	}
+
+	// --- Password is valid, proceed ---
+
+	// 4. Nonaktifkan Akun (Set disabled_at)
+	now := time.Now()
+	user.DisabledAt = &now // Set the disabled timestamp
+	if err := userRepo.Update(ctx, user); err != nil {
+		log.Error().Err(err).Msg("Failed to update user status to disabled")
+		s.handleRollback(tx, "Rollback DisableAccount: user update failed")
+		return errors.New("account disabling failed")
+	}
+
+	// 5. Cabut Sesi (Log out everywhere)
+	// This deletes all their *refresh tokens*
+	if err := personalTokenRepo.DeleteByUserID(ctx, userID); err != nil {
+		log.Error().Err(err).Msg("Failed to revoke refresh tokens")
+		s.handleRollback(tx, "Rollback DisableAccount: token revocation failed")
+		return errors.New("account disabling failed")
+	}
+
+	// 6. Commit Transaksi
+	if err := tx.Commit(); err != nil {
+		log.Error().Err(err).Msg("Failed to commit transaction")
+		return errors.New("account disabling failed")
+	}
+
+	log.Info().Msg("User account disabled successfully")
+	return nil
+}

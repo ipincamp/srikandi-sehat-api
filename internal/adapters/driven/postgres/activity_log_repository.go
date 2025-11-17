@@ -2,140 +2,75 @@ package postgres
 
 import (
 	"context"
-	"database/sql"
 
-	"github.com/rs/zerolog"
-
+	"github.com/ipincamp/srikandi-sehat/internal/adapters/driven/postgres/models"
 	"github.com/ipincamp/srikandi-sehat/internal/core/domain"
 	"github.com/ipincamp/srikandi-sehat/internal/core/ports"
+	"github.com/rs/zerolog"
+	"gorm.io/gorm"
 )
 
-// Compile-time interface implementation check.
 var _ ports.ActivityLogRepository = (*activityLogRepository)(nil)
 
-// activityLogRepository implements ports.ActivityLogRepository interface using PostgreSQL.
 type activityLogRepository struct {
-	db     dbExecutor
+	db     *gorm.DB
 	logger zerolog.Logger
 }
 
-// NewActivityLogRepository creates a new activity log repository instance.
-func NewActivityLogRepository(db dbExecutor, logger zerolog.Logger) ports.ActivityLogRepository {
+// NewActivityLogRepository is the constructor.
+func NewActivityLogRepository(db *gorm.DB, logger zerolog.Logger) ports.ActivityLogRepository {
 	return &activityLogRepository{
 		db:     db,
 		logger: logger,
 	}
 }
 
-// Save persists a new activity log entry in the database.
+// Save creates a new log entry.
 func (r *activityLogRepository) Save(ctx context.Context, log *domain.ActivityLog) error {
-	query := `
-		INSERT INTO activity_logs (id, actor_user_id, action, target_table, target_id, changes, ip_address, user_agent, request_id, timestamp)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-	`
-
-	var targetID sql.NullString
-	if log.TargetID != nil {
-		targetID = sql.NullString{String: *log.TargetID, Valid: true}
-	}
-
-	var changes sql.NullString
-	if log.Changes != nil {
-		changes = sql.NullString{String: *log.Changes, Valid: true}
-	}
-
-	var ipAddress sql.NullString
-	if log.IPAddress != nil {
-		ipAddress = sql.NullString{String: *log.IPAddress, Valid: true}
-	}
-
-	var userAgent sql.NullString
-	if log.UserAgent != nil {
-		userAgent = sql.NullString{String: *log.UserAgent, Valid: true}
-	}
-
-	var requestID sql.NullString
-	if log.RequestID != nil {
-		requestID = sql.NullString{String: *log.RequestID, Valid: true}
-	}
-
-	_, err := r.db.Exec(ctx, query,
-		log.ID,
-		log.ActorUserID,
-		log.Action,
-		log.TargetTable,
-		targetID,
-		changes,
-		ipAddress,
-		userAgent,
-		requestID,
-		log.Timestamp,
-	)
-
-	if err != nil {
-		r.logger.Error().Err(err).Int64("log_id", log.ID).Msg("Failed to save activity log")
-		return err
-	}
-
-	r.logger.Debug().Int64("log_id", log.ID).Msg("Activity log saved successfully")
-	return nil
+	model := models.ActivityLogFromDomain(log)
+	// We don't want GORM to touch the Timestamp, it's set by default in DB
+	return r.db.WithContext(ctx).Omit("Timestamp").Create(model).Error
 }
 
-// ListByUserID retrieves all activity logs for a specific user.
-func (r *activityLogRepository) ListByUserID(ctx context.Context, userID string) ([]*domain.ActivityLog, error) {
-	query := `
-		SELECT id, actor_user_id, action, target_table, target_id, changes, ip_address, user_agent, request_id, timestamp
-		FROM activity_logs
-		WHERE actor_user_id = $1
-		ORDER BY timestamp DESC
-	`
+// buildUserLogQuery is a helper to build the base query.
+func (r *activityLogRepository) buildUserLogQuery(ctx context.Context, userID string, actionType *string) *gorm.DB {
+	query := r.db.WithContext(ctx).Model(&models.ActivityLogDBModel{}).Where("actor_user_id = ?", userID)
 
-	rows, err := r.db.Query(ctx, query, userID)
+	if actionType != nil && *actionType != "" {
+		query = query.Where("action = ?", *actionType)
+	}
+	return query
+}
+
+// FindByUserID retrieves a paginated list of logs (Req 1.14.3.3).
+func (r *activityLogRepository) FindByUserID(
+	ctx context.Context,
+	userID string,
+	actionType *string,
+	offset int,
+	limit int,
+) ([]*domain.ActivityLog, error) {
+	var models []models.ActivityLogDBModel
+
+	query := r.buildUserLogQuery(ctx, userID, actionType)
+
+	err := query.Order("timestamp DESC").Offset(offset).Limit(limit).Find(&models).Error
 	if err != nil {
-		r.logger.Error().Err(err).Str("user_id", userID).Msg("Failed to list activity logs by user ID")
 		return nil, err
 	}
-	defer rows.Close()
 
-	var logs []*domain.ActivityLog
-	for rows.Next() {
-		log := &domain.ActivityLog{}
-		var targetID, changes, ipAddress, userAgent, requestID sql.NullString
-
-		if err := rows.Scan(
-			&log.ID,
-			&log.ActorUserID,
-			&log.Action,
-			&log.TargetTable,
-			&targetID,
-			&changes,
-			&ipAddress,
-			&userAgent,
-			&requestID,
-			&log.Timestamp,
-		); err != nil {
-			r.logger.Error().Err(err).Msg("Error scanning activity log")
-			return nil, err
-		}
-
-		if targetID.Valid {
-			log.TargetID = &targetID.String
-		}
-		if changes.Valid {
-			log.Changes = &changes.String
-		}
-		if ipAddress.Valid {
-			log.IPAddress = &ipAddress.String
-		}
-		if userAgent.Valid {
-			log.UserAgent = &userAgent.String
-		}
-		if requestID.Valid {
-			log.RequestID = &requestID.String
-		}
-
-		logs = append(logs, log)
+	// Convert models to domain
+	logs := make([]*domain.ActivityLog, len(models))
+	for i, m := range models {
+		logs[i] = m.ToDomain()
 	}
+	return logs, nil
+}
 
-	return logs, rows.Err()
+// CountByUserID counts the total logs for a user (Req 1.14.3.4).
+func (r *activityLogRepository) CountByUserID(ctx context.Context, userID string, actionType *string) (int64, error) {
+	var count int64
+	query := r.buildUserLogQuery(ctx, userID, actionType)
+	err := query.Count(&count).Error
+	return count, err
 }

@@ -173,6 +173,8 @@ func (s *authService) Login(ctx context.Context, email, password string) (*domai
 		s.logger.Error().Err(err).Msg("Failed to begin transaction for Login")
 		return nil, errors.New("login failed")
 	}
+	// Add logger with context for this request
+	log := s.logger.With().Str("method", "Login").Str("email", email).Logger()
 
 	// Get transactional repositories
 	userRepo := tx.GetUserRepository()
@@ -184,7 +186,7 @@ func (s *authService) Login(ctx context.Context, email, password string) (*domai
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errors.New("invalid email or password")
 		}
-		s.logger.Error().Err(err).Msg("Failed to find user by email for login")
+		log.Error().Err(err).Msg("Failed to find user by email for login")
 		return nil, errors.New("login failed")
 	}
 
@@ -194,16 +196,24 @@ func (s *authService) Login(ctx context.Context, email, password string) (*domai
 		return nil, errors.New("invalid email or password")
 	}
 
-	// 4. Generate tokens and save JTI (within tx)
+	// 4. Check if account is disabled (Requirement 1.2.3.6)
+	if user.IsDisabled() { // This method is from your domain/user.go file
+		s.handleRollback(tx, "Rollback Login: account is disabled")
+		log.Warn().Msg("Login attempt from disabled account")
+		// This specific error message maps to requirement 1.2.3.6
+		return nil, errors.New("invalid email or password")
+	}
+
+	// 5. Generate tokens and save JTI (within tx)
 	authResponse, err := s.createTokenSet(ctx, tx, user)
 	if err != nil {
 		s.handleRollback(tx, "Rollback Login: failed to create token set")
 		return nil, err
 	}
 
-	// 5. Commit Transaction
+	// 6. Commit Transaction
 	if err := tx.Commit(); err != nil {
-		s.logger.Error().Err(err).Msg("Failed to commit transaction for Login")
+		log.Error().Err(err).Msg("Failed to commit transaction for Login")
 		return nil, errors.New("login failed")
 	}
 

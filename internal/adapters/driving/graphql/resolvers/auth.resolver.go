@@ -190,6 +190,46 @@ func (r *mutationResolver) VerifyEmail(ctx context.Context, token string) (bool,
 	return true, nil
 }
 
+// RequestEmailChange is the resolver for the requestEmailChange field.
+func (r *mutationResolver) RequestEmailChange(ctx context.Context, input models.RequestEmailChangeInput) (bool, error) {
+	// 1. Get User ID from context (this is an authenticated route)
+	userID, ok := ctx.Value(AuthUserUUIDKey).(string)
+	if !ok || userID == "" {
+		return false, ErrNotAuthenticated
+	}
+
+	// 2. Validation Step
+	vInput := requestEmailChangeInputValidation{
+		NewEmail:        input.NewEmail,
+		CurrentPassword: input.CurrentPassword,
+	}
+	if err := validate.Struct(vInput); err != nil {
+		return false, formatValidationErrors(err)
+	}
+
+	// 3. Call the auth service
+	if err := r.Resolver.authService.RequestEmailChange(ctx, userID, input.NewEmail, input.CurrentPassword); err != nil {
+		return false, err // Service will handle errors like "invalid password" or "email in use"
+	}
+
+	return true, nil
+}
+
+// ConfirmEmailChange is the resolver for the confirmEmailChange field.
+func (r *mutationResolver) ConfirmEmailChange(ctx context.Context, token string) (bool, error) {
+	// 1. Validation Step
+	if err := validate.Var(token, "required"); err != nil {
+		return false, formatValidationErrors(err)
+	}
+
+	// 2. Call the auth service
+	if err := r.Resolver.authService.ConfirmEmailChange(ctx, token); err != nil {
+		return false, err // Service will handle "invalid or expired token"
+	}
+
+	return true, nil
+}
+
 // Mutation returns generated.MutationResolver implementation.
 func (r *Resolver) Mutation() generated.MutationResolver { return &mutationResolver{r} }
 

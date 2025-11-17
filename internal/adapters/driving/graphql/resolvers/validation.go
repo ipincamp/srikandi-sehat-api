@@ -52,6 +52,12 @@ type resetPasswordInputValidation struct {
 	NewPassword string `validate:"required,min=8,max=32,passwordcomplex"`
 }
 
+// requestEmailChangeInputValidation maps to the RequestEmailChangeInput.
+type requestEmailChangeInputValidation struct {
+	NewEmail        string `validate:"required,email,emaildomain"`
+	CurrentPassword string `validate:"required"`
+}
+
 // --- 3. Custom Validation Functions ---
 
 // validateEmailDomain implements the custom 'emaildomain' validation rule.

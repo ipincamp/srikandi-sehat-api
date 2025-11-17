@@ -24,6 +24,11 @@ type RegisterInput struct {
 	Password string `json:"password"`
 }
 
+type RequestEmailChangeInput struct {
+	NewEmail        string `json:"new_email"`
+	CurrentPassword string `json:"current_password"`
+}
+
 type ResetPasswordInput struct {
 	Token       string `json:"token"`
 	NewPassword string `json:"new_password"`

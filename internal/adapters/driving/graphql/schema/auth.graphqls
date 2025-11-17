@@ -17,6 +17,12 @@ input ResetPasswordInput {
   new_password: String!
 }
 
+# Input type for requesting an email change
+input RequestEmailChangeInput {
+  new_email: String!
+  current_password: String!
+}
+
 # Response type for successful auth
 type AuthResponse {
   access_token: String!
@@ -51,4 +57,12 @@ type Mutation {
   # verifyEmail confirms email ownership using a token
   # This is a public route.
   verifyEmail(token: String!): Boolean!
+
+  # requestEmailChange triggers a confirmation email to the new address
+  # This is an authenticated route.
+  requestEmailChange(input: RequestEmailChangeInput!): Boolean!
+
+  # confirmEmailChange validates the token and updates the user's email
+  # This is a public route.
+  confirmEmailChange(token: String!): Boolean!
 }

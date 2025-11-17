@@ -58,6 +58,12 @@ type requestEmailChangeInputValidation struct {
 	CurrentPassword string `validate:"required"`
 }
 
+// updateProfileInputValidation maps to the UpdateProfileInput.
+// This validates the input based on requirement 1.11.2.
+type updateProfileInputValidation struct {
+	Name string `validate:"required,min=3,max=100"`
+}
+
 // --- 3. Custom Validation Functions ---
 
 // validateEmailDomain implements the custom 'emaildomain' validation rule.

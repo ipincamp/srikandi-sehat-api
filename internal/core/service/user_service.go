@@ -51,10 +51,16 @@ func (s *userService) UpdateProfile(ctx context.Context, userID string, newName 
 		return nil, err // This will handle "not found" or other DB errors
 	}
 
-	// 2. Apply the change
+	// 2. Check if the name is
+	if user.Name == newName {
+		log.Info().Msg("User profile update skipped: new name is the same as the old name.")
+		return user, nil // Return the existing user object. This is not an error.
+	}
+
+	// 3. Apply the change
 	user.Name = newName
 
-	// 3. Save the updated user object
+	// 4. Save the updated user object
 	// The repository's Update method handles updating the "updated_at" timestamp
 	if err := s.repo.Update(ctx, user); err != nil {
 		log.Error().Err(err).Msg("Failed to save user updates to repository")
@@ -63,6 +69,6 @@ func (s *userService) UpdateProfile(ctx context.Context, userID string, newName 
 
 	log.Info().Msg("User profile updated successfully")
 
-	// 4. Return the updated user, as required
+	// 5. Return the updated user
 	return user, nil
 }

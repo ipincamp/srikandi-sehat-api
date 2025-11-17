@@ -15,3 +15,15 @@ type Query {
   # This query requires authentication (e.g., a valid access token).
   me: User!
 }
+
+# Input type for updating a user's profile
+input UpdateProfileInput {
+  name: String!
+}
+
+# Extend the Mutation type for user-specific mutations
+extend type Mutation {
+  # 'updateProfile' updates the authenticated user's profile.
+  # This query requires authentication.
+  updateProfile(input: UpdateProfileInput!): User!
+}

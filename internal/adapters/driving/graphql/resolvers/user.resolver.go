@@ -12,6 +12,33 @@ import (
 	"github.com/ipincamp/srikandi-sehat/internal/adapters/driving/graphql/models"
 )
 
+// UpdateProfile is the resolver for the updateProfile field.
+func (r *mutationResolver) UpdateProfile(ctx context.Context, input models.UpdateProfileInput) (*models.User, error) {
+	// 1. Get User ID from context (this is an authenticated route)
+	userID, ok := ctx.Value(AuthUserUUIDKey).(string)
+	if !ok || userID == "" {
+		return nil, ErrNotAuthenticated
+	}
+
+	// 2. Validation Step
+	vInput := updateProfileInputValidation{
+		Name: input.Name,
+	}
+	if err := validate.Struct(vInput); err != nil {
+		return nil, formatValidationErrors(err)
+	}
+
+	// 3. Call the core service
+	domainUser, err := r.Resolver.userService.UpdateProfile(ctx, userID, input.Name)
+	if err != nil {
+		r.Resolver.logger.Error().Err(err).Str("user_id", userID).Msg("Failed to update profile")
+		return nil, fmt.Errorf("profile update failed")
+	}
+
+	// 4. Map domain model to GraphQL model and return
+	return mapDomainUserToGqlUser(domainUser), nil
+}
+
 // Me is the resolver for the me field.
 func (r *queryResolver) Me(ctx context.Context) (*models.User, error) {
 	// 1. Ambil User ID dari context (yang di-inject oleh middleware/auth.go)

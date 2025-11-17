@@ -15,4 +15,7 @@ type AuthService interface {
 
 	ForgotPassword(ctx context.Context, email string) error
 	ResetPassword(ctx context.Context, token string, newPassword string) error
+
+	ResendVerificationEmail(ctx context.Context, userID string) error
+	VerifyEmail(ctx context.Context, token string) error
 }

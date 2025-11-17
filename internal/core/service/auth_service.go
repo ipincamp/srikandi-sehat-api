@@ -559,3 +559,175 @@ func (s *authService) ResetPassword(ctx context.Context, token string, newPasswo
 	log.Info().Str("user_id", userID).Msg("Password reset successfully")
 	return nil
 }
+
+// ResendVerificationEmail implements the logic from section 1.7.3.
+func (s *authService) ResendVerificationEmail(ctx context.Context, userID string) error {
+	log := s.logger.With().Str("method", "ResendVerificationEmail").Str("user_id", userID).Logger()
+
+	// 1. Start Transaction
+	tx, err := s.uow.Begin(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to begin transaction")
+		return errors.New("request failed")
+	}
+
+	// Get transactional repositories
+	userRepo := tx.GetUserRepository()
+	tokenRepo := tx.GetUserTokenRepository()
+
+	// 2. Find user and check if already verified
+	user, err := userRepo.FindByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Warn().Msg("User not found")
+		} else {
+			log.Error().Err(err).Msg("Failed to query user")
+		}
+		s.handleRollback(tx, "Rollback ResendVerification: user not found")
+		return errors.New("request failed")
+	}
+
+	if user.IsVerified() { // Check using domain logic
+		log.Warn().Msg("User email is already verified")
+		s.handleRollback(tx, "Rollback ResendVerification: already verified")
+		return errors.New("email already verified") //
+	}
+
+	// 3. Generate new token
+	tokenString, err := generateSecureToken(32) // Use the same helper as ForgotPassword
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to generate secure token")
+		s.handleRollback(tx, "Rollback ResendVerification: token generation failed")
+		return errors.New("request failed")
+	}
+
+	// 4. Hash the token for storage
+	tokenHash := hashToken(tokenString)
+	tokenExpiry := time.Now().Add(15 * time.Minute) // 15-minute expiry
+
+	// 5. Save (Upsert) the new token hash to the DB
+	userToken := &domain.UserToken{
+		UserID:    user.ID,
+		Purpose:   domain.TokenPurposeVerification, // Use our new domain constant
+		TokenHash: tokenHash,
+		ExpiresAt: tokenExpiry,
+	}
+	if err := tokenRepo.Save(ctx, userToken); err != nil {
+		log.Error().Err(err).Msg("Failed to upsert verification token")
+		s.handleRollback(tx, "Rollback ResendVerification: token save failed")
+		return errors.New("request failed")
+	}
+
+	// 6. Commit the transaction
+	if err := tx.Commit(); err != nil {
+		log.Error().Err(err).Msg("Failed to commit transaction")
+		return errors.New("request failed")
+	}
+
+	// 7. Send email asynchronously
+	go func() {
+		emailCtx := context.Background()
+		log.Info().Msg("Dispatching verification email")
+
+		// The token format is `uid.tokenstring`
+		fullToken := fmt.Sprintf("%s.%s", user.ID, tokenString)
+
+		subject := "Verify Your Email Address"
+		plainBody := fmt.Sprintf("Hi %s,\n\nPlease verify your email address using this token (it will expire in 15 minutes):\n\n%s\n\nIf you did not request this, please ignore this email.", user.Name, fullToken)
+		htmlBody := fmt.Sprintf("<h1>Hi %s,</h1><p>Please verify your email address using this token (it will expire in 15 minutes):</p><h2>%s</h2><p>If you did not request this, please ignore this email.</p>", user.Name, fullToken)
+
+		if err := s.mailService.Send(emailCtx, user.Email, subject, plainBody, htmlBody); err != nil {
+			log.Error().Err(err).Msg("Failed to send verification email")
+		}
+	}()
+
+	return nil
+}
+
+// VerifyEmail implements the logic from section 1.8.3.
+func (s *authService) VerifyEmail(ctx context.Context, token string) error {
+	log := s.logger.With().Str("method", "VerifyEmail").Logger()
+
+	// 1. Validate token format: "uid.tokenstring"
+	parts := strings.Split(token, ".")
+	if len(parts) != 2 {
+		return errors.New("invalid token format")
+	}
+	userID, tokenString := parts[0], parts[1]
+
+	if userID == "" || tokenString == "" {
+		return errors.New("invalid token format")
+	}
+
+	// 2. Start Transaction
+	tx, err := s.uow.Begin(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to begin transaction")
+		return errors.New("email verification failed")
+	}
+
+	// 3. Find token in DB
+	tokenRepo := tx.GetUserTokenRepository()
+	userToken, err := tokenRepo.FindByUserIDAndPurpose(ctx, userID, domain.TokenPurposeVerification)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Warn().Msg("Email verification token not found in DB")
+		} else {
+			log.Error().Err(err).Msg("Failed to find token")
+		}
+		s.handleRollback(tx, "Rollback VerifyEmail: token not found")
+		return errors.New("invalid or expired token") //
+	}
+
+	// 4. Hash the token from the user
+	tokenHash := hashToken(tokenString)
+
+	// 5. Validate the token hash and expiry
+	if subtle.ConstantTimeCompare([]byte(userToken.TokenHash), []byte(tokenHash)) != 1 {
+		log.Warn().Msg("Token hash mismatch")
+		s.handleRollback(tx, "Rollback VerifyEmail: token hash mismatch")
+		return errors.New("invalid or expired token") //
+	}
+
+	if time.Now().After(userToken.ExpiresAt) {
+		log.Warn().Msg("Token expired")
+		_ = tokenRepo.DeleteByUserIDAndPurpose(ctx, userID, domain.TokenPurposeVerification) // Clean up expired token
+		s.handleRollback(tx, "Rollback VerifyEmail: token expired")
+		return errors.New("invalid or expired token") //
+	}
+
+	// --- Token is valid ---
+
+	// 6. Update user's verification status
+	userRepo := tx.GetUserRepository()
+	user, err := userRepo.FindByID(ctx, userID)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to find user associated with token")
+		s.handleRollback(tx, "Rollback VerifyEmail: user find failed")
+		return errors.New("email verification failed")
+	}
+
+	now := time.Now()
+	user.EmailVerifiedAt = &now // Set the verification timestamp
+	if err := userRepo.Update(ctx, user); err != nil {
+		log.Error().Err(err).Msg("Failed to update user verification status")
+		s.handleRollback(tx, "Rollback VerifyEmail: user update failed")
+		return errors.New("email verification failed")
+	}
+
+	// 7. Cabut Token (Delete the used token)
+	if err := tokenRepo.DeleteByUserIDAndPurpose(ctx, userID, domain.TokenPurposeVerification); err != nil {
+		log.Error().Err(err).Msg("Failed to delete used verification token")
+		s.handleRollback(tx, "Rollback VerifyEmail: token deletion failed")
+		return errors.New("email verification failed")
+	}
+
+	// 8. Commit Transaksi
+	if err := tx.Commit(); err != nil {
+		log.Error().Err(err).Msg("Failed to commit transaction")
+		return errors.New("email verification failed")
+	}
+
+	log.Info().Str("user_id", userID).Msg("Email verified successfully")
+	return nil
+}

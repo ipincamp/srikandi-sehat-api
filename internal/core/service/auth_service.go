@@ -407,6 +407,14 @@ func (s *authService) ForgotPassword(ctx context.Context, email string) error {
 		return nil
 	}
 
+	// Check if user is verified.
+	if !user.IsVerified() {
+		log.Warn().Msg("Forgot password attempt on unverified email. Aborting.")
+		// Commit the (empty) transaction and return.
+		_ = tx.Commit()
+		return nil
+	}
+
 	// --- User was found, proceed with logic  ---
 	tokenRepo := tx.GetUserTokenRepository()
 

@@ -1419,3 +1419,78 @@ func (s *authService) DeleteMyAccount(ctx context.Context, userID string, curren
 	log.Info().Msg("User account soft-deleted successfully")
 	return nil
 }
+
+// ChangePassword implements the logic for section 1.12.
+func (s *authService) ChangePassword(ctx context.Context, userID string, currentPassword string, newPassword string, logoutAll bool) error {
+	log := s.logger.With().Str("method", "ChangePassword").Str("user_id", userID).Logger()
+
+	// 1. Begin Database Transaction (Req 1.12.3.4)
+	tx, err := s.uow.Begin(ctx)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to begin transaction")
+		return errors.New("password change failed")
+	}
+
+	// Get transactional repository
+	userRepo := tx.GetUserRepository()
+
+	// 2. Verify Password (Req 1.12.3.3)
+	user, err := userRepo.FindByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			log.Warn().Msg("User not found")
+		} else {
+			log.Error().Err(err).Msg("Failed to query user")
+		}
+		s.handleRollback(tx, "Rollback ChangePassword: user not found")
+		return errors.New("password change failed")
+	}
+
+	// Compare current password
+	if !s.hasher.Compare(user.PasswordHash, currentPassword) {
+		log.Warn().Msg("Invalid current password provided for password change")
+		s.handleRollback(tx, "Rollback ChangePassword: invalid password")
+		return errors.New("invalid current password") // As per Req 401
+	}
+
+	// --- Password is valid, proceed ---
+
+	// 3. Update Password (Req 1.12.3.5)
+	newHashedPassword, err := s.hasher.Hash(newPassword)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to hash new password")
+		s.handleRollback(tx, "Rollback ChangePassword: password hash failed")
+		return errors.New("password change failed")
+	}
+
+	user.PasswordHash = newHashedPassword
+	if err := userRepo.Update(ctx, user); err != nil {
+		log.Error().Err(err).Msg("Failed to update user password")
+		s.handleRollback(tx, "Rollback ChangePassword: user update failed")
+		return errors.New("password change failed")
+	}
+
+	// 4. Revoke Sessions (Req 1.12.3.6)
+	if logoutAll {
+		personalTokenRepo := tx.GetPersonalTokenRepository()
+		if err := personalTokenRepo.DeleteByUserID(ctx, userID); err != nil {
+			log.Error().Err(err).Msg("Failed to revoke refresh tokens")
+			s.handleRollback(tx, "Rollback ChangePassword: token revocation failed")
+			return errors.New("password change failed")
+		}
+		log.Info().Msg("All sessions revoked")
+	}
+
+	// 5. TODO: Create Activity Log (Req 1.12.3.7)
+	// (Add this after activity log feature is implemented)
+	// tx.GetActivityLogRepository().Save(...)
+
+	// 6. Commit Transaction (Req 1.12.3.8)
+	if err := tx.Commit(); err != nil {
+		log.Error().Err(err).Msg("Failed to commit transaction")
+		return errors.New("password change failed")
+	}
+
+	log.Info().Msg("Password changed successfully")
+	return nil // As per Req 200 OK
+}

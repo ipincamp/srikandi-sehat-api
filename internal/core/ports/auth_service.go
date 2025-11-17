@@ -32,4 +32,6 @@ type AuthService interface {
 	ConfirmAccountDeletion(ctx context.Context, token string) error
 
 	DeleteMyAccount(ctx context.Context, userID string, currentPassword string) error
+
+	ChangePassword(ctx context.Context, userID string, currentPassword string, newPassword string, logoutAll bool) error
 }

@@ -2,6 +2,14 @@ package domain
 
 import "time"
 
+// Action constants for logging
+const (
+	ActionLogin          = "LOGIN"
+	ActionChangePassword = "CHANGE_PASSWORD"
+	ActionUpdateProfile  = "UPDATE_PROFILE"
+	// Add more actions as needed
+)
+
 // ActivityLog is the core domain model for an activity log entry.
 // This struct represents the business entity, free of any
 // database or transport layer details.
@@ -36,4 +44,18 @@ type ActivityLog struct {
 
 	// Timestamp is the time when the action was performed.
 	Timestamp time.Time
+}
+
+// PaginatedActivityLogs is a response struct for the "GetMyLogs" use case.
+type PaginatedActivityLogs struct {
+	Logs       []*ActivityLog
+	Pagination PaginationMetadata
+}
+
+// PaginationMetadata holds the metadata for a paginated response.
+type PaginationMetadata struct {
+	TotalItems  int64
+	TotalPages  int
+	CurrentPage int
+	PerPage     int
 }

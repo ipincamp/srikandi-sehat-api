@@ -11,6 +11,8 @@ type Transaction interface {
 	GetPersonalTokenRepository() PersonalTokenRepository
 	// GetUserTokenRepository returns a UserTokenRepository bound to this transaction.
 	GetUserTokenRepository() UserTokenRepository
+	// GetActivityLogRepository returns an ActivityLogRepository bound to this transaction.
+	GetActivityLogRepository() ActivityLogRepository
 
 	// Commit finalizes the transaction.
 	Commit() error

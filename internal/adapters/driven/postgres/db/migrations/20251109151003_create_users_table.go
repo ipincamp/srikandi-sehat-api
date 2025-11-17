@@ -26,11 +26,7 @@ func CreateUsersTable() *gormigrate.Migration {
 			if err := tx.AutoMigrate(&User{}); err != nil {
 				return err
 			}
-			return tx.Exec(`
-								CREATE UNIQUE INDEX IF NOT EXISTS "idx_users_email_active_unique"
-								ON "users"("email")
-								WHERE ("deleted_at" IS NULL);
-						`).Error
+			return tx.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS "idx_users_email_active_unique" ON "users"("email") WHERE ("deleted_at" IS NULL);`).Error
 		},
 		Rollback: func(tx *gorm.DB) error {
 			tx.Exec(`DROP INDEX IF EXISTS "idx_users_email_active_unique"`)

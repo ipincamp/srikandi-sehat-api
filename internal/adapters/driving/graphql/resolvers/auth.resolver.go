@@ -157,6 +157,39 @@ func (r *mutationResolver) ResetPassword(ctx context.Context, input models.Reset
 	return true, nil
 }
 
+// ResendVerificationEmail is the resolver for the resendVerificationEmail field.
+func (r *mutationResolver) ResendVerificationEmail(ctx context.Context) (bool, error) {
+	// 1. Get User ID from context (this is an authenticated route)
+	userID, ok := ctx.Value(AuthUserUUIDKey).(string)
+	if !ok || userID == "" {
+		return false, ErrNotAuthenticated
+	}
+
+	// 2. Call the auth service
+	if err := r.Resolver.authService.ResendVerificationEmail(ctx, userID); err != nil {
+		return false, err // Service will return "email already verified" or other errors
+	}
+
+	return true, nil
+}
+
+// VerifyEmail is the resolver for the verifyEmail field.
+func (r *mutationResolver) VerifyEmail(ctx context.Context, token string) (bool, error) {
+	// --- Validation Step ---
+	// We can reuse the tokenValidation struct, or just validate the var directly.
+	if err := validate.Var(token, "required"); err != nil {
+		return false, formatValidationErrors(err)
+	}
+	// --- End Validation ---
+
+	// Call the auth service
+	if err := r.Resolver.authService.VerifyEmail(ctx, token); err != nil {
+		return false, err // Service will return "invalid or expired token"
+	}
+
+	return true, nil
+}
+
 // Mutation returns generated.MutationResolver implementation.
 func (r *Resolver) Mutation() generated.MutationResolver { return &mutationResolver{r} }
 

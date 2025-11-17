@@ -41,7 +41,7 @@ type loginInputValidation struct {
 }
 
 // tokenValidation is a reusable struct for validating the simple
-// string input for RefreshToken and Logout.
+// string input for RefreshToken, Logout, and VerifyEmail.
 type tokenValidation struct {
 	Token string `validate:"required"`
 }

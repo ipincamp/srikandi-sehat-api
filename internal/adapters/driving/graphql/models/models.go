@@ -26,7 +26,7 @@ type RegisterInput struct {
 
 type ResetPasswordInput struct {
 	Token       string `json:"token"`
-	NewPassword string `json:"newPassword"`
+	NewPassword string `json:"new_password"`
 }
 
 type User struct {

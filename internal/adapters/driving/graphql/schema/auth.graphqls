@@ -11,6 +11,12 @@ input LoginInput {
   password: String!
 }
 
+# Input type for password reset
+input ResetPasswordInput {
+  token: String!
+  new_password: String!
+}
+
 # Response type for successful auth
 type AuthResponse {
   access_token: String!
@@ -37,10 +43,12 @@ type Mutation {
 
   # resetPassword sets a new password using a valid token
   resetPassword(input: ResetPasswordInput!): Boolean!
-}
 
-# Input type for password reset
-input ResetPasswordInput {
-  token: String!
-  newPassword: String!
+  # resendVerificationEmail triggers a new verification email
+  # This is an authenticated route.
+  resendVerificationEmail: Boolean!
+
+  # verifyEmail confirms email ownership using a token
+  # This is a public route.
+  verifyEmail(token: String!): Boolean!
 }

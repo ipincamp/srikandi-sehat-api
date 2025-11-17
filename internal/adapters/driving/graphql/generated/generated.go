@@ -46,6 +46,24 @@ type DirectiveRoot struct {
 }
 
 type ComplexityRoot struct {
+	ActivityLog struct {
+		Action      func(childComplexity int) int
+		Changes     func(childComplexity int) int
+		ID          func(childComplexity int) int
+		IPAddress   func(childComplexity int) int
+		TargetID    func(childComplexity int) int
+		TargetTable func(childComplexity int) int
+		Timestamp   func(childComplexity int) int
+		UserAgent   func(childComplexity int) int
+	}
+
+	ActivityLogPagination struct {
+		CurrentPage func(childComplexity int) int
+		PerPage     func(childComplexity int) int
+		TotalItems  func(childComplexity int) int
+		TotalPages  func(childComplexity int) int
+	}
+
 	AuthResponse struct {
 		AccessToken  func(childComplexity int) int
 		RefreshToken func(childComplexity int) int
@@ -72,9 +90,15 @@ type ComplexityRoot struct {
 		VerifyEmail                func(childComplexity int, token string) int
 	}
 
+	PaginatedActivityLogs struct {
+		Data func(childComplexity int) int
+		Meta func(childComplexity int) int
+	}
+
 	Query struct {
-		Me   func(childComplexity int) int
-		Ping func(childComplexity int) int
+		Me             func(childComplexity int) int
+		MyActivityLogs func(childComplexity int, page *int, limit *int, typeArg *string) int
+		Ping           func(childComplexity int) int
 	}
 
 	User struct {
@@ -108,6 +132,7 @@ type MutationResolver interface {
 }
 type QueryResolver interface {
 	Me(ctx context.Context) (*models.User, error)
+	MyActivityLogs(ctx context.Context, page *int, limit *int, typeArg *string) (*models.PaginatedActivityLogs, error)
 	Ping(ctx context.Context) (string, error)
 }
 
@@ -129,6 +154,80 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 	ec := executionContext{nil, e, 0, 0, nil}
 	_ = ec
 	switch typeName + "." + field {
+
+	case "ActivityLog.action":
+		if e.complexity.ActivityLog.Action == nil {
+			break
+		}
+
+		return e.complexity.ActivityLog.Action(childComplexity), true
+	case "ActivityLog.changes":
+		if e.complexity.ActivityLog.Changes == nil {
+			break
+		}
+
+		return e.complexity.ActivityLog.Changes(childComplexity), true
+	case "ActivityLog.id":
+		if e.complexity.ActivityLog.ID == nil {
+			break
+		}
+
+		return e.complexity.ActivityLog.ID(childComplexity), true
+	case "ActivityLog.ip_address":
+		if e.complexity.ActivityLog.IPAddress == nil {
+			break
+		}
+
+		return e.complexity.ActivityLog.IPAddress(childComplexity), true
+	case "ActivityLog.target_id":
+		if e.complexity.ActivityLog.TargetID == nil {
+			break
+		}
+
+		return e.complexity.ActivityLog.TargetID(childComplexity), true
+	case "ActivityLog.target_table":
+		if e.complexity.ActivityLog.TargetTable == nil {
+			break
+		}
+
+		return e.complexity.ActivityLog.TargetTable(childComplexity), true
+	case "ActivityLog.timestamp":
+		if e.complexity.ActivityLog.Timestamp == nil {
+			break
+		}
+
+		return e.complexity.ActivityLog.Timestamp(childComplexity), true
+	case "ActivityLog.user_agent":
+		if e.complexity.ActivityLog.UserAgent == nil {
+			break
+		}
+
+		return e.complexity.ActivityLog.UserAgent(childComplexity), true
+
+	case "ActivityLogPagination.current_page":
+		if e.complexity.ActivityLogPagination.CurrentPage == nil {
+			break
+		}
+
+		return e.complexity.ActivityLogPagination.CurrentPage(childComplexity), true
+	case "ActivityLogPagination.per_page":
+		if e.complexity.ActivityLogPagination.PerPage == nil {
+			break
+		}
+
+		return e.complexity.ActivityLogPagination.PerPage(childComplexity), true
+	case "ActivityLogPagination.total_items":
+		if e.complexity.ActivityLogPagination.TotalItems == nil {
+			break
+		}
+
+		return e.complexity.ActivityLogPagination.TotalItems(childComplexity), true
+	case "ActivityLogPagination.total_pages":
+		if e.complexity.ActivityLogPagination.TotalPages == nil {
+			break
+		}
+
+		return e.complexity.ActivityLogPagination.TotalPages(childComplexity), true
 
 	case "AuthResponse.access_token":
 		if e.complexity.AuthResponse.AccessToken == nil {
@@ -337,12 +436,36 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Mutation.VerifyEmail(childComplexity, args["token"].(string)), true
 
+	case "PaginatedActivityLogs.data":
+		if e.complexity.PaginatedActivityLogs.Data == nil {
+			break
+		}
+
+		return e.complexity.PaginatedActivityLogs.Data(childComplexity), true
+	case "PaginatedActivityLogs.meta":
+		if e.complexity.PaginatedActivityLogs.Meta == nil {
+			break
+		}
+
+		return e.complexity.PaginatedActivityLogs.Meta(childComplexity), true
+
 	case "Query.me":
 		if e.complexity.Query.Me == nil {
 			break
 		}
 
 		return e.complexity.Query.Me(childComplexity), true
+	case "Query.myActivityLogs":
+		if e.complexity.Query.MyActivityLogs == nil {
+			break
+		}
+
+		args, err := ec.field_Query_myActivityLogs_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.MyActivityLogs(childComplexity, args["page"].(*int), args["limit"].(*int), args["type"].(*string)), true
 	case "Query.ping":
 		if e.complexity.Query.Ping == nil {
 			break
@@ -495,6 +618,39 @@ func (ec *executionContext) introspectType(name string) (*introspection.Type, er
 }
 
 var sources = []*ast.Source{
+	{Name: "../schema/activity.graphqls", Input: `# Defines the structure of an activity log entry (Req 1.14.2.1)
+type ActivityLog {
+  id: ID!
+  action: String!
+  target_table: String
+  target_id: String
+  changes: String # JSON string
+  ip_address: String
+  user_agent: String
+  timestamp: String! # ISO 8601
+}
+
+# Defines the pagination metadata (Req 1.14.2.1)
+type ActivityLogPagination {
+  total_items: Int!
+  total_pages: Int!
+  current_page: Int!
+  per_page: Int!
+}
+
+# Defines the complete paginated response
+type PaginatedActivityLogs {
+  data: [ActivityLog!]!
+  meta: ActivityLogPagination!
+}
+
+# Extend the base Query type (Req 1.14.1)
+extend type Query {
+  # 'myActivityLogs' fetches the authenticated user's activity log.
+  # This query requires authentication.
+  myActivityLogs(page: Int, limit: Int, type: String): PaginatedActivityLogs!
+}
+`, BuiltIn: false},
 	{Name: "../schema/auth.graphqls", Input: `# Input type for user registration
 input RegisterInput {
   name: String!
@@ -859,6 +1015,27 @@ func (ec *executionContext) field_Query___type_args(ctx context.Context, rawArgs
 	return args, nil
 }
 
+func (ec *executionContext) field_Query_myActivityLogs_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "page", ec.unmarshalOInt2ᚖint)
+	if err != nil {
+		return nil, err
+	}
+	args["page"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "limit", ec.unmarshalOInt2ᚖint)
+	if err != nil {
+		return nil, err
+	}
+	args["limit"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "type", ec.unmarshalOString2ᚖstring)
+	if err != nil {
+		return nil, err
+	}
+	args["type"] = arg2
+	return args, nil
+}
+
 func (ec *executionContext) field___Directive_args_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -910,6 +1087,354 @@ func (ec *executionContext) field___Type_fields_args(ctx context.Context, rawArg
 // endregion ************************** directives.gotpl **************************
 
 // region    **************************** field.gotpl *****************************
+
+func (ec *executionContext) _ActivityLog_id(ctx context.Context, field graphql.CollectedField, obj *models.ActivityLog) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ActivityLog_id,
+		func(ctx context.Context) (any, error) {
+			return obj.ID, nil
+		},
+		nil,
+		ec.marshalNID2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_ActivityLog_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ActivityLog",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ActivityLog_action(ctx context.Context, field graphql.CollectedField, obj *models.ActivityLog) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ActivityLog_action,
+		func(ctx context.Context) (any, error) {
+			return obj.Action, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_ActivityLog_action(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ActivityLog",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ActivityLog_target_table(ctx context.Context, field graphql.CollectedField, obj *models.ActivityLog) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ActivityLog_target_table,
+		func(ctx context.Context) (any, error) {
+			return obj.TargetTable, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_ActivityLog_target_table(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ActivityLog",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ActivityLog_target_id(ctx context.Context, field graphql.CollectedField, obj *models.ActivityLog) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ActivityLog_target_id,
+		func(ctx context.Context) (any, error) {
+			return obj.TargetID, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_ActivityLog_target_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ActivityLog",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ActivityLog_changes(ctx context.Context, field graphql.CollectedField, obj *models.ActivityLog) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ActivityLog_changes,
+		func(ctx context.Context) (any, error) {
+			return obj.Changes, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_ActivityLog_changes(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ActivityLog",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ActivityLog_ip_address(ctx context.Context, field graphql.CollectedField, obj *models.ActivityLog) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ActivityLog_ip_address,
+		func(ctx context.Context) (any, error) {
+			return obj.IPAddress, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_ActivityLog_ip_address(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ActivityLog",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ActivityLog_user_agent(ctx context.Context, field graphql.CollectedField, obj *models.ActivityLog) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ActivityLog_user_agent,
+		func(ctx context.Context) (any, error) {
+			return obj.UserAgent, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_ActivityLog_user_agent(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ActivityLog",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ActivityLog_timestamp(ctx context.Context, field graphql.CollectedField, obj *models.ActivityLog) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ActivityLog_timestamp,
+		func(ctx context.Context) (any, error) {
+			return obj.Timestamp, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_ActivityLog_timestamp(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ActivityLog",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ActivityLogPagination_total_items(ctx context.Context, field graphql.CollectedField, obj *models.ActivityLogPagination) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ActivityLogPagination_total_items,
+		func(ctx context.Context) (any, error) {
+			return obj.TotalItems, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_ActivityLogPagination_total_items(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ActivityLogPagination",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ActivityLogPagination_total_pages(ctx context.Context, field graphql.CollectedField, obj *models.ActivityLogPagination) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ActivityLogPagination_total_pages,
+		func(ctx context.Context) (any, error) {
+			return obj.TotalPages, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_ActivityLogPagination_total_pages(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ActivityLogPagination",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ActivityLogPagination_current_page(ctx context.Context, field graphql.CollectedField, obj *models.ActivityLogPagination) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ActivityLogPagination_current_page,
+		func(ctx context.Context) (any, error) {
+			return obj.CurrentPage, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_ActivityLogPagination_current_page(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ActivityLogPagination",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ActivityLogPagination_per_page(ctx context.Context, field graphql.CollectedField, obj *models.ActivityLogPagination) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ActivityLogPagination_per_page,
+		func(ctx context.Context) (any, error) {
+			return obj.PerPage, nil
+		},
+		nil,
+		ec.marshalNInt2int,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_ActivityLogPagination_per_page(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ActivityLogPagination",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
 
 func (ec *executionContext) _AuthResponse_access_token(ctx context.Context, field graphql.CollectedField, obj *models.AuthResponse) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
@@ -1725,6 +2250,92 @@ func (ec *executionContext) fieldContext_Mutation_updateProfile(ctx context.Cont
 	return fc, nil
 }
 
+func (ec *executionContext) _PaginatedActivityLogs_data(ctx context.Context, field graphql.CollectedField, obj *models.PaginatedActivityLogs) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_PaginatedActivityLogs_data,
+		func(ctx context.Context) (any, error) {
+			return obj.Data, nil
+		},
+		nil,
+		ec.marshalNActivityLog2ᚕᚖgithubᚗcomᚋipincampᚋsrikandiᚑsehatᚋinternalᚋadaptersᚋdrivingᚋgraphqlᚋmodelsᚐActivityLogᚄ,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_PaginatedActivityLogs_data(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "PaginatedActivityLogs",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_ActivityLog_id(ctx, field)
+			case "action":
+				return ec.fieldContext_ActivityLog_action(ctx, field)
+			case "target_table":
+				return ec.fieldContext_ActivityLog_target_table(ctx, field)
+			case "target_id":
+				return ec.fieldContext_ActivityLog_target_id(ctx, field)
+			case "changes":
+				return ec.fieldContext_ActivityLog_changes(ctx, field)
+			case "ip_address":
+				return ec.fieldContext_ActivityLog_ip_address(ctx, field)
+			case "user_agent":
+				return ec.fieldContext_ActivityLog_user_agent(ctx, field)
+			case "timestamp":
+				return ec.fieldContext_ActivityLog_timestamp(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type ActivityLog", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _PaginatedActivityLogs_meta(ctx context.Context, field graphql.CollectedField, obj *models.PaginatedActivityLogs) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_PaginatedActivityLogs_meta,
+		func(ctx context.Context) (any, error) {
+			return obj.Meta, nil
+		},
+		nil,
+		ec.marshalNActivityLogPagination2ᚖgithubᚗcomᚋipincampᚋsrikandiᚑsehatᚋinternalᚋadaptersᚋdrivingᚋgraphqlᚋmodelsᚐActivityLogPagination,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_PaginatedActivityLogs_meta(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "PaginatedActivityLogs",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "total_items":
+				return ec.fieldContext_ActivityLogPagination_total_items(ctx, field)
+			case "total_pages":
+				return ec.fieldContext_ActivityLogPagination_total_pages(ctx, field)
+			case "current_page":
+				return ec.fieldContext_ActivityLogPagination_current_page(ctx, field)
+			case "per_page":
+				return ec.fieldContext_ActivityLogPagination_per_page(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type ActivityLogPagination", field.Name)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Query_me(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -1762,6 +2373,53 @@ func (ec *executionContext) fieldContext_Query_me(_ context.Context, field graph
 			}
 			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
 		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_myActivityLogs(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_myActivityLogs,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Query().MyActivityLogs(ctx, fc.Args["page"].(*int), fc.Args["limit"].(*int), fc.Args["type"].(*string))
+		},
+		nil,
+		ec.marshalNPaginatedActivityLogs2ᚖgithubᚗcomᚋipincampᚋsrikandiᚑsehatᚋinternalᚋadaptersᚋdrivingᚋgraphqlᚋmodelsᚐPaginatedActivityLogs,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_myActivityLogs(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "data":
+				return ec.fieldContext_PaginatedActivityLogs_data(ctx, field)
+			case "meta":
+				return ec.fieldContext_PaginatedActivityLogs_meta(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type PaginatedActivityLogs", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_myActivityLogs_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
 	}
 	return fc, nil
 }
@@ -3794,6 +4452,119 @@ func (ec *executionContext) unmarshalInputUpdateProfileInput(ctx context.Context
 
 // region    **************************** object.gotpl ****************************
 
+var activityLogImplementors = []string{"ActivityLog"}
+
+func (ec *executionContext) _ActivityLog(ctx context.Context, sel ast.SelectionSet, obj *models.ActivityLog) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, activityLogImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("ActivityLog")
+		case "id":
+			out.Values[i] = ec._ActivityLog_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "action":
+			out.Values[i] = ec._ActivityLog_action(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "target_table":
+			out.Values[i] = ec._ActivityLog_target_table(ctx, field, obj)
+		case "target_id":
+			out.Values[i] = ec._ActivityLog_target_id(ctx, field, obj)
+		case "changes":
+			out.Values[i] = ec._ActivityLog_changes(ctx, field, obj)
+		case "ip_address":
+			out.Values[i] = ec._ActivityLog_ip_address(ctx, field, obj)
+		case "user_agent":
+			out.Values[i] = ec._ActivityLog_user_agent(ctx, field, obj)
+		case "timestamp":
+			out.Values[i] = ec._ActivityLog_timestamp(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var activityLogPaginationImplementors = []string{"ActivityLogPagination"}
+
+func (ec *executionContext) _ActivityLogPagination(ctx context.Context, sel ast.SelectionSet, obj *models.ActivityLogPagination) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, activityLogPaginationImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("ActivityLogPagination")
+		case "total_items":
+			out.Values[i] = ec._ActivityLogPagination_total_items(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "total_pages":
+			out.Values[i] = ec._ActivityLogPagination_total_pages(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "current_page":
+			out.Values[i] = ec._ActivityLogPagination_current_page(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "per_page":
+			out.Values[i] = ec._ActivityLogPagination_per_page(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var authResponseImplementors = []string{"AuthResponse"}
 
 func (ec *executionContext) _AuthResponse(ctx context.Context, sel ast.SelectionSet, obj *models.AuthResponse) graphql.Marshaler {
@@ -4006,6 +4777,50 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 	return out
 }
 
+var paginatedActivityLogsImplementors = []string{"PaginatedActivityLogs"}
+
+func (ec *executionContext) _PaginatedActivityLogs(ctx context.Context, sel ast.SelectionSet, obj *models.PaginatedActivityLogs) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, paginatedActivityLogsImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("PaginatedActivityLogs")
+		case "data":
+			out.Values[i] = ec._PaginatedActivityLogs_data(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "meta":
+			out.Values[i] = ec._PaginatedActivityLogs_meta(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var queryImplementors = []string{"Query"}
 
 func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) graphql.Marshaler {
@@ -4035,6 +4850,28 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_me(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "myActivityLogs":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_myActivityLogs(ctx, field)
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}
@@ -4494,6 +5331,70 @@ func (ec *executionContext) ___Type(ctx context.Context, sel ast.SelectionSet, o
 
 // region    ***************************** type.gotpl *****************************
 
+func (ec *executionContext) marshalNActivityLog2ᚕᚖgithubᚗcomᚋipincampᚋsrikandiᚑsehatᚋinternalᚋadaptersᚋdrivingᚋgraphqlᚋmodelsᚐActivityLogᚄ(ctx context.Context, sel ast.SelectionSet, v []*models.ActivityLog) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNActivityLog2ᚖgithubᚗcomᚋipincampᚋsrikandiᚑsehatᚋinternalᚋadaptersᚋdrivingᚋgraphqlᚋmodelsᚐActivityLog(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNActivityLog2ᚖgithubᚗcomᚋipincampᚋsrikandiᚑsehatᚋinternalᚋadaptersᚋdrivingᚋgraphqlᚋmodelsᚐActivityLog(ctx context.Context, sel ast.SelectionSet, v *models.ActivityLog) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._ActivityLog(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNActivityLogPagination2ᚖgithubᚗcomᚋipincampᚋsrikandiᚑsehatᚋinternalᚋadaptersᚋdrivingᚋgraphqlᚋmodelsᚐActivityLogPagination(ctx context.Context, sel ast.SelectionSet, v *models.ActivityLogPagination) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._ActivityLogPagination(ctx, sel, v)
+}
+
 func (ec *executionContext) marshalNAuthResponse2githubᚗcomᚋipincampᚋsrikandiᚑsehatᚋinternalᚋadaptersᚋdrivingᚋgraphqlᚋmodelsᚐAuthResponse(ctx context.Context, sel ast.SelectionSet, v models.AuthResponse) graphql.Marshaler {
 	return ec._AuthResponse(ctx, sel, &v)
 }
@@ -4539,9 +5440,55 @@ func (ec *executionContext) unmarshalNDisableAccountInput2githubᚗcomᚋipincam
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
+func (ec *executionContext) unmarshalNID2string(ctx context.Context, v any) (string, error) {
+	res, err := graphql.UnmarshalID(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNID2string(ctx context.Context, sel ast.SelectionSet, v string) graphql.Marshaler {
+	_ = sel
+	res := graphql.MarshalID(v)
+	if res == graphql.Null {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+	}
+	return res
+}
+
+func (ec *executionContext) unmarshalNInt2int(ctx context.Context, v any) (int, error) {
+	res, err := graphql.UnmarshalInt(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNInt2int(ctx context.Context, sel ast.SelectionSet, v int) graphql.Marshaler {
+	_ = sel
+	res := graphql.MarshalInt(v)
+	if res == graphql.Null {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+	}
+	return res
+}
+
 func (ec *executionContext) unmarshalNLoginInput2githubᚗcomᚋipincampᚋsrikandiᚑsehatᚋinternalᚋadaptersᚋdrivingᚋgraphqlᚋmodelsᚐLoginInput(ctx context.Context, v any) (models.LoginInput, error) {
 	res, err := ec.unmarshalInputLoginInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNPaginatedActivityLogs2githubᚗcomᚋipincampᚋsrikandiᚑsehatᚋinternalᚋadaptersᚋdrivingᚋgraphqlᚋmodelsᚐPaginatedActivityLogs(ctx context.Context, sel ast.SelectionSet, v models.PaginatedActivityLogs) graphql.Marshaler {
+	return ec._PaginatedActivityLogs(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNPaginatedActivityLogs2ᚖgithubᚗcomᚋipincampᚋsrikandiᚑsehatᚋinternalᚋadaptersᚋdrivingᚋgraphqlᚋmodelsᚐPaginatedActivityLogs(ctx context.Context, sel ast.SelectionSet, v *models.PaginatedActivityLogs) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._PaginatedActivityLogs(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNRegisterInput2githubᚗcomᚋipincampᚋsrikandiᚑsehatᚋinternalᚋadaptersᚋdrivingᚋgraphqlᚋmodelsᚐRegisterInput(ctx context.Context, v any) (models.RegisterInput, error) {
@@ -4879,6 +5826,24 @@ func (ec *executionContext) marshalOBoolean2ᚖbool(ctx context.Context, sel ast
 	_ = sel
 	_ = ctx
 	res := graphql.MarshalBoolean(*v)
+	return res
+}
+
+func (ec *executionContext) unmarshalOInt2ᚖint(ctx context.Context, v any) (*int, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := graphql.UnmarshalInt(v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOInt2ᚖint(ctx context.Context, sel ast.SelectionSet, v *int) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	_ = sel
+	_ = ctx
+	res := graphql.MarshalInt(*v)
 	return res
 }
 

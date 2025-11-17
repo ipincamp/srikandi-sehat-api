@@ -1,0 +1,32 @@
+# Defines the structure of an activity log entry (Req 1.14.2.1)
+type ActivityLog {
+  id: ID!
+  action: String!
+  target_table: String
+  target_id: String
+  changes: String # JSON string
+  ip_address: String
+  user_agent: String
+  timestamp: String! # ISO 8601
+}
+
+# Defines the pagination metadata (Req 1.14.2.1)
+type ActivityLogPagination {
+  total_items: Int!
+  total_pages: Int!
+  current_page: Int!
+  per_page: Int!
+}
+
+# Defines the complete paginated response
+type PaginatedActivityLogs {
+  data: [ActivityLog!]!
+  meta: ActivityLogPagination!
+}
+
+# Extend the base Query type (Req 1.14.1)
+extend type Query {
+  # 'myActivityLogs' fetches the authenticated user's activity log.
+  # This query requires authentication.
+  myActivityLogs(page: Int, limit: Int, type: String): PaginatedActivityLogs!
+}

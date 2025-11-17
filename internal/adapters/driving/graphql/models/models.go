@@ -2,6 +2,24 @@
 
 package models
 
+type ActivityLog struct {
+	ID          string  `json:"id"`
+	Action      string  `json:"action"`
+	TargetTable *string `json:"target_table,omitempty"`
+	TargetID    *string `json:"target_id,omitempty"`
+	Changes     *string `json:"changes,omitempty"`
+	IPAddress   *string `json:"ip_address,omitempty"`
+	UserAgent   *string `json:"user_agent,omitempty"`
+	Timestamp   string  `json:"timestamp"`
+}
+
+type ActivityLogPagination struct {
+	TotalItems  int `json:"total_items"`
+	TotalPages  int `json:"total_pages"`
+	CurrentPage int `json:"current_page"`
+	PerPage     int `json:"per_page"`
+}
+
 type AuthResponse struct {
 	AccessToken  string `json:"access_token"`
 	RefreshToken string `json:"refresh_token"`
@@ -27,6 +45,11 @@ type LoginInput struct {
 }
 
 type Mutation struct {
+}
+
+type PaginatedActivityLogs struct {
+	Data []*ActivityLog         `json:"data"`
+	Meta *ActivityLogPagination `json:"meta"`
 }
 
 type Query struct {

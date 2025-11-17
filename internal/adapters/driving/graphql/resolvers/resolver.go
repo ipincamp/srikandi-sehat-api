@@ -21,20 +21,23 @@ var ErrNotAuthenticated = errors.New("not authenticated")
 
 // Resolver sekarang menampung semua service yang dibutuhkan
 type Resolver struct {
-	userService ports.UserService
-	authService ports.AuthService
-	logger      zerolog.Logger
+	userService        ports.UserService
+	authService        ports.AuthService
+	activityLogService ports.ActivityLogService
+	logger             zerolog.Logger
 }
 
 // It's the entry point for injecting core services into the adapter.
 func NewResolver(
 	userService ports.UserService,
 	authService ports.AuthService,
+	activityLogService ports.ActivityLogService,
 	logger zerolog.Logger,
 ) *Resolver {
 	return &Resolver{
-		userService: userService,
-		authService: authService,
-		logger:      logger,
+		userService:        userService,
+		authService:        authService,
+		activityLogService: activityLogService,
+		logger:             logger,
 	}
 }

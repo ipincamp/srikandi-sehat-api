@@ -69,6 +69,9 @@ func main() {
 	userRepoLogger := log.With().Str("component", "UserRepository").Logger()
 	userRepo := postgres.NewUserRepository(db, userRepoLogger)
 
+	activityLogRepoLogger := log.With().Str("component", "ActivityLogRepository").Logger()
+	activityLogRepo := postgres.NewActivityLogRepository(db, activityLogRepoLogger)
+
 	// 4c. Inisialisasi Unit of Work (for transactional mutations)
 	uowLogger := log.With().Str("component", "UnitOfWork").Logger()
 	uow := postgres.NewUnitOfWork(db, uowLogger)
@@ -88,6 +91,9 @@ func main() {
 	// UserService still uses the non-transactional repo for reads
 	userService := service.NewUserService(userRepo, userServiceLogger)
 
+	activityLogServiceLogger := log.With().Str("component", "ActivityLogService").Logger()
+	activityLogService := service.NewActivityLogService(activityLogRepo, activityLogServiceLogger)
+
 	authServiceLogger := log.With().Str("component", "AuthService").Logger()
 	// AuthService now uses the Unit of Work for its mutations
 	authService := service.NewAuthService(
@@ -101,7 +107,12 @@ func main() {
 
 	// 4f. Inisialisasi GraphQL (Driving Adapter)
 	resolverLogger := log.With().Str("component", "GraphQLResolver").Logger()
-	gqlResolver := resolvers.NewResolver(userService, authService, resolverLogger)
+	gqlResolver := resolvers.NewResolver(
+		userService,
+		authService,
+		activityLogService,
+		resolverLogger,
+	)
 
 	gqlConfig := generated.Config{Resolvers: gqlResolver}
 	gqlServer := handler.NewDefaultServer(generated.NewExecutableSchema(gqlConfig))

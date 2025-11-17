@@ -288,6 +288,47 @@ func (r *mutationResolver) ConfirmAccountReactivation(ctx context.Context, token
 	return true, nil
 }
 
+// RequestAccountDeletion is the resolver for the requestAccountDeletion field.
+func (r *mutationResolver) RequestAccountDeletion(ctx context.Context, input models.RequestAccountDeletionInput) (bool, error) {
+	// 1. Get User ID from context (this is an authenticated route)
+	userID, ok := ctx.Value(AuthUserUUIDKey).(string)
+	if !ok || userID == "" {
+		return false, ErrNotAuthenticated
+	}
+
+	// 2. Validation Step
+	vInput := requestAccountDeletionInputValidation{
+		CurrentPassword: input.CurrentPassword,
+	}
+	if err := validate.Struct(vInput); err != nil {
+		return false, formatValidationErrors(err)
+	}
+
+	// 3. Call the auth service
+	if err := r.Resolver.authService.RequestAccountDeletion(ctx, userID, input.CurrentPassword); err != nil {
+		return false, err // Service will handle "invalid password" or other failures
+	}
+
+	// 4. Return success
+	return true, nil
+}
+
+// ConfirmAccountDeletion is the resolver for the confirmAccountDeletion field.
+func (r *mutationResolver) ConfirmAccountDeletion(ctx context.Context, token string) (bool, error) {
+	// 1. Validation Step
+	if err := validate.Var(token, "required"); err != nil {
+		return false, formatValidationErrors(err)
+	}
+
+	// 2. Call the auth service
+	if err := r.Resolver.authService.ConfirmAccountDeletion(ctx, token); err != nil {
+		return false, err // Service will handle "invalid or expired token"
+	}
+
+	// 3. Return success
+	return true, nil
+}
+
 // Mutation returns generated.MutationResolver implementation.
 func (r *Resolver) Mutation() generated.MutationResolver { return &mutationResolver{r} }
 

@@ -70,6 +70,11 @@ type disableAccountInputValidation struct {
 	CurrentPassword string `validate:"required"`
 }
 
+// requestAccountDeletionInputValidation maps to RequestAccountDeletionInput.
+type requestAccountDeletionInputValidation struct {
+	CurrentPassword string `validate:"required"`
+}
+
 // --- 3. Custom Validation Functions ---
 
 // validateEmailDomain implements the custom 'emaildomain' validation rule.

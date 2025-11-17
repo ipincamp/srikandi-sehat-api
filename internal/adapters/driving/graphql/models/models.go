@@ -28,6 +28,10 @@ type RegisterInput struct {
 	Password string `json:"password"`
 }
 
+type RequestAccountDeletionInput struct {
+	CurrentPassword string `json:"current_password"`
+}
+
 type RequestEmailChangeInput struct {
 	NewEmail        string `json:"new_email"`
 	CurrentPassword string `json:"current_password"`

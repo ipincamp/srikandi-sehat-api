@@ -28,6 +28,11 @@ input DisableAccountInput {
   current_password: String!
 }
 
+# Input type for requesting an account deletion
+input RequestAccountDeletionInput {
+  current_password: String!
+}
+
 # Response type for successful auth
 type AuthResponse {
   access_token: String!
@@ -82,4 +87,12 @@ type Mutation {
   # confirmAccountReactivation validates the token and re-enables the account
   # This is a public route.
   confirmAccountReactivation(token: String!): Boolean!
+
+  # requestAccountDeletion triggers a confirmation email for deletion
+  # This is an authenticated route.
+  requestAccountDeletion(input: RequestAccountDeletionInput!): Boolean!
+
+  # confirmAccountDeletion validates the token and soft-deletes the account
+  # This is a public route.
+  confirmAccountDeletion(token: String!): Boolean!
 }
